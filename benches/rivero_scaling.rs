@@ -237,7 +237,7 @@ fn exact_top_k(corpus: &[VectorEmbedding], query: &VectorEmbedding, k: usize) ->
     let mut scores: Vec<(u32, f32)> = corpus
         .iter()
         .enumerate()
-        .map(|(index, vector)| (index as u32, query.quantum_fidelity(vector)))
+        .map(|(index, vector)| (index as u32, query.projective_overlap(vector)))
         .collect();
     scores.sort_unstable_by(|lhs, rhs| rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0)));
     scores.truncate(k);

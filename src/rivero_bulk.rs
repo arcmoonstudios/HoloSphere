@@ -411,7 +411,7 @@ impl RiveroBulkBuilder {
                             let denom = (vec.norm_squared() * cand_vec.norm_squared()).max(1e-12);
                             (dot.re / denom.sqrt()).clamp(-1.0, 1.0)
                         }
-                        _ => complex_quantum_fidelity_fast(query_complex, cand_vec.complex_data()),
+                        _ => complex_projective_overlap_fast(query_complex, cand_vec.complex_data()),
                     };
                     scored.push(ScoredWitness {
                         index: cand,
@@ -493,7 +493,7 @@ impl RiveroBulkBuilder {
                             let denom = (vec.norm_squared() * cand_vec.norm_squared()).max(1e-12);
                             (dot.re / denom.sqrt()).clamp(-1.0, 1.0)
                         }
-                        _ => complex_quantum_fidelity_fast(query_complex, cand_vec.complex_data()),
+                        _ => complex_projective_overlap_fast(query_complex, cand_vec.complex_data()),
                     };
                     scored.push(ScoredWitness {
                         index: cand,
@@ -667,9 +667,9 @@ impl FlatFrozenTerritoryTable {
     }
 }
 
-/// Computes quantum fidelity with 4-lane loop unrolling for AVX2/AVX-512 vectorization.
+/// Computes Complex Projective Overlap with 4-lane loop unrolling for AVX2/AVX-512 vectorization.
 #[inline(always)]
-fn complex_quantum_fidelity_fast(a: &[Complex32], b: &[Complex32]) -> f32 {
+fn complex_projective_overlap_fast(a: &[Complex32], b: &[Complex32]) -> f32 {
     let mut sum_re = 0.0f32;
     let mut sum_im = 0.0f32;
     let len = a.len().min(b.len());

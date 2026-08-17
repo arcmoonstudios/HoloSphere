@@ -187,7 +187,7 @@ fn compute_exact_ground_truth(
             let mut scores: Vec<(NodeIndex, SimilarityScore)> = corpus
                 .iter()
                 .enumerate()
-                .map(|(idx, doc)| (idx as NodeIndex, query.quantum_fidelity(doc)))
+                .map(|(idx, doc)| (idx as NodeIndex, query.projective_overlap(doc)))
                 .collect();
             scores.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
             scores.truncate(k);

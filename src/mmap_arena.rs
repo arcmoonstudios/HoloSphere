@@ -41,7 +41,7 @@ use std::sync::atomic::{AtomicU32, Ordering as AtomicOrdering};
 use memmap2::{MmapMut, MmapOptions};
 use num_complex::Complex32;
 
-use crate::quantization::{PolarQuantizedVector, asymmetric_quantum_fidelity};
+use crate::quantization::{PolarQuantizedVector, asymmetric_projective_overlap};
 use crate::{HNSQRError, HNSQRResult, NodeIndex};
 
 /// Magic header identifier: "HNSQR001" in ASCII.
@@ -314,7 +314,7 @@ impl MmapArena {
             let (min_r, max_r) =
                 *(mmap_guard.as_ptr().add(self.amplitudes_offset) as *const (f32, f32)).add(idx);
 
-            asymmetric_quantum_fidelity(query, query_norm_sq, vec_bytes, min_r, max_r, norm_sq)
+            asymmetric_projective_overlap(query, query_norm_sq, vec_bytes, min_r, max_r, norm_sq)
         }
     }
 

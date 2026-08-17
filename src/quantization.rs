@@ -73,9 +73,6 @@ pub struct PolarQuantizedVector {
     pub data: Vec<u8>,
 }
 
-/// Backward-compatible alias for [`PolarQuantizedVector`].
-#[deprecated(since = "0.1.0", note = "Use `PolarQuantizedVector` instead.")]
-pub type QuantizedPhaseVector = PolarQuantizedVector;
 
 impl PolarQuantizedVector {
     /// Quantizes a slice of complex numbers into an 8-bit polar quantized vector.
@@ -250,9 +247,9 @@ pub fn asymmetric_dot_product_raw(
     Complex32::new(sum_re, sum_im)
 }
 
-/// Computes the asymmetric Quantum State Fidelity between an uncompressed query and a quantized vector.
+/// Computes the asymmetric Complex Projective Overlap (CPO) between an uncompressed query and a quantized vector.
 #[inline(always)]
-pub fn asymmetric_quantum_fidelity(
+pub fn asymmetric_projective_overlap(
     query: &[Complex32],
     query_norm_sq: f32,
     quantized_bytes: &[u8],
@@ -279,7 +276,7 @@ mod tests {
             Complex32::new(0.5, 0.5),
         ];
 
-        let qvec = QuantizedPhaseVector::quantize(&original);
+        let qvec = PolarQuantizedVector::quantize(&original);
         assert_eq!(qvec.data.len(), original.len() * 2);
 
         let deq = qvec.dequantize();
@@ -294,7 +291,7 @@ mod tests {
     #[test]
     fn test_asymmetric_fidelity() {
         let v1 = vec![Complex32::new(1.0, 0.0), Complex32::new(0.0, 1.0)];
-        let qvec = QuantizedPhaseVector::quantize(&v1);
+        let qvec = PolarQuantizedVector::quantize(&v1);
 
         let ip = qvec.asymmetric_dot_product(&v1);
         assert!((ip.re - 2.0).abs() < 0.1);

@@ -34,7 +34,7 @@ use rayon::prelude::*;
 
 use hnsqr::gateway::ComplexWeaver;
 use hnsqr::metadata_index::FilterExpr;
-use hnsqr::quantization::QuantizedPhaseVector;
+use hnsqr::quantization::PolarQuantizedVector;
 use hnsqr::server::{HNSQRClient, HNSQRServer};
 use hnsqr::{
     DistanceFunction, HNSQRConfig, HNSQRIndex, NodeId, SearchIntent, SimilarityScore,
@@ -116,7 +116,7 @@ fn exact_knn_fidelity(
     let mut scores: Vec<(NodeId, f32)> = dataset
         .iter()
         .map(|(id, vec)| {
-            let fidelity = query.quantum_fidelity(vec);
+            let fidelity = query.projective_overlap(vec);
             let dist = 1.0 - fidelity; // Distance = 1 - Fidelity
             (id.clone(), dist)
         })
@@ -430,7 +430,7 @@ fn run_full_quantum_benchmark(
     };
     let t_div = Instant::now();
     for q in queries {
-        let _ = index_seq.quantum_search(q, k, &intent_diverse).unwrap();
+        let _ = index_seq.intent_rerank_search(q, k, &intent_diverse).unwrap();
     }
     let dur_div = t_div.elapsed();
     println!(
@@ -442,14 +442,14 @@ fn run_full_quantum_benchmark(
 
     // Attention Weighted Search
     let intent_attention = SearchIntent {
-        quantum_factor: 0.8,
+        phase_alignment_weight: 0.8,
         attention_width: 0.12,
         compute_budget: 1.0,
         ..Default::default()
     };
     let t_att = Instant::now();
     for q in queries {
-        let _ = index_seq.quantum_search(q, k, &intent_attention).unwrap();
+        let _ = index_seq.intent_rerank_search(q, k, &intent_attention).unwrap();
     }
     let dur_att = t_att.elapsed();
     println!(
@@ -605,8 +605,8 @@ fn main() {
     for q in &queries_clust {
         let q_norm_sq = q.norm_squared();
         for (_, vec) in dataset_clust.iter().take(50) {
-            let exact_fid = q.quantum_fidelity(vec);
-            let qvec = QuantizedPhaseVector::quantize(vec.complex_data());
+            let exact_fid = q.projective_overlap(vec);
+            let qvec = PolarQuantizedVector::quantize(vec.complex_data());
             let adc_ip = qvec.asymmetric_dot_product(q.complex_data());
             let adc_fid =
                 (adc_ip.norm_sqr() / (q_norm_sq * vec.norm_squared()).max(1e-12)).clamp(0.0, 1.0);
@@ -708,7 +708,7 @@ fn main() {
 
     let t_filter_search = Instant::now();
     for q in &queries_clust {
-        let _ = index_meta.quantum_search(q, k, &intent_filtered).unwrap();
+        let _ = index_meta.intent_rerank_search(q, k, &intent_filtered).unwrap();
     }
     let dur_filter_search = t_filter_search.elapsed();
     let qps_filter = num_queries as f64 / dur_filter_search.as_secs_f64();

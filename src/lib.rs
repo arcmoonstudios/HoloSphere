@@ -109,7 +109,7 @@ pub use multivector::{MultiVectorEmbedding, MultiVectorIndex};
 pub use planner::{
     ExecutionPlan, ExecutionProof, QueryModality, RetrievalContract, UniversalPlanner,
 };
-pub use quantization::{PolarQuantizedVector, QuantizedPhaseVector};
+pub use quantization::PolarQuantizedVector;
 pub use rivero::{
     AdaptivePolicy, AdaptiveRouteState, RIVERO_BUILD_CANDIDATE_CAP, RIVERO_CELL_CAPACITY,
     RIVERO_FOUNDATIONS, RIVERO_QUERY_CANDIDATE_CAP, RIVERO_SCHEMA_VERSION, RiveroAddress,
@@ -680,13 +680,6 @@ impl VectorEmbedding {
         (num / denom).clamp(0.0, 1.0)
     }
 
-    /// Backward-compatible alias for [`projective_overlap`].
-    #[deprecated(since = "0.1.0", note = "Use `projective_overlap` instead.")]
-    #[inline]
-    pub fn quantum_fidelity(&self, other: &Self) -> SimilarityScore {
-        self.projective_overlap(other)
-    }
-
     /// Computes the Projective Sine Distance:
     ///
     /// $$D(z, w) = \sqrt{1 - P(z, w)} \in [0, 1]$$
@@ -694,13 +687,6 @@ impl VectorEmbedding {
     pub fn projective_sine_distance(&self, other: &Self) -> f32 {
         let p = self.projective_overlap(other);
         (1.0 - p).max(0.0).sqrt()
-    }
-
-    /// Backward-compatible alias for [`projective_sine_distance`].
-    #[deprecated(since = "0.1.0", note = "Use `projective_sine_distance` instead.")]
-    #[inline]
-    pub fn trace_distance(&self, other: &Self) -> f32 {
-        self.projective_sine_distance(other)
     }
 
     /// Computes the Phase-Aligned Chordal Distance:
@@ -714,12 +700,6 @@ impl VectorEmbedding {
         (2.0 * (1.0 - p.sqrt())).max(0.0).sqrt()
     }
 
-    /// Backward-compatible alias for [`phase_aligned_chordal_distance`].
-    #[deprecated(since = "0.1.0", note = "Use `phase_aligned_chordal_distance` instead.")]
-    #[inline]
-    pub fn bures_distance(&self, other: &Self) -> f32 {
-        self.phase_aligned_chordal_distance(other)
-    }
 
     /// Computes the Euclidean distance over complex vector components.
     #[inline]
@@ -945,9 +925,6 @@ pub struct SearchIntent {
     pub recall_precision_balance: f32,
     /// Multiplier scaling the phase alignment influence $[0, 1]$. Default: 0.0.
     pub phase_alignment_weight: f32,
-    /// Backward-compatible alias for [`phase_alignment_weight`].
-    #[deprecated(since = "0.1.0", note = "Use `phase_alignment_weight` instead.")]
-    pub quantum_factor: f32,
     /// Focus width for softmax attention distribution. Default: 0.5.
     pub attention_width: f32,
     /// Relative compute budget multiplier (e.g. 1.0 = normal, 2.0 = double ef). Default: 1.0.
@@ -1283,8 +1260,8 @@ pub struct IndexStats {
     pub insertions: usize,
     /// Total number of search queries processed.
     pub searches: usize,
-    /// Total quantum search operations executed.
-    pub quantum_searches: usize,
+    /// Total intent search operations executed.
+    pub intent_searches: usize,
     /// Average query search latency in microseconds.
     pub avg_search_latency_us: f64,
     /// Peak concurrent search requests observed.
@@ -3838,7 +3815,7 @@ impl HNSQRIndex {
 
         let mut reranked = Vec::with_capacity(base_results.len());
         let now = current_unix_timestamp();
-        let phase_weight = intent.phase_alignment_weight.max(intent.quantum_factor);
+        let phase_weight = intent.phase_alignment_weight;
 
         for (idx, base_fidelity) in base_results {
             if let Some(node) = self.arena.get_node(idx) {
@@ -3869,7 +3846,7 @@ impl HNSQRIndex {
 
         {
             let mut stats = self.stats.write();
-            stats.quantum_searches = stats.quantum_searches.saturating_add(1);
+            stats.intent_searches = stats.intent_searches.saturating_add(1);
         }
 
         Ok(reranked)
@@ -3886,18 +3863,6 @@ impl HNSQRIndex {
         self.intent_rerank_search(query, k, intent)
     }
 
-    /// Backward-compatible alias for [`intent_rerank_search`].
-    #[deprecated(since = "0.1.0", note = "Use `intent_rerank_search` or `phase_aware_search` instead.")]
-    #[inline]
-    pub fn quantum_search(
-        &self,
-        query: &VectorEmbedding,
-        k: usize,
-        intent: &SearchIntent,
-    ) -> HNSQRResult<Vec<(NodeId, SimilarityScore, SimilarityScore)>> {
-        self.intent_rerank_search(query, k, intent)
-    }
-
     /// Searches with dynamic contextual intent and diversity beam re-ranking.
     pub fn search_with_intent(
         &self,
@@ -3905,8 +3870,8 @@ impl HNSQRIndex {
         k: usize,
         intent: &SearchIntent,
     ) -> HNSQRResult<Vec<(NodeId, SimilarityScore)>> {
-        let quantum_res = self.intent_rerank_search(query, k, intent)?;
-        Ok(quantum_res
+        let intent_res = self.intent_rerank_search(query, k, intent)?;
+        Ok(intent_res
             .into_iter()
             .map(|(id, _, score)| (id, score))
             .collect())
@@ -4127,10 +4092,10 @@ mod tests {
         let v2 = VectorEmbedding::new(vec![0.0, 1.0]);
         let v3 = VectorEmbedding::new(vec![1.0, 0.0]);
 
-        assert_eq!(v1.quantum_fidelity(&v2), 0.0);
-        assert!((v1.quantum_fidelity(&v3) - 1.0).abs() < 1e-5);
-        assert!((v1.trace_distance(&v3) - 0.0).abs() < 1e-5);
-        assert!((v1.trace_distance(&v2) - 1.0).abs() < 1e-5);
+        assert_eq!(v1.projective_overlap(&v2), 0.0);
+        assert!((v1.projective_overlap(&v3) - 1.0).abs() < 1e-5);
+        assert!((v1.projective_sine_distance(&v3) - 0.0).abs() < 1e-5);
+        assert!((v1.projective_sine_distance(&v2) - 1.0).abs() < 1e-5);
     }
 
     #[test]
@@ -4170,7 +4135,7 @@ mod tests {
     }
 
     #[test]
-    fn test_superposition_quantum_search() {
+    fn test_intent_rerank_search() {
         let config = HNSQRConfig::default();
         let index = HNSQRIndex::new(config, 2);
 
@@ -4183,12 +4148,12 @@ mod tests {
 
         let query = VectorEmbedding::new(vec![0.8, 0.2]);
         let intent = SearchIntent {
-            quantum_factor: 0.5,
+            phase_alignment_weight: 0.5,
             recency_bias: 0.2,
             ..Default::default()
         };
 
-        let results = index.quantum_search(&query, 2, &intent).unwrap();
+        let results = index.intent_rerank_search(&query, 2, &intent).unwrap();
         assert_eq!(results.len(), 2);
         assert_eq!(results[0].0.as_ref(), "node_a");
     }
@@ -4280,7 +4245,7 @@ mod tests {
             ..Default::default()
         };
 
-        let results = index.quantum_search(&query, 2, &intent).unwrap();
+        let results = index.intent_rerank_search(&query, 2, &intent).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].0.as_ref(), "node_gpu_1");
     }
@@ -4316,7 +4281,7 @@ mod tests {
             ..Default::default()
         };
 
-        let results = index.quantum_search(&v_eng, 2, &intent).unwrap();
+        let results = index.intent_rerank_search(&v_eng, 2, &intent).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].0.as_ref(), "e1");
     }

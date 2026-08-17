@@ -79,7 +79,7 @@ fn hermitian_similarity(a: &VectorEmbedding, b: &VectorEmbedding) -> f32 {
 }
 
 fn hybrid_similarity(a: &VectorEmbedding, b: &VectorEmbedding, alpha: f32) -> f32 {
-    let fidelity = a.quantum_fidelity(b);
+    let fidelity = a.projective_overlap(b);
     let herm = hermitian_similarity(a, b).max(0.0);
     alpha * fidelity + (1.0 - alpha) * herm
 }
@@ -302,7 +302,7 @@ fn adversarial_phase_test(dataset: &Dataset) -> (f64, f64, f64) {
         let rotated = VectorEmbedding::from_complex(rotated_data);
 
         // Fidelity should be exactly 1.0 (phase invariant)
-        let fidelity = original.quantum_fidelity(&rotated);
+        let fidelity = original.projective_overlap(&rotated);
         fidelity_drift_sum += (1.0 - fidelity).abs() as f64;
 
         // Hermitian inner product is phase-dependent (Re(e^i*phi) = cos(phi))
@@ -369,7 +369,7 @@ fn main() {
             hermitian_similarity(&dataset.complex_queries[q], &dataset.complex_corpus[c])
         });
         let fid = evaluate_metric(&dataset, |q, c| {
-            dataset.complex_queries[q].quantum_fidelity(&dataset.complex_corpus[c])
+            dataset.complex_queries[q].projective_overlap(&dataset.complex_corpus[c])
         });
         let hyb80 = evaluate_metric(&dataset, |q, c| {
             hybrid_similarity(&dataset.complex_queries[q], &dataset.complex_corpus[c], 0.8)

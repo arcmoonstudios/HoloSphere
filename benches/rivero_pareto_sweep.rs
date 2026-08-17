@@ -240,7 +240,7 @@ fn compute_ground_truth(
             let mut scores: Vec<(NodeIndex, SimilarityScore)> = corpus
                 .iter()
                 .enumerate()
-                .map(|(idx, doc)| (idx as NodeIndex, query.quantum_fidelity(doc)))
+                .map(|(idx, doc)| (idx as NodeIndex, query.projective_overlap(doc)))
                 .collect();
             scores.sort_unstable_by(|lhs, rhs| {
                 rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))

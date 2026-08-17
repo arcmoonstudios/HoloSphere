@@ -41,7 +41,7 @@ use std::sync::atomic::{AtomicU32, Ordering as AtomicOrdering};
 use memmap2::{MmapMut, MmapOptions};
 use num_complex::Complex32;
 
-use crate::quantization::{QuantizedPhaseVector, asymmetric_quantum_fidelity};
+use crate::quantization::{PolarQuantizedVector, asymmetric_quantum_fidelity};
 use crate::{HNSQRError, HNSQRResult, NodeIndex};
 
 /// Magic header identifier: "HNSQR001" in ASCII.
@@ -253,7 +253,7 @@ impl MmapArena {
             std::slice::from_raw_parts_mut(base, self.bytes_per_vector)
         };
 
-        let (min_r, max_r) = QuantizedPhaseVector::quantize_into_buffer(slice, vec_ptr);
+        let (min_r, max_r) = PolarQuantizedVector::quantize_into_buffer(slice, vec_ptr);
 
         // Store precomputed norm and amplitudes
         unsafe {

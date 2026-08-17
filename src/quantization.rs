@@ -74,6 +74,7 @@ pub struct PolarQuantizedVector {
 }
 
 /// Backward-compatible alias for [`PolarQuantizedVector`].
+#[deprecated(since = "0.1.0", note = "Use `PolarQuantizedVector` instead.")]
 pub type QuantizedPhaseVector = PolarQuantizedVector;
 
 impl PolarQuantizedVector {

@@ -109,7 +109,7 @@ pub use multivector::{MultiVectorEmbedding, MultiVectorIndex};
 pub use planner::{
     ExecutionPlan, ExecutionProof, QueryModality, RetrievalContract, UniversalPlanner,
 };
-pub use quantization::QuantizedPhaseVector;
+pub use quantization::{PolarQuantizedVector, QuantizedPhaseVector};
 pub use rivero::{
     AdaptivePolicy, AdaptiveRouteState, RIVERO_BUILD_CANDIDATE_CAP, RIVERO_CELL_CAPACITY,
     RIVERO_FOUNDATIONS, RIVERO_QUERY_CANDIDATE_CAP, RIVERO_SCHEMA_VERSION, RiveroAddress,
@@ -681,6 +681,7 @@ impl VectorEmbedding {
     }
 
     /// Backward-compatible alias for [`projective_overlap`].
+    #[deprecated(since = "0.1.0", note = "Use `projective_overlap` instead.")]
     #[inline]
     pub fn quantum_fidelity(&self, other: &Self) -> SimilarityScore {
         self.projective_overlap(other)
@@ -696,6 +697,7 @@ impl VectorEmbedding {
     }
 
     /// Backward-compatible alias for [`projective_sine_distance`].
+    #[deprecated(since = "0.1.0", note = "Use `projective_sine_distance` instead.")]
     #[inline]
     pub fn trace_distance(&self, other: &Self) -> f32 {
         self.projective_sine_distance(other)
@@ -713,6 +715,7 @@ impl VectorEmbedding {
     }
 
     /// Backward-compatible alias for [`phase_aligned_chordal_distance`].
+    #[deprecated(since = "0.1.0", note = "Use `phase_aligned_chordal_distance` instead.")]
     #[inline]
     pub fn bures_distance(&self, other: &Self) -> f32 {
         self.phase_aligned_chordal_distance(other)
@@ -940,7 +943,10 @@ pub struct SearchIntent {
     pub diversity: f32,
     /// Precision vs Recall trade-off modulation $[0, 1]$. Default: 0.5.
     pub recall_precision_balance: f32,
-    /// Multiplier scaling the quantum superposition influence $[0, 1]$. Default: 0.0.
+    /// Multiplier scaling the phase alignment influence $[0, 1]$. Default: 0.0.
+    pub phase_alignment_weight: f32,
+    /// Backward-compatible alias for [`phase_alignment_weight`].
+    #[deprecated(since = "0.1.0", note = "Use `phase_alignment_weight` instead.")]
     pub quantum_factor: f32,
     /// Focus width for softmax attention distribution. Default: 0.5.
     pub attention_width: f32,
@@ -3812,8 +3818,8 @@ impl HNSQRIndex {
         self.search_indices_filtered(query, k, None)
     }
 
-    /// Performs intent-aware quantum search with neural interference re-ranking and Roaring Bitmap filtering.
-    pub fn quantum_search(
+    /// Performs intent-aware search with algebraic phase alignment, recency bias, and metadata filtering.
+    pub fn intent_rerank_search(
         &self,
         query: &VectorEmbedding,
         k: usize,
@@ -3832,6 +3838,7 @@ impl HNSQRIndex {
 
         let mut reranked = Vec::with_capacity(base_results.len());
         let now = current_unix_timestamp();
+        let phase_weight = intent.phase_alignment_weight.max(intent.quantum_factor);
 
         for (idx, base_fidelity) in base_results {
             if let Some(node) = self.arena.get_node(idx) {
@@ -3843,14 +3850,14 @@ impl HNSQRIndex {
                     final_score += recency_factor * intent.recency_bias * 0.25;
                 }
 
-                if intent.quantum_factor > 0.0 {
+                if phase_weight > 0.0 {
                     let vec_slice = self.arena.get_vector_slice(idx);
                     let ip = dot_product_complex_simd(query.complex_data(), vec_slice);
                     // Algebraic phase alignment: cos(arg(z)) = Re(z)/|z|.
                     // Eliminates atan2 + cos (two transcendentals) with one division.
                     let ip_norm = ip.norm();
                     let phase_alignment = if ip_norm > 1e-9 { ip.re / ip_norm } else { 0.0 };
-                    final_score += phase_alignment * intent.quantum_factor * 0.15;
+                    final_score += phase_alignment * phase_weight * 0.15;
                 }
 
                 reranked.push((node.external_id.clone(), base_fidelity, final_score));
@@ -3868,6 +3875,29 @@ impl HNSQRIndex {
         Ok(reranked)
     }
 
+    /// Alias for [`intent_rerank_search`].
+    #[inline]
+    pub fn phase_aware_search(
+        &self,
+        query: &VectorEmbedding,
+        k: usize,
+        intent: &SearchIntent,
+    ) -> HNSQRResult<Vec<(NodeId, SimilarityScore, SimilarityScore)>> {
+        self.intent_rerank_search(query, k, intent)
+    }
+
+    /// Backward-compatible alias for [`intent_rerank_search`].
+    #[deprecated(since = "0.1.0", note = "Use `intent_rerank_search` or `phase_aware_search` instead.")]
+    #[inline]
+    pub fn quantum_search(
+        &self,
+        query: &VectorEmbedding,
+        k: usize,
+        intent: &SearchIntent,
+    ) -> HNSQRResult<Vec<(NodeId, SimilarityScore, SimilarityScore)>> {
+        self.intent_rerank_search(query, k, intent)
+    }
+
     /// Searches with dynamic contextual intent and diversity beam re-ranking.
     pub fn search_with_intent(
         &self,
@@ -3875,7 +3905,7 @@ impl HNSQRIndex {
         k: usize,
         intent: &SearchIntent,
     ) -> HNSQRResult<Vec<(NodeId, SimilarityScore)>> {
-        let quantum_res = self.quantum_search(query, k, intent)?;
+        let quantum_res = self.intent_rerank_search(query, k, intent)?;
         Ok(quantum_res
             .into_iter()
             .map(|(id, _, score)| (id, score))

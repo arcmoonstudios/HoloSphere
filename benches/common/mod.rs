@@ -5,10 +5,10 @@ use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-use hnsqr::gateway::ComplexWeaver;
-use hnsqr::metadata_index::MetadataValue;
+use hnsqr::metadata::index::MetadataValue;
+use hnsqr::vector::folding::ComplexWeaver;
 use hnsqr::rivero::RiveroProfile;
-use hnsqr::rivero_bulk::RiveroBulkBuilder;
+use hnsqr::rivero::bulk::RiveroBulkBuilder;
 use hnsqr::{HNSQRConfig, HNSQRIndex, NodeIndex, VectorEmbedding};
 use num_complex::Complex32;
 use rand::rngs::StdRng;

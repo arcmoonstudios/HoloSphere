@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use common::generate_realistic_text_corpus;
 use hnsqr::rivero::RiveroProfile;
-use hnsqr::rivero_bulk::RiveroBulkBuilder;
+use hnsqr::rivero::bulk::RiveroBulkBuilder;
 use hnsqr::{DistanceFunction, HNSQRConfig, HNSQRIndex, SearchPlan};
 use rayon::prelude::*;
 

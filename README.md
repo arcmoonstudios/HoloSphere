@@ -31,7 +31,7 @@ HNSQR is a maximum-throughput, proof-carrying multimodal retrieval engine. It un
                                     │                       │
                                     ▼                       ▼
                           ┌───────────────────┐   ┌───────────────────┐
-                          │ Territory Envelopes│   │ Proof Frontier    │
+                          │Territory Envelopes│   │ Proof Frontier    │
                           │   UB_cell <= tau  │   │  max(UB) <= tau   │
                           └─────────┬─────────┘   └─────────┬─────────┘
                                     │                       │

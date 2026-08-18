@@ -5,7 +5,7 @@ use std::time::Instant;
 use common::{BenchScale, DEFAULT_BENCH_SEED, get_or_build_snapshot_v2};
 use hnsqr::HNSQRIndex;
 use hnsqr::rivero::{AdaptivePolicy, RiveroProfile};
-use hnsqr::snapshot::{SnapshotOpenOptions, VerificationMode};
+use hnsqr::storage::snapshot::{SnapshotOpenOptions, VerificationMode};
 
 fn main() {
     let scale = BenchScale::from_env();

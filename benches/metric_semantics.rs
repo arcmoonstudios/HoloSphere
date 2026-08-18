@@ -158,7 +158,7 @@ fn main() {
     );
 
     use hnsqr::rivero::{AdaptivePolicy, RiveroProfile};
-    use hnsqr::rivero_bulk::RiveroBulkBuilder;
+    use hnsqr::rivero::bulk::RiveroBulkBuilder;
     use hnsqr::{DistanceFunction, HNSQRConfig, HNSQRIndex, SearchPlan};
 
     for dist_fn in [DistanceFunction::Cosine, DistanceFunction::ProjectiveOverlap] {
@@ -279,7 +279,7 @@ fn main() {
         index.save_snapshot_v2(&snap_path).unwrap();
         let restored = HNSQRIndex::open_snapshot_v2(
             &snap_path,
-            hnsqr::snapshot::SnapshotOpenOptions::default(),
+            hnsqr::storage::snapshot::SnapshotOpenOptions::default(),
         )
         .unwrap();
         assert_eq!(

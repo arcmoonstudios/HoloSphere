@@ -23,8 +23,8 @@
  * © 2025 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use hnsqr::gateway::{GatewayRouter, create_http_router};
-use hnsqr::server::HNSQRServer;
+use hnsqr::transport::qir0::HNSQRServer;
+use hnsqr::vector::folding::{GatewayRouter, create_http_router};
 use hnsqr::{HNSQRConfig, HNSQRIndex};
 use std::net::SocketAddr;
 use std::sync::Arc;

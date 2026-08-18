@@ -3,7 +3,7 @@ mod common;
 use std::time::Instant;
 
 use common::generate_realistic_text_corpus;
-use hnsqr::lutz::{LutzCertifier, LutzCode, LutzQueryTable, exact_rerank_locality_sorted};
+use hnsqr::proof::lutz::{LutzCertifier, LutzCode, LutzQueryTable, exact_rerank_locality_sorted};
 use hnsqr::rivero::{RiveroCompiler, RiveroTerritoryIndex};
 use hnsqr::{NodeIndex, SimilarityScore};
 

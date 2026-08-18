@@ -19,7 +19,7 @@
  *///•------------------------------------------------------------------------------------‣
 
 use hnsqr::VectorEmbedding;
-use hnsqr::gateway::ComplexWeaver;
+use hnsqr::vector::folding::ComplexWeaver;
 use num_complex::Complex32;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};

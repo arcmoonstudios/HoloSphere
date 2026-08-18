@@ -3,7 +3,7 @@ mod common;
 use std::time::Instant;
 
 use common::generate_realistic_text_corpus;
-use hnsqr::lutz::{LutzCertifier, LutzCode, LutzQueryTable};
+use hnsqr::proof::lutz::{LutzCertifier, LutzCode, LutzQueryTable};
 use hnsqr::{NodeIndex, SimilarityScore};
 
 fn percentile(mut latencies: Vec<f64>, p: f64) -> f64 {

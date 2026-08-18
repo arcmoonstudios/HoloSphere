@@ -30,7 +30,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use hnsqr::gateway::ComplexWeaver;
+use hnsqr::vector::folding::ComplexWeaver;
 use hnsqr::{
     AdaptivePolicy, HNSQRConfig, HNSQRIndex, NodeIndex, RiveroBulkBuilder, RiveroProfile,
     SnapshotOpenOptions, VectorEmbedding, VerificationMode,

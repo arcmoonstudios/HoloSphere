@@ -1,10 +1,10 @@
 mod common;
 
 use common::generate_adversarial_regression_corpus;
-use hnsqr::metadata_index::FilterExpr;
+use hnsqr::metadata::index::{FilterExpr, MetadataValue};
 use hnsqr::rivero::{AdaptivePolicy, RiveroProfile};
-use hnsqr::rivero_bulk::RiveroBulkBuilder;
-use hnsqr::{HNSQRConfig, HNSQRIndex, NodeIndex};
+use hnsqr::rivero::bulk::RiveroBulkBuilder;
+use hnsqr::{HNSQRConfig, HNSQRIndex, NodeIndex, VectorEmbedding};
 use sha2::{Digest, Sha256};
 
 fn main() {
@@ -77,8 +77,10 @@ fn main() {
     let index = HNSQRIndex::new(config, 32);
 
     for (i, (vec, meta)) in adv.corpus.iter().zip(adv.metadata.iter()).enumerate() {
+        let v: VectorEmbedding = vec.clone();
+        let m: std::collections::HashMap<String, MetadataValue> = meta.clone();
         index
-            .insert_with_metadata(format!("adv-{i}"), vec.clone(), meta.clone())
+            .insert_with_metadata(format!("adv-{i}"), v, m)
             .unwrap();
     }
     index.install_rivero_state(state_16t).unwrap();
@@ -253,13 +255,13 @@ fn main() {
             .unwrap();
         for (idx, _) in results {
             let meta = &adv.metadata[idx as usize];
-            if let Some(hnsqr::metadata_index::MetadataValue::String(cat)) = meta.get("category") {
+            if let Some(MetadataValue::String(cat)) = meta.get("category") {
                 assert_eq!(
                     cat, "finance",
                     "Filter mask violation: category must be finance"
                 );
             }
-            if let Some(hnsqr::metadata_index::MetadataValue::Integer(year)) = meta.get("year") {
+            if let Some(MetadataValue::Integer(year)) = meta.get("year") {
                 assert!(*year >= 2022, "Filter mask violation: year must be >= 2022");
             }
         }

@@ -4,8 +4,8 @@ use std::time::Instant;
 
 use common::generate_adversarial_regression_corpus;
 use hnsqr::rivero::{AdaptivePolicy, RiveroProfile};
-use hnsqr::rivero_bulk::RiveroBulkBuilder;
-use hnsqr::{DistanceFunction, HNSQRConfig, HNSQRIndex, NodeIndex};
+use hnsqr::rivero::bulk::RiveroBulkBuilder;
+use hnsqr::{DistanceFunction, HNSQRConfig, HNSQRIndex, NodeIndex, VectorEmbedding};
 
 fn main() {
     println!(
@@ -37,8 +37,10 @@ fn main() {
     let index = HNSQRIndex::new(config.clone(), 32);
 
     for (i, (vec, meta)) in adv.corpus.iter().zip(adv.metadata.iter()).enumerate() {
+        let v: VectorEmbedding = vec.clone();
+        let m: std::collections::HashMap<String, hnsqr::metadata::index::MetadataValue> = meta.clone();
         index
-            .insert_with_metadata(format!("adv-{i}"), vec.clone(), meta.clone())
+            .insert_with_metadata(format!("adv-{i}"), v, m)
             .unwrap();
     }
     index.install_rivero_state(state_prog).unwrap();
@@ -301,8 +303,10 @@ fn main() {
 
     let index_b = HNSQRIndex::new(config, 32);
     for (i, (vec, meta)) in adv.corpus.iter().zip(adv.metadata.iter()).enumerate() {
+        let v: VectorEmbedding = vec.clone();
+        let m: std::collections::HashMap<String, hnsqr::metadata::index::MetadataValue> = meta.clone();
         index_b
-            .insert_with_metadata(format!("adv-b-{i}"), vec.clone(), meta.clone())
+            .insert_with_metadata(format!("adv-b-{i}"), v, m)
             .unwrap();
     }
     index_b.install_rivero_state(state_stage_b).unwrap();

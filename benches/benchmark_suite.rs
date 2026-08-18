@@ -32,10 +32,10 @@ use std::time::Instant;
 
 use rayon::prelude::*;
 
-use hnsqr::gateway::ComplexWeaver;
-use hnsqr::metadata_index::FilterExpr;
-use hnsqr::quantization::PolarQuantizedVector;
-use hnsqr::server::{HNSQRClient, HNSQRServer};
+use hnsqr::metadata::index::FilterExpr;
+use hnsqr::transport::qir0::{HNSQRClient, HNSQRServer};
+use hnsqr::vector::folding::ComplexWeaver;
+use hnsqr::vector::quantization::PolarQuantizedVector;
 use hnsqr::{
     DistanceFunction, HNSQRConfig, HNSQRIndex, NodeId, SearchIntent, SimilarityScore,
     VectorEmbedding,
@@ -741,17 +741,17 @@ fn main() {
         let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
         let bound_addr = listener.local_addr().unwrap();
 
-        let srv_idx = Arc::clone(&index_srv);
+        let srv_idx = Arc::new(hnsqr::StandaloneService::new(Arc::clone(&index_srv)));
         tokio::spawn(async move {
             while let Ok((stream, _)) = listener.accept().await {
-                let idx = Arc::clone(&srv_idx);
+                let srv = Arc::clone(&srv_idx);
                 tokio::spawn(async move {
-                    let _ = HNSQRServer::handle_client(stream, idx).await;
+                    let _ = HNSQRServer::handle_client(stream, srv).await;
                 });
             }
         });
 
-        let mut client = HNSQRClient::connect(bound_addr).await.unwrap();
+        let mut client: HNSQRClient = HNSQRClient::connect(bound_addr).await.unwrap();
         let t_ping = Instant::now();
         for _ in 0..1000 {
             let ok = client.ping().await.unwrap();
@@ -813,7 +813,7 @@ fn main() {
     // Multi-collection Gateway Routing
     let temp_dir_gw = std::env::temp_dir().join("hnsqr_bench_gw");
     let _ = std::fs::create_dir_all(&temp_dir_gw);
-    let router = Arc::new(hnsqr::gateway::GatewayRouter::new(
+    let router = Arc::new(hnsqr::vector::folding::GatewayRouter::new(
         &temp_dir_gw.to_string_lossy(),
         false,
     ));

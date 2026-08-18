@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use common::{BenchScale, DEFAULT_BENCH_SEED, generate_realistic_text_corpus};
 use hnsqr::rivero::RiveroProfile;
-use hnsqr::rivero_bulk::RiveroBulkBuilder;
+use hnsqr::rivero::bulk::RiveroBulkBuilder;
 use hnsqr::{HNSQRConfig, HNSQRIndex, VectorEmbedding};
 
 fn benchmark_thread_scaling(vectors: &[VectorEmbedding]) {

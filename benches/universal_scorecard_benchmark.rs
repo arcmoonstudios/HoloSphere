@@ -4,13 +4,13 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use common::generate_realistic_text_corpus;
-use hnsqr::hybrid::{HybridFusionEngine, ModalityRankings};
-use hnsqr::lutz::{LutzCertifier, LutzCode, LutzQueryTable, exact_rerank_locality_sorted};
-use hnsqr::multivector::{MultiVectorEmbedding, MultiVectorIndex};
-use hnsqr::planner::{ExecutionPlan, RetrievalContract, UniversalPlanner};
+use hnsqr::planning::planner::{ExecutionPlan, RetrievalContract, UniversalPlanner};
+use hnsqr::proof::lutz::{LutzCertifier, LutzCode, LutzQueryTable, exact_rerank_locality_sorted};
+use hnsqr::retrieval::hybrid::{HybridFusionEngine, ModalityRankings};
+use hnsqr::retrieval::multivector::{MultiVectorEmbedding, MultiVectorIndex};
+use hnsqr::retrieval::sparse::{SparseInvertedIndex, SparseVector};
 use hnsqr::rivero::{RiveroCompiler, RiveroTerritoryIndex};
-use hnsqr::segment::SegmentedEngine;
-use hnsqr::sparse::{SparseInvertedIndex, SparseVector};
+use hnsqr::storage::segment::SegmentedEngine;
 use hnsqr::{NodeIndex, SimilarityScore, VectorEmbedding};
 
 fn percentile(mut latencies: Vec<f64>, p: f64) -> f64 {

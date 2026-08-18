@@ -2,7 +2,7 @@ mod common;
 
 use common::{BenchScale, DEFAULT_BENCH_SEED, get_or_build_snapshot_v2};
 use hnsqr::rivero::{AdaptivePolicy, RiveroProfile};
-use hnsqr::snapshot::{SnapshotOpenOptions, VerificationMode};
+use hnsqr::storage::snapshot::{SnapshotOpenOptions, VerificationMode};
 use hnsqr::{HNSQRIndex, NodeIndex};
 
 fn main() {

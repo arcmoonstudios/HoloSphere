@@ -57,80 +57,146 @@ use smallvec::{SmallVec, smallvec};
 use thiserror::Error;
 use tracing::{info, instrument, trace, warn};
 
-/// Classical-to-Quantum LLM Gateway Router & HTTP REST Server.
-pub mod gateway;
-/// Hybrid Multimodal Fusion Engine (Reciprocal Rank Fusion & Score Normalization).
-pub mod hybrid;
-/// LUTz: Look-Up Table Z-Quantization with Cauchy-Schwarz Exact Certification.
-pub mod lutz;
-/// Lock-Free Roaring Bitmap Inverted Metadata Index.
-pub mod metadata_index;
-/// Zero-Copy Memory-Mapped Persistence submodule.
-pub mod mmap_arena;
-/// Multi-Vector Late-Interaction Engine (ColBERT / ColPali MaxSim).
-pub mod multivector;
-/// 8-Bit Polar Phase Quantization (PQ-C) submodule.
-pub mod quantization;
-/// Rivero bounded semantic address resolution.
-pub mod rivero;
-/// Deterministic parallel bulk builder for Rivero territories and witnesses.
-pub mod rivero_bulk;
-/// Bounded deterministic witness-neighbor support for strict Rivero search.
-pub mod rivero_witness;
-/// LSM-Style Mutable Segmented Storage Engine & Online Compaction.
-pub mod segment;
-/// Zero-Copy Asynchronous Binary TCP Server & Client.
-pub mod server;
-/// Index structural snapshot persistence.
-pub mod snapshot;
-/// Sparse Lexical Retrieval Engine (BM25, SPLADE, Block-Max WAND).
-pub mod sparse;
-
-/// AutoForge Hardware & Dataset Self-Calibration.
-pub mod autoforge;
+/// Capacity Planning & Infrastructure Sizing.
+pub mod capacity;
 /// Distributed Cluster Control Plane & Partition Sharding.
 pub mod cluster;
-/// Universal Proof-Carrying Retrieval Planner.
-pub mod planner;
+/// Distributed Consensus & Raft State Machine.
+pub mod consensus;
+/// AI Ecosystem & Framework Integrations.
+pub mod ecosystem;
+/// Geo-Distributed Federation Subsystem.
+pub mod federation;
+/// Kubernetes Operator & Cloud Native Orchestration.
+pub mod kubernetes;
+/// Metadata Indexing, Inverted Stores & Cardinality Governance Subsystem.
+pub mod metadata;
+/// Query Planning & Automated Index Calibration Subsystem.
+pub mod planning;
+/// Canonical Corpus-Covering Semantic Proof Hierarchy & Best-Bound Proof Engine.
+pub mod proof;
+/// Multi-Modal & Hybrid Retrieval Subsystem.
+pub mod retrieval;
+/// Rivero bounded semantic address resolution, parallel bulk builder, and reciprocal witnesses.
+pub mod rivero;
+use crate::rivero::witness as rivero_witness;
+/// Security, Multi-Tenancy & Authorization.
+pub mod security;
+/// Unified Production Service Layer.
+pub mod service;
+/// Storage Durability, WAL & Unified Snapshots.
+pub mod storage;
+/// Production Telemetry & Prometheus Observability.
+pub mod telemetry;
+/// Wire Transport & QIR0 Network Protocol Subsystem.
+pub mod transport;
+/// Vector Representation, Folding & Quantization Subsystem.
+pub mod vector;
 
-pub use autoforge::{AutoForge, PlannerProfile};
+pub use capacity::{
+    CapacityPlanner, CapacityRequirements, ClusterCapacityPlan, MachineTelemetryProfile,
+};
 pub use cluster::{
-    ClusterTopology, DistributedCoordinator, LocalShard, ShardId, ShardReplica, ShardRole,
+    ApplyReceipt, ClientIdentity, ClusterId, ClusterTopology, ConsistentHashRing,
+    ControlPlaneReconciliationPlan, DBaaSControlPlane, DataMutation, DeduplicationHorizon,
+    DesiredClusterState, DisasterRecoveryCoordinator, DisasterRecoverySla,
+    DistributedCoordinator, LocalShard, MigrationPhase, MigrationTask, NodeAddress,
+    ObservedClusterState, OrganizationId, ReplicatedStateMachine, RetrySemantics,
+    ShardId, ShardReplica, ShardRole, ShardStateMachine,
 };
-pub use gateway::{ComplexWeaver, GatewayRouter, create_http_router, run_http_server};
-pub use hybrid::{HybridFusionEngine, HybridFusionMethod, ModalityRankings, RRF_DEFAULT_K};
-pub use lutz::{
-    LutzCandidateThreat, LutzCertificationDiagnostics, LutzCertifier, LutzCode, LutzQueryTable,
-    SemanticRerankPlan, exact_rerank_locality_sorted,
+pub use consensus::{
+    AdaptiveMicrobatcher, AppendEntriesArgs, AppendEntriesReply, ApplyError, CommitReceipt,
+    CommitStatus, DurabilityBatchPlan, DurabilityController, DurabilityLevel, DurableRaftStorage,
+    LinearizableReadMode, MembershipMutation, MemoryRaftStorage, MutationId, PendingProposals,
+    ProposalId, RaftCluster, RaftCommand, RaftHardState, RaftLogEntry, RaftNode,
+    RaftPersistentProgress, RaftPipelineTelemetry, RaftRole, RaftSnapshotMeta, RaftStorage,
+    ReadConsistency, ReadIndexEngine, ReadIndexTelemetry, RequestVoteArgs, RequestVoteReply,
+    StorageHealthMetrics, StorageTelemetry, TopologyMutation,
 };
-pub use metadata_index::{FilterExpr, MetadataInvertedIndex, MetadataValue};
-pub use mmap_arena::{MmapArena, MmapHeader};
-pub use multivector::{MultiVectorEmbedding, MultiVectorIndex};
-pub use planner::{
+pub use ecosystem::{
+    ClientSearchResult, FrameworkDocument, HNSQRClientConfig, HNSQRClientRouter,
+    HNSQRVectorStore, HaystackAdapter, LangChainAdapter, LlamaIndexAdapter,
+};
+pub use federation::{
+    ClusterProofResponse, ClusterRegionId, FederatedProofCoordinator, FederatedQueryResult,
+    FederatedProofStatus,
+};
+pub use kubernetes::{
+    AutoscalerMetrics, AutoscalerRecommendation, HNSQRClusterSpec, HNSQRClusterStatus,
+    KubernetesOperator, NativeAutoscaler, OperatorLifecyclePhase,
+};
+pub use metadata::cardinality::{
+    CardinalityBudget, CardinalityGuard, PostingRepresentation, TenantCardinalityTracker,
+};
+pub use metadata::index::{FilterExpr, MetadataInvertedIndex, MetadataValue};
+pub use metadata::store::{MetadataQuotaConfig, MetadataStore, QuotaTracker};
+pub use planning::autoforge::{
+    AutoForge, DerivedPhysicalConfig, OperatorIntent, OperatorIntentConfig, PlannerProfile,
+};
+pub use planning::planner::{
     ExecutionPlan, ExecutionProof, QueryModality, RetrievalContract, UniversalPlanner,
 };
-pub use quantization::PolarQuantizedVector;
-pub use rivero::{
-    AdaptivePolicy, AdaptiveRouteState, RIVERO_BUILD_CANDIDATE_CAP, RIVERO_CELL_CAPACITY,
-    RIVERO_FOUNDATIONS, RIVERO_QUERY_CANDIDATE_CAP, RIVERO_SCHEMA_VERSION, RiveroAddress,
-    RiveroCompiler, RiveroConfidence, RiveroConfig, RiveroProfile, RiveroRouteDiagnostics,
-    RiveroSearchMode, RiveroTerritoryIndex,
+pub use proof::lutz::{
+    LutzCandidateThreat, LutzCertificationDiagnostics, LutzCertifier, LutzCode, LutzGlobalCertified,
+    LutzQueryTable, SemanticRerankPlan, exact_rerank_locality_sorted,
 };
-pub use rivero_bulk::{BuiltRiveroState, BulkBuildTelemetry, RiveroBulkBuilder};
-pub use rivero_witness::{
+pub use proof::{
+    DenseExactProof, GlobalExactProofSearch, ProofCentroidCode, ProofNode, ProofQuery,
+    SegmentProofView, SemanticProofTree,
+};
+pub use retrieval::hybrid::{HybridFusionEngine, HybridFusionMethod, ModalityRankings, RRF_DEFAULT_K};
+pub use retrieval::multivector::{MultiVectorEmbedding, MultiVectorIndex};
+pub use retrieval::sparse::{InvertedPostingList, SparseInvertedIndex, SparseVector};
+pub use rivero::{
+    AdaptivePolicy, AdaptiveRouteState, BuiltRiveroState, BulkBuildTelemetry, LaneAssignment,
+    RIVERO_BUILD_CANDIDATE_CAP, RIVERO_CELL_CAPACITY, RIVERO_DEFAULT_FOUNDATIONS,
+    RIVERO_FOUNDATIONS, RIVERO_MAX_FOUNDATIONS, RIVERO_QUERY_CANDIDATE_CAP, RIVERO_SCHEMA_VERSION,
     RIVERO_WITNESS_DEFAULT_DEGREE, RIVERO_WITNESS_DEFAULT_SECOND_SEEDS,
     RIVERO_WITNESS_DEFAULT_SEEDS, RIVERO_WITNESS_INLINE_DEGREE, RIVERO_WITNESS_MAX_DEGREE,
-    RIVERO_WITNESS_MAX_SEEDS, witness_edge_scan_bound, witness_two_hop_edge_scan_bound,
+    RIVERO_WITNESS_MAX_SEEDS, RiveroAddress, RiveroAddressConfig, RiveroBulkBuilder,
+    RiveroCompiler, RiveroConfidence, RiveroConfig, RiveroProfile, RiveroProjectionMode,
+    RiveroRouteDiagnostics, RiveroSearchMode, RiveroTerritoryIndex, ScoredWitness,
+    VotedCandidate, select_top, witness_edge_scan_bound, witness_two_hop_edge_scan_bound,
 };
-pub use segment::{
+pub use security::{
+    AccessRole, ActiveCertificate, AuditAction, AuditLogger, AuditRecord, AuthCredential,
+    AuthRegistry, AuthenticatedSubject, CertificateManager, ComplianceEvidenceGenerator,
+    KmsProvider, LocalKmsProvider, ProtocolFuzzSummary, ProtocolFuzzer, SecurityReportDocument,
+    SiemExporter, SiemFormat, TenantContext, TenantManager, TenantNamespace, TenantQuota,
+    TlsConfig, DEFAULT_MAX_FRAME_BYTES,
+};
+pub use service::{
+    ClusterService, DeleteRequest, HNSQRService, MutationReceipt, MutationService,
+    PinnedReadSnapshot, ReadSnapshot, RequestContext, SearchService, StandaloneService,
+    UpsertRequest,
+};
+pub use storage::mmap_arena::{MmapArena, MmapHeader};
+pub use storage::predictive_warming::{PredictiveWarmer, ProofHeatMap};
+pub use storage::remote_cache::{CachedChunk, ChunkId, RemoteRangeCache};
+pub use storage::remote_layout::{
+    ProofAwareLayoutBuilder, ProofLeafBlockMapping, RemoteAmplificationMetrics, RemoteChunkSize,
+};
+pub use storage::segment::{
     ImmutableSegment, MutableSegment, SegmentId, SegmentState, SegmentStats, SegmentedEngine,
 };
-pub use server::{HNSQRClient, HNSQRServer};
-pub use snapshot::{
+pub use storage::segment_store::{
+    ImmutableSegmentStore, LocalSegmentStore, S3SegmentStore, SegmentObjectId, SegmentObjectMetadata,
+};
+pub use storage::snapshot::{
     PrefaultMode, SectionDescriptor, SectionKind, SnapshotAttachBreakdown, SnapshotHeaderV2,
     SnapshotOpenOptions, SnapshotStats, VerificationMode,
 };
-pub use sparse::{InvertedPostingList, SparseInvertedIndex, SparseVector};
+pub use storage::two_tier_cache::{CacheBlockId, CachedVectorBlock, TwoTierCache};
+pub use storage::wal::{
+    DurabilityPolicy, WalFrameHeader, WalManager, WalMetrics, WalMutation, WalRecordType,
+    WalRecoverySummary,
+};
+pub use telemetry::metrics::{EngineMetrics, PrometheusExporter};
+pub use telemetry::slo::{SloAlertSeverity, SloManager, SloReport, SloTargetConfig};
+pub use telemetry::tracing::{ExecutionSpan, SpanRecord, TraceContext};
+pub use transport::qir0::{HNSQRClient, HNSQRServer, MessageHeader, OpCode, PROTOCOL_MAGIC};
+pub use vector::folding::{ComplexWeaver, GatewayRouter, create_http_router, run_http_server};
+pub use vector::quantization::PolarQuantizedVector;
 
 /// Helper macro for RAII-style cleanup using `defer`.
 macro_rules! defer {
@@ -163,14 +229,6 @@ pub type SimilarityScore = f32;
 /// `Arc<str>` instead of `String`: cloning a search result ID is an O(1) atomic
 /// refcount increment rather than a heap copy, regardless of string length.
 pub type NodeId = Arc<str>;
-
-/// Dynamically dispatched filter predicate for post-graph-walk node qualification.
-/// WARNING: Executing this closure inside the SIMD hot loop destroys branch prediction
-/// and instruction cache. Prefer [`MetadataInvertedIndex`] + [`FilterExpr`] for all
-/// production hot-path filtering — they pre-compile criteria to O(1) Roaring bitmask
-/// bit-tests before the graph traversal begins. Reserve `FilterFn` for out-of-band
-/// API compatibility shims that run after the candidate set is already small.
-pub type FilterFn = Arc<dyn Fn(&Node) -> bool + Send + Sync>;
 
 /// Result type for HNSQR operations, using [`HNSQRError`] for errors.
 pub type HNSQRResult<T> = std::result::Result<T, HNSQRError>;
@@ -226,6 +284,28 @@ pub enum HNSQRError {
     /// Incompatible snapshot header, schema, or structural mismatch.
     #[error("Snapshot incompatible: {0}")]
     SnapshotIncompatible(String),
+
+    /// Corrupted snapshot or log frame checksum mismatch.
+    #[error("Corrupted snapshot/log: {0}")]
+    CorruptedSnapshot(String),
+
+    /// Internal engine error or admission rejection.
+    #[error("Internal error: {0}")]
+    Internal(String),
+
+    /// Stale topology epoch error.
+    #[error("Stale topology epoch: {0}")]
+    StaleEpoch(String),
+
+    /// Unauthorized access or permission denial.
+    #[error("Unauthorized: {0}")]
+    Unauthorized(String),
+}
+
+impl From<std::io::Error> for HNSQRError {
+    fn from(err: std::io::Error) -> Self {
+        HNSQRError::IoError(err.to_string())
+    }
 }
 
 /// Detailed forensic tracing of Ground Truth (GT) neighbor survival through the routing pipeline.
@@ -372,10 +452,83 @@ pub fn dot_product_complex_simd(a: &[Complex32], b: &[Complex32]) -> Complex32 {
     {
         unsafe { dot_product_complex_avx2_dual(a, b) }
     }
-    #[cfg(not(target_arch = "x86_64"))]
+    #[cfg(target_arch = "aarch64")]
+    {
+        unsafe { dot_product_complex_neon_dual(a, b) }
+    }
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
     {
         dot_product_complex_scalar_unrolled(a, b)
     }
+}
+
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "neon")]
+unsafe fn dot_product_complex_neon_dual(a: &[Complex32], b: &[Complex32]) -> Complex32 {
+    use core::arch::aarch64::*;
+
+    let len = a.len().min(b.len());
+    let a_ptr = a.as_ptr() as *const f32;
+    let b_ptr = b.as_ptr() as *const f32;
+
+    let mut acc_re0 = vdupq_n_f32(0.0);
+    let mut acc_im0 = vdupq_n_f32(0.0);
+    let mut acc_re1 = vdupq_n_f32(0.0);
+    let mut acc_im1 = vdupq_n_f32(0.0);
+
+    let chunks8 = len / 8;
+    let mut offset = 0;
+
+    for _ in 0..chunks8 {
+        // Load 4 complex numbers (8 interleaved floats) per chunk into separate real and imag vectors
+        let va0 = vld2q_f32(a_ptr.add(offset * 2));
+        let vb0 = vld2q_f32(b_ptr.add(offset * 2));
+        let va1 = vld2q_f32(a_ptr.add(offset * 2 + 8));
+        let vb1 = vld2q_f32(b_ptr.add(offset * 2 + 8));
+
+        // Chunk 0: Re<a, b> = a.re * b.re + a.im * b.im
+        acc_re0 = vfmaq_f32(acc_re0, va0.val[0], vb0.val[0]);
+        acc_re0 = vfmaq_f32(acc_re0, va0.val[1], vb0.val[1]);
+        // Im<a, b> = a.re * b.im - a.im * b.re
+        acc_im0 = vfmaq_f32(acc_im0, va0.val[0], vb0.val[1]);
+        acc_im0 = vfmsq_f32(acc_im0, va0.val[1], vb0.val[0]);
+
+        // Chunk 1:
+        acc_re1 = vfmaq_f32(acc_re1, va1.val[0], vb1.val[0]);
+        acc_re1 = vfmaq_f32(acc_re1, va1.val[1], vb1.val[1]);
+        acc_im1 = vfmaq_f32(acc_im1, va1.val[0], vb1.val[1]);
+        acc_im1 = vfmsq_f32(acc_im1, va1.val[1], vb1.val[0]);
+
+        offset += 8;
+    }
+
+    let chunks4 = (len - offset) / 4;
+    for _ in 0..chunks4 {
+        let va0 = vld2q_f32(a_ptr.add(offset * 2));
+        let vb0 = vld2q_f32(b_ptr.add(offset * 2));
+
+        acc_re0 = vfmaq_f32(acc_re0, va0.val[0], vb0.val[0]);
+        acc_re0 = vfmaq_f32(acc_re0, va0.val[1], vb0.val[1]);
+        acc_im0 = vfmaq_f32(acc_im0, va0.val[0], vb0.val[1]);
+        acc_im0 = vfmsq_f32(acc_im0, va0.val[1], vb0.val[0]);
+
+        offset += 4;
+    }
+
+    let sum_re = vaddvq_f32(vaddq_f32(acc_re0, acc_re1));
+    let sum_im = vaddvq_f32(vaddq_f32(acc_im0, acc_im1));
+
+    let mut result_re = sum_re;
+    let mut result_im = sum_im;
+
+    for i in offset..len {
+        let a_z = a[i];
+        let b_z = b[i];
+        result_re += a_z.re * b_z.re + a_z.im * b_z.im;
+        result_im += a_z.re * b_z.im - a_z.im * b_z.re;
+    }
+
+    Complex32::new(result_re, result_im)
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -648,8 +801,16 @@ impl VectorEmbedding {
     /// Zero-copy: scales the owned buffer directly; no replacement vector is allocated.
     #[inline]
     pub fn into_normalized(mut self) -> Self {
+        for z in &mut self.data {
+            if !z.re.is_finite() {
+                z.re = 0.0;
+            }
+            if !z.im.is_finite() {
+                z.im = 0.0;
+            }
+        }
         let n = self.norm();
-        if n < 1e-9 {
+        if n < 1e-9 || !n.is_finite() {
             self.data.fill(Complex32::new(0.0, 0.0));
             return self;
         }
@@ -657,6 +818,12 @@ impl VectorEmbedding {
         let inv_n = 1.0 / n;
         for z in &mut self.data {
             *z *= inv_n;
+            if !z.re.is_finite() {
+                z.re = 0.0;
+            }
+            if !z.im.is_finite() {
+                z.im = 0.0;
+            }
         }
         self
     }
@@ -836,6 +1003,8 @@ pub struct HNSQRConfig {
     pub rivero_witness_seeds: usize,
     /// Maximum new first-hop witnesses expanded for one bounded second hop. Default: 16.
     pub rivero_witness_second_seeds: usize,
+    /// Address geometry and multi-lane projection architecture. Default: 24-foundation GlobalMix.
+    pub rivero_address_config: RiveroAddressConfig,
     /// Falls back to graph traversal when Rivero cannot fill the requested `k`. Default: true.
     #[serde(alias = "rivero_fallback_on_empty")]
     pub rivero_fallback_on_underfill: bool,
@@ -874,6 +1043,7 @@ impl Default for HNSQRConfig {
             rivero_witness_degree: RIVERO_WITNESS_DEFAULT_DEGREE,
             rivero_witness_seeds: RIVERO_WITNESS_DEFAULT_SEEDS,
             rivero_witness_second_seeds: RIVERO_WITNESS_DEFAULT_SECOND_SEEDS,
+            rivero_address_config: RiveroAddressConfig::default(),
             rivero_fallback_on_underfill: true,
         }
     }
@@ -1388,7 +1558,10 @@ pub struct HNSQRIndex {
     peak_active_searches: AtomicUsize,
     stats: RwLock<IndexStats>,
     lifecycle: RwLock<()>,
-    lutz_codes: RwLock<Vec<Option<crate::lutz::LutzCode>>>,
+    lutz_codes: RwLock<Vec<Option<crate::proof::lutz::LutzCode>>>,
+    proof_tree: RwLock<Option<Arc<SemanticProofTree>>>,
+    wal: RwLock<Option<Arc<crate::storage::wal::WalManager>>>,
+    wal_durability: RwLock<crate::storage::wal::DurabilityPolicy>,
 }
 
 impl HNSQRIndex {
@@ -1400,6 +1573,9 @@ impl HNSQRIndex {
             layers.push(RwLock::new(Vec::new()));
         }
 
+        let rivero_compiler =
+            rivero::RiveroCompiler::with_config(dimension, config.rivero_address_config);
+
         Self {
             config: RwLock::new(config),
             dimension,
@@ -1407,7 +1583,7 @@ impl HNSQRIndex {
             mmap_arena: None,
             metadata_index: MetadataInvertedIndex::new(),
             rivero_index: RiveroTerritoryIndex::new(),
-            rivero_compiler: rivero::RiveroCompiler::new(dimension),
+            rivero_compiler,
             id_to_index: RwLock::new(HashMap::new()),
             layers: layers.into_boxed_slice(),
             entry_points: RwLock::new(SmallVec::new()),
@@ -1418,6 +1594,50 @@ impl HNSQRIndex {
             stats: RwLock::new(IndexStats::default()),
             lifecycle: RwLock::new(()),
             lutz_codes: RwLock::new(Vec::with_capacity(max_capacity)),
+            proof_tree: RwLock::new(None),
+            wal: RwLock::new(None),
+            wal_durability: RwLock::new(crate::storage::wal::DurabilityPolicy::WalSync),
+        }
+    }
+
+    /// Attaches a crash-safe Write-Ahead Log (WAL) to the index.
+    pub fn with_wal<P: AsRef<std::path::Path>>(
+        self,
+        wal_dir: P,
+        durability: crate::storage::wal::DurabilityPolicy,
+    ) -> HNSQRResult<Self> {
+        let wal = crate::storage::wal::WalManager::open(wal_dir)?;
+        *self.wal.write() = Some(Arc::new(wal));
+        *self.wal_durability.write() = durability;
+        Ok(self)
+    }
+
+    /// Replays uncommitted WAL records from disk to restore state after crash.
+    pub fn recover_from_wal(&self) -> HNSQRResult<usize> {
+        let wal_opt = self.wal.read().clone();
+        if let Some(wal) = wal_opt {
+            let count = std::sync::atomic::AtomicUsize::new(0);
+            wal.replay(0, |_lsn, mutation| {
+                match mutation {
+                    crate::storage::wal::WalMutation::Upsert { external_id, vector, metadata } => {
+                        let _ = self.remove(&external_id);
+                        if let Some(meta) = metadata {
+                            let _ = self.insert_with_metadata(external_id.as_str(), vector, meta);
+                        } else {
+                            let _ = self.insert(external_id.as_str(), vector);
+                        }
+                    }
+                    crate::storage::wal::WalMutation::Delete { external_id } => {
+                        let _ = self.remove(&external_id);
+                    }
+                    _ => {}
+                }
+                count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                Ok(())
+            })?;
+            Ok(count.load(std::sync::atomic::Ordering::Relaxed))
+        } else {
+            Ok(0)
         }
     }
 
@@ -1439,6 +1659,9 @@ impl HNSQRIndex {
             layers.push(RwLock::new(Vec::new()));
         }
 
+        let rivero_compiler =
+            rivero::RiveroCompiler::with_config(dimension, config.rivero_address_config);
+
         Ok(Self {
             config: RwLock::new(config),
             dimension,
@@ -1446,7 +1669,7 @@ impl HNSQRIndex {
             mmap_arena: Some(Arc::new(mmap)),
             metadata_index: MetadataInvertedIndex::new(),
             rivero_index: RiveroTerritoryIndex::new(),
-            rivero_compiler: rivero::RiveroCompiler::new(dimension),
+            rivero_compiler,
             id_to_index: RwLock::new(HashMap::new()),
             layers: layers.into_boxed_slice(),
             entry_points: RwLock::new(SmallVec::new()),
@@ -1457,6 +1680,9 @@ impl HNSQRIndex {
             stats: RwLock::new(IndexStats::default()),
             lifecycle: RwLock::new(()),
             lutz_codes: RwLock::new(Vec::with_capacity(max_capacity)),
+            proof_tree: RwLock::new(None),
+            wal: RwLock::new(None),
+            wal_durability: RwLock::new(crate::storage::wal::DurabilityPolicy::WalSync),
         })
     }
 
@@ -1496,6 +1722,9 @@ impl HNSQRIndex {
             stats: RwLock::new(IndexStats::default()),
             lifecycle: RwLock::new(()),
             lutz_codes: RwLock::new(Vec::with_capacity(max_cap)),
+            proof_tree: RwLock::new(None),
+            wal: RwLock::new(None),
+            wal_durability: RwLock::new(crate::storage::wal::DurabilityPolicy::WalSync),
         })
     }
 
@@ -1926,6 +2155,20 @@ impl HNSQRIndex {
             ids.insert(external_id.clone(), NodeIndex::MAX);
         }
 
+        // Write mutation to WAL if attached
+        if let Some(wal) = self.wal.read().as_ref() {
+            let durability = *self.wal_durability.read();
+            let mutation = crate::storage::wal::WalMutation::Upsert {
+                external_id: external_id.to_string(),
+                vector: VectorEmbedding::from_complex(data.to_vec()),
+                metadata: metadata.cloned(),
+            };
+            if let Err(e) = wal.append(&mutation, durability) {
+                self.id_to_index.write().remove(&external_id);
+                return Err(e);
+            }
+        }
+
         // Extract all needed config values under a single short-lived read guard.
         // This replaces self.config() which cloned the entire 19-field HNSQRConfig struct.
         let (
@@ -2035,7 +2278,7 @@ impl HNSQRIndex {
             );
         }
         let lutz_code =
-            crate::lutz::LutzCode::encode(&VectorEmbedding::from_complex(data.to_vec()), true);
+            crate::proof::lutz::LutzCode::encode(&VectorEmbedding::from_complex(data.to_vec()), true);
         {
             let mut lutz_guard = self.lutz_codes.write();
             if lutz_guard.len() <= node_index as usize {
@@ -2609,13 +2852,115 @@ impl HNSQRIndex {
         self.search_indices_graph_internal(query, k, filter_mask, start_time)
     }
 
+    /// Builds or rebuilds the canonical corpus-covering semantic proof hierarchy.
+    pub fn build_proof_tree(&self) -> Arc<SemanticProofTree> {
+        let live_slots: Vec<NodeIndex> = (0..self.arena.len() as NodeIndex)
+            .filter(|&slot| self.arena.is_live(slot))
+            .collect();
+
+        let mut slot_to_vec = HashMap::with_capacity(live_slots.len());
+        for &slot in &live_slots {
+            let slice = self.arena.get_vector_slice(slot);
+            slot_to_vec.insert(
+                slot,
+                VectorEmbedding::from_complex(slice.to_vec()).into_normalized(),
+            );
+        }
+
+        let normalized_vectors: Vec<VectorEmbedding> = (0..self.arena.len() as NodeIndex)
+            .map(|slot| {
+                if let Some(v) = slot_to_vec.get(&slot) {
+                    v.clone()
+                } else {
+                    VectorEmbedding::from_complex(vec![num_complex::Complex32::default(); self.dimension])
+                }
+            })
+            .collect();
+
+        let tree = Arc::new(SemanticProofTree::build(
+            &normalized_vectors,
+            &live_slots,
+            self.dimension,
+        ));
+
+        *self.proof_tree.write() = Some(tree.clone());
+        tree
+    }
+
+    /// Gets or constructs the cached proof tree.
+    pub fn get_or_build_proof_tree(&self) -> Arc<SemanticProofTree> {
+        if let Some(tree) = self.proof_tree.read().as_ref() {
+            return tree.clone();
+        }
+        self.build_proof_tree()
+    }
+
+    /// Searches the index returning finalists alongside detailed mathematical proof telemetry.
+    pub fn search_indices_with_proof(
+        &self,
+        query: &VectorEmbedding,
+        k: usize,
+        filter_mask: Option<&roaring::RoaringBitmap>,
+    ) -> HNSQRResult<(Vec<(NodeIndex, SimilarityScore)>, DenseExactProof)> {
+        let _lifecycle = self.lifecycle.read();
+        if query.dimension() != self.dimension {
+            return Err(HNSQRError::DimensionMismatch {
+                expected: self.dimension,
+                actual: query.dimension(),
+            });
+        }
+        if k == 0 || self.is_empty() {
+            return Ok((Vec::new(), DenseExactProof::default()));
+        }
+
+        let q_norm = query.clone().into_normalized();
+        let tree = self.get_or_build_proof_tree();
+
+        // 1. Seed candidates from Rivero coarse routing
+        let rivero_cfg = RiveroProfile::Strict.config();
+        let addr = self.rivero_compiler.compile(q_norm.complex_data());
+        let mut seed_slots = Vec::new();
+        self.rivero_index.with_candidates_config(&addr, &rivero_cfg, |cands, _| {
+            seed_slots.extend_from_slice(cands);
+        });
+
+        let normalized_vectors: Vec<VectorEmbedding> = (0..self.arena.len() as NodeIndex)
+            .map(|slot| {
+                if self.arena.is_live(slot) {
+                    let slice = self.arena.get_vector_slice(slot);
+                    VectorEmbedding::from_complex(slice.to_vec()).into_normalized()
+                } else {
+                    VectorEmbedding::from_complex(vec![Complex32::default(); self.dimension])
+                }
+            })
+            .collect();
+
+        let seg_view = SegmentProofView {
+            tree: &tree,
+            vectors: &normalized_vectors,
+            lutz_codes: None,
+            tombstones: None,
+        };
+
+        let (certified, proof) = GlobalExactProofSearch::search(
+            &q_norm,
+            k,
+            &[seg_view],
+            &[],
+            &seed_slots,
+            filter_mask,
+        );
+
+        Ok((certified, proof))
+    }
+
     /// Searches the index enforcing a declared retrieval contract (Certified, Exact, HighRecall, or Budget).
     pub fn search_indices_with_contract(
         &self,
         query: &VectorEmbedding,
         k: usize,
         filter_mask: Option<&roaring::RoaringBitmap>,
-        contract: crate::planner::RetrievalContract,
+        contract: crate::planning::planner::RetrievalContract,
     ) -> HNSQRResult<Vec<(NodeIndex, SimilarityScore)>> {
         let _lifecycle = self.lifecycle.read();
         if query.dimension() != self.dimension {
@@ -2629,7 +2974,7 @@ impl HNSQRIndex {
         }
 
         let n = self.arena.live_len();
-        let plan = crate::planner::UniversalPlanner::plan(
+        let plan = crate::planning::planner::UniversalPlanner::plan(
             n,
             self.dimension,
             filter_mask.map(|m| m.len() as usize),
@@ -2638,46 +2983,14 @@ impl HNSQRIndex {
         );
 
         match plan {
-            crate::planner::ExecutionPlan::ExactScan { .. } => {
+            crate::planning::planner::ExecutionPlan::ExactScan { .. } => {
                 self.search_indices_exact(query, k, filter_mask)
             }
-            crate::planner::ExecutionPlan::LutzGlobalCertified { initial_seed_cap } => {
-                // 1. Seed candidates from Rivero Strict
-                let mut rivero_cfg = RiveroProfile::Strict.config();
-                rivero_cfg.query_candidate_cap = initial_seed_cap;
-                let (seed_cands, _) =
-                    self.search_indices_o1_with_config(query, k, filter_mask, &rivero_cfg)?;
-
-                // 2. Perform corpus-global LUTz certification over the remainder
-                let lut = crate::lutz::LutzQueryTable::build(query);
-                let query_data = query.complex_data();
-                let query_norm_sq = query.norm_squared();
-                let dist_fn = self.config.read().distance_function;
-
-                let lutz_guard = self.lutz_codes.read();
-                let (certified, _diag) = crate::lutz::LutzGlobalCertified::certify_global(
-                    &lut,
-                    k,
-                    &seed_cands,
-                    self.arena.len(),
-                    filter_mask,
-                    |slot| self.arena.is_live(slot),
-                    |slot| lutz_guard.get(slot as usize).and_then(|c| c.as_ref()),
-                    |slot| {
-                        let v = self.arena.get_vector_slice(slot);
-                        let norm_sq = self.arena.get_norm_squared(slot);
-                        self.similarity_score_slices_with_metric(
-                            query_data,
-                            v,
-                            query_norm_sq,
-                            norm_sq,
-                            dist_fn,
-                        )
-                    },
-                );
+            crate::planning::planner::ExecutionPlan::LutzGlobalCertified { initial_seed_cap: _ } => {
+                let (certified, _) = self.search_indices_with_proof(query, k, filter_mask)?;
                 Ok(certified)
             }
-            crate::planner::ExecutionPlan::RiveroRetrieval {
+            crate::planning::planner::ExecutionPlan::RiveroRetrieval {
                 profile,
                 candidate_cap,
                 ..
@@ -3250,7 +3563,7 @@ impl HNSQRIndex {
     /// Evaluates a structured boolean metadata filter expression into a Roaring Bitmap mask.
     pub fn compile_filter_mask(
         &self,
-        expr: &crate::metadata_index::FilterExpr,
+        expr: &crate::metadata::index::FilterExpr,
     ) -> HNSQRResult<roaring::RoaringBitmap> {
         Ok(self.metadata_index.evaluate_filter(expr, self.arena.len()))
     }
@@ -3939,6 +4252,14 @@ impl HNSQRIndex {
             Some(idx) => idx,
             None => return Ok(false),
         };
+
+        if let Some(wal) = self.wal.read().as_ref() {
+            let durability = *self.wal_durability.read();
+            let mutation = crate::storage::wal::WalMutation::Delete {
+                external_id: id.to_string(),
+            };
+            let _ = wal.append(&mutation, durability);
+        }
 
         let (strict_rivero, witness_degree) = {
             let config = self.config.read();

@@ -3,8 +3,8 @@ mod common;
 use std::time::Instant;
 
 use common::generate_realistic_text_corpus;
-use hnsqr::lutz::SemanticRerankPlan;
-use hnsqr::segment::SegmentedEngine;
+use hnsqr::proof::lutz::SemanticRerankPlan;
+use hnsqr::storage::segment::SegmentedEngine;
 use hnsqr::{NodeIndex, SimilarityScore};
 
 fn percentile(mut latencies: Vec<f64>, p: f64) -> f64 {
@@ -54,7 +54,8 @@ fn evaluate_ann_benchmarks(real_dim: usize, complex_dim: usize, n: usize, num_qu
 
         let gt = &ground_truth[q_idx];
         for (res_id, _) in &topk {
-            if let Ok(id_num) = res_id
+            let s: &str = res_id.as_ref();
+            if let Ok(id_num) = s
                 .strip_prefix("node_")
                 .unwrap_or("")
                 .parse::<NodeIndex>()

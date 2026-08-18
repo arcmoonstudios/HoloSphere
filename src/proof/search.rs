@@ -77,7 +77,35 @@ pub struct DenseExactProof {
     pub max_remaining_upper_bound: f64,
 
     /// Formally proven $100.000\%$ globally exact flag.
+    /// `false` either means the search was aborted by a deadline or some
+    /// bookkeeping invariant was not satisfied.  Always check this alongside
+    /// `deadline_exceeded` to distinguish the two cases.
     pub globally_exact: bool,
+
+    // ── Deadline telemetry ───────────────────────────────────────────────
+
+    /// Set to `true` when the query deadline fired before the proof frontier
+    /// was fully exhausted.  Distinct from `globally_exact` so callers can
+    /// tell the difference between "proof incomplete due to budget" and any
+    /// other reason `globally_exact` might be false.
+    pub deadline_exceeded: bool,
+
+    /// Wall-clock microseconds consumed from the start of `search_with_deadline`
+    /// until the search returned.  Populated for both complete and aborted runs.
+    pub elapsed_us: u64,
+
+    /// Estimated number of proof-frontier entries that remained in the heap
+    /// at the point of deadline abort.  Zero when the search completed normally.
+    /// Useful for diagnosing *why* the deadline fired:
+    ///   - Large value  → pathological proof geometry (isotropic distribution)
+    ///   - Small value  → CPU overload or very tight budget
+    pub frontier_nodes_remaining: usize,
+
+    /// Fraction of total proof regions that were pruned without SIMD evaluation.
+    /// `pruned_regions / (pruned_regions + expanded_regions)`.
+    /// Low ratio near deadline expiry identifies isotropic / high-entropy corpora
+    /// where bounding envelopes collapse and force exhaustive traversal.
+    pub region_prune_ratio: f64,
 }
 
 impl DenseExactProof {
@@ -245,6 +273,10 @@ pub struct GlobalExactProofSearch;
 
 impl GlobalExactProofSearch {
     /// Executes a global branch-and-bound exact Top-K search across multiple segment proof trees.
+    ///
+    /// `deadline` — optional `Instant` after which the frontier loop is aborted early.
+    /// When the deadline is hit, results are returned with `proof.globally_exact = false`.
+    /// Without a deadline the engine always produces a complete, verified proof.
     pub fn search(
         query_vector: &VectorEmbedding,
         k: usize,
@@ -253,12 +285,76 @@ impl GlobalExactProofSearch {
         rivero_seed_candidates: &[NodeIndex],
         filter_mask: Option<&RoaringBitmap>,
     ) -> (Vec<(NodeIndex, SimilarityScore)>, DenseExactProof) {
+        Self::search_with_deadline(
+            query_vector,
+            k,
+            segments,
+            mutable_candidates,
+            rivero_seed_candidates,
+            filter_mask,
+            None,
+        )
+    }
+
+    /// Same as [`search`] but with an explicit monotonic-clock deadline.
+    ///
+    /// The deadline is checked at every stage boundary (mutable scan, Rivero
+    /// seeding, frontier init) and then every 32 frontier pops during the
+    /// branch-and-bound loop.  Checking every 32 pops keeps clock-query
+    /// overhead well below 1% even on Windows where `Instant::now()` is
+    /// measured in ~100 ns; the maximum overshoot is bounded to ~32 region
+    /// evaluations, not 32 individual vectors.
+    ///
+    /// Returns `proof.deadline_exceeded = true` and `proof.globally_exact = false`
+    /// when aborted.  Best-effort partial results are always returned rather than
+    /// an empty set so that `hnsqr_doctor` / metrics can observe what was found.
+    pub fn search_with_deadline(
+        query_vector: &VectorEmbedding,
+        k: usize,
+        segments: &[SegmentProofView],
+        mutable_candidates: &[(NodeIndex, SimilarityScore)],
+        rivero_seed_candidates: &[NodeIndex],
+        filter_mask: Option<&RoaringBitmap>,
+        deadline: Option<std::time::Instant>,
+    ) -> (Vec<(NodeIndex, SimilarityScore)>, DenseExactProof) {
+        let t_start = std::time::Instant::now();
+
         let mut proof = DenseExactProof::default();
         let total_corpus: usize = segments.iter().map(|s| s.tree.total_vectors()).sum::<usize>()
             + mutable_candidates.len();
         proof.corpus_size = total_corpus;
 
+        // Helper: fill elapsed + prune_ratio and return partial results.
+        // `frontier_remaining` is the number of entries still in the heap.
+        macro_rules! abort_deadline {
+            ($topk:expr, $frontier_remaining:expr) => {{
+                proof.deadline_exceeded = true;
+                proof.globally_exact = false;
+                proof.elapsed_us = t_start.elapsed().as_micros() as u64;
+                proof.frontier_nodes_remaining = $frontier_remaining;
+                let total_regions = proof.proof_regions_pruned + proof.proof_regions_expanded;
+                proof.region_prune_ratio = if total_regions > 0 {
+                    proof.proof_regions_pruned as f64 / total_regions as f64
+                } else {
+                    0.0
+                };
+                proof.kth_score = $topk.kth_score();
+                return ($topk.into_sorted_vec(), proof);
+            }};
+        }
+
+        // Inline deadline check used at stage boundaries where a single
+        // `Instant::now()` is acceptable (called at most a handful of times).
+        macro_rules! check_deadline_stage {
+            ($topk:expr) => {
+                if deadline.is_some_and(|d| std::time::Instant::now() >= d) {
+                    abort_deadline!($topk, 0);
+                }
+            };
+        }
+
         if k == 0 || total_corpus == 0 {
+            proof.elapsed_us = t_start.elapsed().as_micros() as u64;
             return (Vec::new(), proof);
         }
 
@@ -267,7 +363,7 @@ impl GlobalExactProofSearch {
         let mut topk = TopKAccumulator::new(k);
         let mut evaluated_slots = RoaringBitmap::new();
 
-        // 1. Stage 1: Ingest active mutable exact candidates
+        // ── Stage 1: Mutable exact candidates ────────────────────────────
         for &(slot, score) in mutable_candidates {
             if filter_mask.is_some_and(|m| !m.contains(slot)) {
                 proof.filtered_or_tombstoned += 1;
@@ -279,8 +375,9 @@ impl GlobalExactProofSearch {
             proof.exact_evaluations += 1;
             proof.exact_bytes_touched += query_vector.dimension() * 8;
         }
+        check_deadline_stage!(topk);
 
-        // 2. Stage 2: Ingest Rivero coarse seeds to elevate initial tau
+        // ── Stage 2: Rivero coarse seeds (initial τ elevation) ────────────
         proof.rivero_raw_candidates = rivero_seed_candidates.len();
         let mut seen_seeds = RoaringBitmap::new();
 
@@ -291,7 +388,6 @@ impl GlobalExactProofSearch {
             seen_seeds.insert(slot);
             proof.rivero_seed_candidates += 1;
 
-            // Resolve which segment owns this slot
             for seg in segments {
                 if (slot as usize) < seg.vectors.len() {
                     if seg.tombstones.is_some_and(|t| t.contains(slot)) {
@@ -309,8 +405,9 @@ impl GlobalExactProofSearch {
                 }
             }
         }
+        check_deadline_stage!(topk);
 
-        // 3. Stage 3: Initialize Global Max-UB Frontier Heap from all segment roots
+        // ── Stage 3: Frontier initialisation ─────────────────────────────
         let mut frontier: BinaryHeap<ProofFrontierEntry> = BinaryHeap::new();
 
         for (seg_idx, seg) in segments.iter().enumerate() {
@@ -320,7 +417,6 @@ impl GlobalExactProofSearch {
             let ub = seg.tree.upper_bound(&query, seg.tree.root);
             let tau = topk.kth_score() as f64;
 
-            // Strict inequality: only prune if ub < tau as f64
             if topk.is_full() && ub < tau {
                 proof.proof_regions_pruned += 1;
                 let unvisited = seg
@@ -341,10 +437,25 @@ impl GlobalExactProofSearch {
                 });
             }
         }
+        check_deadline_stage!(topk);
 
-        // 4. Stage 4: Multi-Segment Best-Bound Branch and Bound Loop
+        // ── Stage 4: Best-bound branch-and-bound ─────────────────────────
+        // Clock is queried every DEADLINE_CHECK_INTERVAL pops to amortise
+        // `Instant::now()` cost on platforms where it is non-trivial (Windows).
+        // At 32-region granularity the maximum overshoot is bounded to one
+        // leaf-batch, never the whole corpus.
+        const DEADLINE_CHECK_INTERVAL: usize = 32;
+
         while let Some(entry) = frontier.pop() {
             proof.proof_regions_popped += 1;
+
+            // Amortised deadline check: once every 32 frontier pops.
+            if proof.proof_regions_popped % DEADLINE_CHECK_INTERVAL == 0 {
+                if deadline.is_some_and(|d| std::time::Instant::now() >= d) {
+                    abort_deadline!(topk, frontier.len());
+                }
+            }
+
             let tau = topk.kth_score() as f64;
 
             if topk.is_full() && entry.upper_bound < tau {
@@ -395,7 +506,7 @@ impl GlobalExactProofSearch {
                     }
                 }
             } else {
-                // Leaf Node: B3 Progressive LUTz Filtering Cascade
+                // Leaf: B3 Progressive LUTz Filtering Cascade
                 let mut candidate_slots = Vec::with_capacity(node.member_len as usize);
                 for &slot in seg.tree.members(node) {
                     if evaluated_slots.contains(slot) {
@@ -416,7 +527,6 @@ impl GlobalExactProofSearch {
                 }
 
                 if let Some(lutz_codes) = seg.lutz_codes {
-                    // Leaf-Local Ordering (B3): Prescore approximate L0 to evaluate likely winners first
                     let mut scored_cands: Vec<(NodeIndex, f32)> = candidate_slots
                         .into_iter()
                         .map(|s| {
@@ -432,7 +542,7 @@ impl GlobalExactProofSearch {
                         let curr_tau = topk.kth_score() as f64;
                         let code = &lutz_codes[slot as usize];
 
-                        // Stage B3.1: LUTz L0 Cauchy-Schwarz Bound
+                        // B3.1: LUTz L0
                         let res0 = query_lut.blockwise_residual_l0(code) as f64;
                         let ub0 = (approx as f64) + res0 + 1e-7;
                         proof.lutz_l0_evaluations += 1;
@@ -444,15 +554,13 @@ impl GlobalExactProofSearch {
                             continue;
                         }
 
-                        // Stage B3.2: LUTz L1 Residual Cauchy-Schwarz Bound
+                        // B3.2: LUTz L1
                         if code.codes_l1.is_some() {
                             let res1 = query_lut.blockwise_residual_l1(code) as f64;
                             let ub1 = (approx as f64) + res1 + 1e-7;
                             proof.lutz_l1_evaluations += 1;
-                            proof.l1_bytes_touched += code
-                                .codes_l1
-                                .as_deref()
-                                .map_or(0, |c| c.len() * 2);
+                            proof.l1_bytes_touched +=
+                                code.codes_l1.as_deref().map_or(0, |c| c.len() * 2);
 
                             if topk.is_full() && ub1 < curr_tau {
                                 proof.lutz_l1_pruned += 1;
@@ -461,7 +569,7 @@ impl GlobalExactProofSearch {
                             }
                         }
 
-                        // Stage B3.3: Exact SIMD Resolution on Final Residue
+                        // B3.3: Exact SIMD
                         let v = &seg.vectors[slot as usize];
                         let score = (query_vector.dot_product_complex(v)).re;
                         topk.offer(slot, score);
@@ -470,7 +578,6 @@ impl GlobalExactProofSearch {
                         evaluated_slots.insert(slot);
                     }
                 } else {
-                    // Fallback path if LUTz codes are not loaded
                     for slot in candidate_slots {
                         proof.leaf_vectors_considered += 1;
                         let v = &seg.vectors[slot as usize];
@@ -484,8 +591,16 @@ impl GlobalExactProofSearch {
             }
         }
 
+        // Normal completion — proof is complete.
         proof.kth_score = topk.kth_score();
         proof.globally_exact = true;
+        proof.elapsed_us = t_start.elapsed().as_micros() as u64;
+        let total_regions = proof.proof_regions_pruned + proof.proof_regions_expanded;
+        proof.region_prune_ratio = if total_regions > 0 {
+            proof.proof_regions_pruned as f64 / total_regions as f64
+        } else {
+            0.0
+        };
 
         (topk.into_sorted_vec(), proof)
     }

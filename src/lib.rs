@@ -80,6 +80,8 @@ pub mod retrieval;
 /// Rivero bounded semantic address resolution, parallel bulk builder, and reciprocal witnesses.
 pub mod rivero;
 use crate::rivero::witness as rivero_witness;
+/// Native Graph Engine — Index-Free Adjacency, Cypher-compatible Query, GDS Analytics.
+pub mod graph;
 /// Security, Multi-Tenancy & Authorization.
 pub mod security;
 /// Unified Production Service Layer.
@@ -117,6 +119,27 @@ pub use consensus::{
 pub use ecosystem::{
     ClientSearchResult, FrameworkDocument, HNSQRClientConfig, HNSQRClientRouter,
     HNSQRVectorStore, HaystackAdapter, LangChainAdapter, LlamaIndexAdapter,
+};
+pub use graph::{
+    // Catalog
+    LabelCatalog, LabelId, LabelResolution, PropertyKey, PropertyKeyCatalog,
+    RelTypeCatalog, RelTypeId, RelTypeResolution,
+    // Mutation
+    GraphMutation, GraphMutationApplier, GraphProperties, RelationshipId as GraphRelationshipId,
+    // Storage
+    AdjacencyBlock, CscAdjacency, CsrAdjacency, EdgeDelta, EdgeDeltaStats,
+    GraphGeneration, GraphNodeRecord, GraphPropertyStore, GraphPropertyValue,
+    GraphReadGeneration, GraphSnapshot, NeighborSlice, NodeArena, NULL_OVERFLOW_REF,
+    // Analytics
+    BfsResult, ConnectedComponents, CsrProjection, DegreeCentrality,
+    GraphProjection, KCoreDecomposition, LouvainEngine, LouvainResult,
+    PageRankEngine, PathfindingEngine, ShortestPath, TriangleCount,
+    // Stats
+    DegreeStats, GraphCardinalityStats,
+    // Query
+    BindingColumn, Direction, ExecutionContext as GraphExecutionContext, ExplainOutput,
+    GraphPattern, LogicalPlan, Morsel, PhysicalPlan, QueryAst, QueryResult as GraphQueryResult,
+    ReturnClause, SemanticAnalyzer, SemanticError, SymbolId, SymbolTable, WhereClause,
 };
 pub use federation::{
     ClusterProofResponse, ClusterRegionId, FederatedProofCoordinator, FederatedQueryResult,
@@ -301,12 +324,73 @@ pub enum HNSQRError {
     /// Unauthorized access or permission denial.
     #[error("Unauthorized: {0}")]
     Unauthorized(String),
+
+    /// A `Certified` proof search was aborted because the configured query deadline
+    /// expired before the proof frontier was exhausted.
+    ///
+    /// The partial results and full telemetry are preserved in the payload so that
+    /// `hnsqr_doctor` and application metrics can diagnose the cause:
+    ///   - Large `frontier_nodes_remaining` → pathological proof geometry (isotropic corpus)
+    ///   - Small `frontier_nodes_remaining` + low `region_prune_ratio_ppm` → CPU overload
+    ///   - Large `elapsed_us` → remote storage latency or enormous mutable segment
+    ///
+    /// Callers who want best-effort partial results instead of an error should use
+    /// [`HNSQRIndex::certified_search`] which returns a [`CertifiedSearchOutcome`].
+    #[error(
+        "Certified search deadline exceeded: elapsed {elapsed_us}µs > budget {budget_us}µs \
+         ({frontier_nodes_remaining} frontier nodes remaining, \
+         prune ratio {region_prune_ratio_ppm}/1000000)"
+    )]
+    CertifiedDeadlineExceeded {
+        /// Microseconds elapsed when the deadline fired.
+        elapsed_us: u64,
+        /// Configured budget in microseconds.
+        budget_us: u64,
+        /// Frontier entries still pending when aborted.
+        frontier_nodes_remaining: usize,
+        /// Region prune ratio in parts-per-million (0–1_000_000).
+        /// Divide by 1_000_000.0 to recover the float ratio.
+        region_prune_ratio_ppm: u32,
+    },
 }
 
 impl From<std::io::Error> for HNSQRError {
     fn from(err: std::io::Error) -> Self {
         HNSQRError::IoError(err.to_string())
     }
+}
+
+/// Typed outcome of a [`HNSQRIndex::certified_search`] call.
+///
+/// This enum is the correct return type for callers that requested the `Certified`
+/// contract.  It makes the incomplete-proof case structurally impossible to confuse
+/// with a successful exact result — no boolean flag needs to be checked.
+///
+/// ```text
+/// match index.certified_search(&query, k, None) {
+///     CertifiedSearchOutcome::Exact { results, proof } => { /* 100% exact */ }
+///     CertifiedSearchOutcome::DeadlineExceeded { partial_results, proof } => {
+///         // Budget expired — partial_results are best-effort, not certified.
+///         // proof.frontier_nodes_remaining indicates why the deadline fired.
+///     }
+/// }
+/// ```
+#[derive(Debug)]
+pub enum CertifiedSearchOutcome {
+    /// The proof frontier was fully exhausted.  `results` are guaranteed
+    /// 100.000% exact Top-K for the pinned snapshot.
+    Exact {
+        results: Vec<(NodeIndex, SimilarityScore)>,
+        proof: DenseExactProof,
+    },
+    /// The configured query deadline expired before the proof was complete.
+    /// `partial_results` are the best-known candidates at abort time; they are
+    /// **not** certified exact.  `proof` carries full telemetry including
+    /// `frontier_nodes_remaining` and `region_prune_ratio` to diagnose the cause.
+    DeadlineExceeded {
+        partial_results: Vec<(NodeIndex, SimilarityScore)>,
+        proof: DenseExactProof,
+    },
 }
 
 /// Detailed forensic tracing of Ground Truth (GT) neighbor survival through the routing pipeline.
@@ -1009,6 +1093,16 @@ pub struct HNSQRConfig {
     /// Falls back to graph traversal when Rivero cannot fill the requested `k`. Default: true.
     #[serde(alias = "rivero_fallback_on_empty")]
     pub rivero_fallback_on_underfill: bool,
+    /// Optional hard deadline for `Certified` proof search in milliseconds.
+    ///
+    /// When set, `GlobalExactProofSearch` will abort the branch-and-bound loop if elapsed
+    /// time exceeds this budget and return the best-known Top-K candidates found so far,
+    /// with `DenseExactProof::globally_exact = false` to signal an incomplete proof.
+    ///
+    /// `None` (default) means no deadline: the engine always produces a complete proof.
+    /// Setting this is the recommended mitigation for P99 tail-latency expansion on
+    /// high-entropy isotropic query distributions.
+    pub certified_query_timeout_ms: Option<u64>,
 }
 
 impl Default for HNSQRConfig {
@@ -1046,6 +1140,7 @@ impl Default for HNSQRConfig {
             rivero_witness_second_seeds: RIVERO_WITNESS_DEFAULT_SECOND_SEEDS,
             rivero_address_config: RiveroAddressConfig::default(),
             rivero_fallback_on_underfill: true,
+            certified_query_timeout_ms: None,
         }
     }
 }
@@ -2896,13 +2991,24 @@ impl HNSQRIndex {
         self.build_proof_tree()
     }
 
-    /// Searches the index returning finalists alongside detailed mathematical proof telemetry.
-    pub fn search_indices_with_proof(
+    /// Executes a `Certified` proof search with a typed outcome.
+    ///
+    /// This is the preferred API for callers that explicitly require the `Certified`
+    /// contract.  Unlike `search_indices_with_proof`, the deadline-abort case is
+    /// structurally distinct: the caller pattern-matches on `CertifiedSearchOutcome`
+    /// and cannot accidentally treat an incomplete proof as a successful exact result.
+    ///
+    /// - `CertifiedSearchOutcome::Exact`           → 100.000% exact, complete proof.
+    /// - `CertifiedSearchOutcome::DeadlineExceeded` → budget expired; partial results only.
+    ///
+    /// The deadline is derived from `HNSQRConfig::certified_query_timeout_ms` when set.
+    /// If no budget is configured, the result is always `Exact`.
+    pub fn certified_search(
         &self,
         query: &VectorEmbedding,
         k: usize,
         filter_mask: Option<&roaring::RoaringBitmap>,
-    ) -> HNSQRResult<(Vec<(NodeIndex, SimilarityScore)>, DenseExactProof)> {
+    ) -> HNSQRResult<CertifiedSearchOutcome> {
         let _lifecycle = self.lifecycle.read();
         if query.dimension() != self.dimension {
             return Err(HNSQRError::DimensionMismatch {
@@ -2911,13 +3017,15 @@ impl HNSQRIndex {
             });
         }
         if k == 0 || self.is_empty() {
-            return Ok((Vec::new(), DenseExactProof::default()));
+            return Ok(CertifiedSearchOutcome::Exact {
+                results: Vec::new(),
+                proof: DenseExactProof::default(),
+            });
         }
 
         let q_norm = query.clone().into_normalized();
         let tree = self.get_or_build_proof_tree();
 
-        // 1. Seed candidates from Rivero coarse routing
         let rivero_cfg = RiveroProfile::Strict.config();
         let addr = self.rivero_compiler.compile(q_norm.complex_data());
         let mut seed_slots = Vec::new();
@@ -2943,16 +3051,61 @@ impl HNSQRIndex {
             tombstones: None,
         };
 
-        let (certified, proof) = GlobalExactProofSearch::search(
+        let deadline = {
+            let cfg = self.config.read();
+            cfg.certified_query_timeout_ms
+                .map(|m| Instant::now() + std::time::Duration::from_millis(m))
+        };
+
+        let (results, proof) = GlobalExactProofSearch::search_with_deadline(
             &q_norm,
             k,
             &[seg_view],
             &[],
             &seed_slots,
             filter_mask,
+            deadline,
         );
 
-        Ok((certified, proof))
+        if proof.deadline_exceeded {
+            Ok(CertifiedSearchOutcome::DeadlineExceeded {
+                partial_results: results,
+                proof,
+            })
+        } else {
+            // Sanity: if somehow globally_exact is false without deadline_exceeded,
+            // surface it as an internal error rather than silently returning as Exact.
+            if !proof.globally_exact {
+                return Err(HNSQRError::Internal(
+                    "Proof search completed without deadline but globally_exact is false".into(),
+                ));
+            }
+            Ok(CertifiedSearchOutcome::Exact { results, proof })
+        }
+    }
+
+    /// Searches the index returning finalists alongside detailed mathematical proof telemetry.
+    ///
+    /// Returns `Ok((results, proof))` in both the exact and deadline-aborted cases.
+    /// Callers **must** inspect `proof.globally_exact` and `proof.deadline_exceeded`
+    /// to distinguish complete certification from a best-effort partial result.
+    ///
+    /// Prefer [`certified_search`][HNSQRIndex::certified_search] when you need the
+    /// `Certified` contract enforced at the type level.
+    pub fn search_indices_with_proof(
+        &self,
+        query: &VectorEmbedding,
+        k: usize,
+        filter_mask: Option<&roaring::RoaringBitmap>,
+    ) -> HNSQRResult<(Vec<(NodeIndex, SimilarityScore)>, DenseExactProof)> {
+        // Delegate through certified_search so both methods share one code path,
+        // then flatten the typed outcome back to the legacy tuple form.
+        match self.certified_search(query, k, filter_mask)? {
+            CertifiedSearchOutcome::Exact { results, proof } => Ok((results, proof)),
+            CertifiedSearchOutcome::DeadlineExceeded { partial_results, proof } => {
+                Ok((partial_results, proof))
+            }
+        }
     }
 
     /// Searches the index enforcing a declared retrieval contract (Certified, Exact, HighRecall, or Budget).

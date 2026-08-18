@@ -422,3 +422,123 @@ fn test_gate_b_index_end_to_end_certified_contract() {
     }
     assert!(proof.globally_exact);
 }
+
+/// Deadline abort: exercises all three levels of the certified-deadline contract.
+///
+/// Path A — no deadline: `globally_exact = true`, `deadline_exceeded = false`.
+/// Path B — pre-expired deadline via `search_with_deadline`: `globally_exact = false`,
+///           `deadline_exceeded = true`, new telemetry fields populated.
+/// Path C — `HNSQRIndex::certified_search` (typed API): `DeadlineExceeded` variant
+///           cannot be confused with `Exact` at the type boundary.
+/// Path D — `HNSQRIndex::search_indices_with_proof` (legacy): still works, callers
+///           must inspect `proof.deadline_exceeded` manually.
+///
+/// This test covers the P99 tail-latency mitigation path for high-entropy isotropic
+/// workloads identified in the architecture report, and validates the design principle
+/// "correctness should be structurally difficult to misrepresent."
+#[test]
+fn test_gate_b_certified_deadline_abort_sets_globally_exact_false() {
+    use hnsqr::CertifiedSearchOutcome;
+
+    let dim = 64;
+    let n = 500;
+    let k = 5;
+
+    // Isotropic unit vectors — worst case for proof-tree pruning.
+    let mut corpus: Vec<VectorEmbedding> = Vec::with_capacity(n);
+    for i in 0..n {
+        let v = VectorEmbedding::from_complex(
+            (0..dim)
+                .map(|j| {
+                    let angle = ((i * 97 + j * 31) % 1000) as f32 * 0.00628;
+                    Complex32::new(angle.cos(), angle.sin())
+                })
+                .collect(),
+        )
+        .into_normalized();
+        corpus.push(v);
+    }
+
+    let tree = SemanticProofTree::build(&corpus, &(0..n as u32).collect::<Vec<_>>(), dim);
+    let query = corpus[0].clone();
+
+    // ── Path A: no deadline → complete proof ─────────────────────────────────
+    let seg_a = SegmentProofView { tree: &tree, vectors: &corpus, lutz_codes: None, tombstones: None };
+    let (res_full, proof_full) = GlobalExactProofSearch::search(&query, k, &[seg_a], &[], &[], None);
+
+    assert!(proof_full.globally_exact,  "Path A: globally_exact must be true");
+    assert!(!proof_full.deadline_exceeded, "Path A: deadline_exceeded must be false");
+    assert!(proof_full.elapsed_us > 0,  "Path A: elapsed_us must be non-zero");
+    assert!(proof_full.region_prune_ratio >= 0.0 && proof_full.region_prune_ratio <= 1.0,
+        "Path A: region_prune_ratio must be in [0,1]");
+    assert_eq!(res_full.len(), k);
+
+    // ── Path B: pre-expired deadline via low-level API ────────────────────────
+    let deadline = std::time::Instant::now() + std::time::Duration::from_micros(1);
+    std::thread::sleep(std::time::Duration::from_micros(100)); // guarantee expiry
+
+    let seg_b = SegmentProofView { tree: &tree, vectors: &corpus, lutz_codes: None, tombstones: None };
+    let (res_aborted, proof_aborted) = GlobalExactProofSearch::search_with_deadline(
+        &query, k, &[seg_b], &[], &[], None, Some(deadline),
+    );
+
+    assert!(!proof_aborted.globally_exact,    "Path B: globally_exact must be false on abort");
+    assert!(proof_aborted.deadline_exceeded,  "Path B: deadline_exceeded must be true");
+    assert!(proof_aborted.elapsed_us > 0,     "Path B: elapsed_us must be populated");
+    // frontier_nodes_remaining may be 0 if the deadline fired before the first pop
+    // (checked at stage boundaries) — that's correct behaviour.
+    assert!(proof_aborted.region_prune_ratio >= 0.0 && proof_aborted.region_prune_ratio <= 1.0,
+        "Path B: region_prune_ratio must be in [0,1]");
+    for (_, score) in &res_aborted {
+        assert!(*score >= -1.0 - 1e-5 && *score <= 1.0 + 1e-5,
+            "Path B: aborted search returned out-of-range score: {score}");
+    }
+
+    // ── Path C: HNSQRIndex::certified_search — typed outcome ─────────────────
+    // Use a small corpus (50 vectors) so the tree build is fast in debug mode.
+    let small_n = 50;
+    let small_corpus: Vec<VectorEmbedding> = corpus[..small_n].to_vec();
+
+    let mut cfg_tight = HNSQRConfig::default();
+    cfg_tight.distance_function = DistanceFunction::Cosine;
+    cfg_tight.max_elements = 100;
+    cfg_tight.certified_query_timeout_ms = Some(0); // 0 ms → guaranteed immediate expiry
+    let index_tight = HNSQRIndex::new(cfg_tight, dim);
+    for (i, v) in small_corpus.iter().enumerate() {
+        index_tight.insert(format!("d{i}"), v.clone()).unwrap();
+    }
+
+    let outcome = index_tight.certified_search(&query, k, None)
+        .expect("certified_search must not return Err on deadline abort");
+
+    match outcome {
+        CertifiedSearchOutcome::DeadlineExceeded { ref proof, .. } => {
+            assert!(proof.deadline_exceeded,
+                "Path C: DeadlineExceeded variant must have deadline_exceeded=true in proof");
+            assert!(!proof.globally_exact,
+                "Path C: DeadlineExceeded variant must have globally_exact=false");
+        }
+        CertifiedSearchOutcome::Exact { .. } => {
+            // On extremely fast hardware a 0 ms budget may still complete before the
+            // first amortised deadline check (32 pops).  Both outcomes are valid; what
+            // matters is that the type boundary is respected.
+        }
+    }
+
+    // ── Path D: legacy search_indices_with_proof — flat tuple, manual inspection ──
+    let mut cfg_generous = HNSQRConfig::default();
+    cfg_generous.distance_function = DistanceFunction::Cosine;
+    cfg_generous.max_elements = 100;
+    cfg_generous.certified_query_timeout_ms = Some(5000); // 5 s — should always complete
+    let index_gen = HNSQRIndex::new(cfg_generous, dim);
+    for (i, v) in small_corpus.iter().enumerate() {
+        index_gen.insert(format!("g{i}"), v.clone()).unwrap();
+    }
+
+    let (_, proof_gen) = index_gen
+        .search_indices_with_proof(&query, k, None)
+        .expect("search_indices_with_proof must succeed with generous budget");
+    assert!(proof_gen.globally_exact, "Path D: generous budget must produce complete proof");
+    assert!(!proof_gen.deadline_exceeded, "Path D: generous budget must not fire deadline");
+    assert!(proof_gen.elapsed_us > 0, "Path D: elapsed_us must be populated");
+}

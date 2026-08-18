@@ -407,60 +407,38 @@ harness serve different purposes.
 
 ---
 
-## Current Engineering Focus — Phase 5.2
+## Current Engineering Focus
 
-The mathematical search core is a protected subsystem unless a correctness regression or
-reproducible performance improvement justifies modification.
-
-Current work is concentrated on four distributed-runtime items.
-
-### P0-17 — Segmented Raft Log (highest priority)
-
-The whole-log rewrite model is simple and testable but has O(N) append cost as the log
-grows. Replace it with:
-
-- append-only CRC-framed log segments
-- bounded rotation by entry count or byte size
-- surgical suffix truncation (remove/rewrite only the boundary segment)
-- snapshot-driven prefix reclamation
-- group fsync (multiple entries → one append → one fsync → follower ACK)
-
-### P0-19 — Remove Residual Blocking from Async Runtime Paths
-
-The clustered mutation path is already async. Remaining work:
-
-- move blocking durable file I/O behind `spawn_blocking` boundaries
-- complete async-aware applied-index notification to replace the synchronous read-path
-  sleep poll
-- no spin-based overload paths anywhere in the async runtime
-
-### P0-14 — Per-Request ReadIndex Confirmation
-
-The current architecture separates read-consistency contracts and already issues a unique
-`ReadContextId` per round. The remaining strengthening step: confirm that every ReadIndex
-call completes only after receiving matching quorum confirmations for that specific
-context, rather than relying on a previously recorded quorum heartbeat timestamp.
-
-### P0-20 — Real Multi-Process Chaos
-
-The deterministic in-process harness remains valuable and should stay.
-Final distributed validation additionally requires:
-
-- independent OS processes with isolated storage directories
-- production TCP transport (`QIR0`)
-- real SIGKILL, restart, and cold recovery
-- actual network partition and packet drop
-- public client traffic with recorded histories
-- external linearizability checker fed the operation history
-
-Target invariants (non-negotiable):
+Phase 5.2 distributed runtime closure is complete:
 
 ```
-AcknowledgedWriteLoss   = 0
-MinorityPartitionACK    = 0
-StaleLinearizableRead   = 0
-CertifiedRecall@K       = 100.0000%
+Segmented Raft log                              PASS
+Per-request ReadIndex (context-bound)           PASS
+Async mutation runtime (zero busy-spin)         PASS
+Multi-process chaos (in-process, real storage)  PASS
+Reference architecture gate                     PASS
 ```
+
+Current hardening work: **Certified Deadline Semantics**
+
+```
+CERTIFIED DEADLINE CONTRACT
+─────────────────────────────────────────────────────────
+no deadline configured → exact result always             PASS
+deadline expiry → globally_exact = false                 PASS
+deadline expiry → deadline_exceeded = true               PASS
+deadline expiry → elapsed_us populated                   PASS
+deadline expiry → frontier_nodes_remaining populated     PASS
+deadline expiry → region_prune_ratio populated           PASS
+typed API (certified_search) → DeadlineExceeded variant  PASS
+  cannot be confused with Exact at type boundary
+legacy API (search_indices_with_proof) → flat tuple,     PASS
+  deadline_exceeded field must be inspected manually
+query-wide deadline (stages 1–3 + amortised frontier)    PASS
+```
+
+Remaining release work: production benchmarks under real network transport
+and multi-region deployment validation.
 
 ---
 

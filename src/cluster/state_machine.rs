@@ -19,6 +19,11 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
 use crate::consensus::pending::{ApplyError, MutationId};
+use crate::graph::mutation::apply::GraphMutationApplier;
+use crate::graph::mutation::command::GraphMutation;
+use crate::graph::catalog::labels::LabelCatalog;
+use crate::graph::catalog::relationships::RelTypeCatalog;
+use crate::graph::storage::generation::GraphGeneration;
 use crate::metadata::index::MetadataValue;
 use crate::storage::segment::SegmentedEngine;
 use crate::{HNSQRError, HNSQRResult, VectorEmbedding};
@@ -67,6 +72,13 @@ pub enum DataMutation {
         mutation_id: MutationId,
         mutations: Vec<DataMutation>,
     },
+    /// Graph topology mutation — replicated through Raft then applied by the
+    /// `GraphMutationApplier` inside the shard state machine.
+    /// This is the **only** authoritative write path for graph topology.
+    Graph {
+        mutation_id: MutationId,
+        mutation: GraphMutation,
+    },
 }
 
 impl DataMutation {
@@ -108,12 +120,21 @@ impl DataMutation {
         }
     }
 
+    /// Wraps a `GraphMutation` for Raft replication.
+    pub fn new_graph(mutation: GraphMutation) -> Self {
+        Self::Graph {
+            mutation_id: MutationId::generate(),
+            mutation,
+        }
+    }
+
     pub fn mutation_id(&self) -> &MutationId {
         match self {
             Self::Upsert { mutation_id, .. } => mutation_id,
             Self::Delete { mutation_id, .. } => mutation_id,
             Self::MetadataPatch { mutation_id, .. } => mutation_id,
             Self::Batch { mutation_id, .. } => mutation_id,
+            Self::Graph { mutation_id, .. } => mutation_id,
         }
     }
 }
@@ -215,6 +236,8 @@ pub struct ShardStateMachine {
     last_applied_index: AtomicU64,
     applied_generation: AtomicU64,
     dedup_horizon: Mutex<DeduplicationHorizon>,
+    /// Optional graph mutation applier.  `None` on shards without a graph layer.
+    pub graph: Option<Arc<GraphMutationApplier>>,
 }
 
 impl ShardStateMachine {
@@ -225,6 +248,24 @@ impl ShardStateMachine {
             last_applied_index: AtomicU64::new(0),
             applied_generation: AtomicU64::new(1),
             dedup_horizon: Mutex::new(DeduplicationHorizon::new(65_536)),
+            graph: None,
+        }
+    }
+
+    /// Creates a state machine with a pre-wired graph applier.
+    pub fn with_graph(shard_id: u32, engine: Arc<SegmentedEngine>) -> Self {
+        use parking_lot::RwLock;
+        let generation = Arc::new(RwLock::new(GraphGeneration::new_mutable(1)));
+        let label_catalog = Arc::new(LabelCatalog::default());
+        let rel_catalog = Arc::new(RelTypeCatalog::default());
+        let applier = Arc::new(GraphMutationApplier::new(generation, label_catalog, rel_catalog));
+        Self {
+            shard_id,
+            engine,
+            last_applied_index: AtomicU64::new(0),
+            applied_generation: AtomicU64::new(1),
+            dedup_horizon: Mutex::new(DeduplicationHorizon::new(65_536)),
+            graph: Some(applier),
         }
     }
 
@@ -242,6 +283,7 @@ impl ShardStateMachine {
             }
             DataMutation::Delete { .. } => Ok(()),
             DataMutation::MetadataPatch { .. } => Ok(()),
+            DataMutation::Graph { .. } => Ok(()),
             DataMutation::Batch { mutations, .. } => {
                 for m in mutations {
                     self.prevalidate_mutation(m)?;
@@ -264,6 +306,14 @@ impl ShardStateMachine {
             }
             DataMutation::MetadataPatch { key, metadata, .. } => {
                 self.engine.apply_committed_metadata_patch(key.as_str(), metadata)?;
+                Ok(())
+            }
+            DataMutation::Graph { mutation, .. } => {
+                if let Some(graph) = &self.graph {
+                    graph.apply(mutation)?;
+                }
+                // If no graph applier is present, graph mutations are silently
+                // accepted (no-op) so vector-only shards stay compatible.
                 Ok(())
             }
             DataMutation::Batch { mutations, .. } => {
@@ -291,7 +341,6 @@ impl ReplicatedStateMachine for ShardStateMachine {
             }
             _ => (None, 0, RetrySemantics::Idempotent),
         };
-
         {
             let dedup = self.dedup_horizon.lock();
             if let Some(cached) = dedup.check(mutation_id, client, seq, retry)? {

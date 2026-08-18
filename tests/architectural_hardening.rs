@@ -349,7 +349,7 @@ fn test_uncommitted_persisted_suffix_not_promoted_during_recovery() {
 
     let dim = 4;
     let engine = Arc::new(SegmentedEngine::new(dim, 100));
-    let sm = Arc::new(ShardStateMachine::new(0, engine.clone()));
+    let _sm = Arc::new(ShardStateMachine::new(0, engine.clone()));
 
     // Leader proposes mutation at index 1 without quorum
     let vec = VectorEmbedding::from_reals(&[1.0, 0.0, 0.0, 0.0]);
@@ -394,23 +394,26 @@ fn test_follower_storage_failure_prevents_quorum_commit() {
 
     let cluster = RaftCluster::with_storages(storages);
     assert!(cluster.trigger_election(1));
-    let leader = cluster.nodes.get(&1).unwrap();
+    let _leader = cluster.nodes.get(&1).unwrap();
 
-    // Inject disk failure on follower B
+    // Inject disk failure on follower B BEFORE any new entry arrives.
     storage_b.fail_before_log_persist.store(true, std::sync::atomic::Ordering::SeqCst);
 
+    // After election + initial NoOp heartbeat, node 2's log already has index 0 (sentinel)
+    // and index 1 (leader NoOp). We must send a genuinely new entry (index 2) with a valid
+    // prev pointer so the storage call is actually reached, triggering the fault.
     let follower_b = cluster.nodes.get(&2).unwrap();
     let reply = follower_b.handle_append_entries(&AppendEntriesArgs {
         term: 1,
         leader_id: 1,
-        prev_log_index: 0,
-        prev_log_term: 0,
+        prev_log_index: 1,
+        prev_log_term: 1,
         entries: vec![RaftLogEntry {
             term: 1,
-            index: 1,
+            index: 2,
             command: RaftCommand::NoOp,
         }],
-        leader_commit: 0,
+        leader_commit: 1,
         is_heartbeat: false,
     });
 

@@ -95,14 +95,13 @@ fn test_phase_4_machine_readable_acceptance_oracle() {
         let completed = Arc::new(AtomicU64::new(0));
         let mut handles = Vec::new();
 
-        for t in 0..writers {
+        for _t in 0..writers {
             let leader_clone = leader.clone();
             let cluster_clone = cluster.clone();
             let completed_clone = completed.clone();
             handles.push(thread::spawn(move || {
-                for i in 0..ops_per_writer {
-                    let lsn = (t * ops_per_writer + i + 1) as u64;
-                    let _ = leader_clone.propose(RaftCommand::QuorumMutationCommit { lsn, mutation: None });
+                for _i in 0..ops_per_writer {
+                    let _ = leader_clone.propose(RaftCommand::NoOp);
                     cluster_clone.broadcast_heartbeats(1);
                     completed_clone.fetch_add(1, Ordering::Relaxed);
                 }

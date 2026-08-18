@@ -107,10 +107,11 @@ pub use cluster::{
 pub use consensus::{
     AdaptiveMicrobatcher, AppendEntriesArgs, AppendEntriesReply, ApplyError, CommitReceipt,
     CommitStatus, DurabilityBatchPlan, DurabilityController, DurabilityLevel, DurableRaftStorage,
-    LinearizableReadMode, MembershipMutation, MemoryRaftStorage, MutationId, PendingProposals,
+    LinearizableReadMode, LogLocation, LogSegmentMeta, MembershipMutation, MemoryRaftStorage, MutationId, PendingProposals,
     ProposalId, RaftCluster, RaftCommand, RaftHardState, RaftLogEntry, RaftNode,
     RaftPersistentProgress, RaftPipelineTelemetry, RaftRole, RaftSnapshotMeta, RaftStorage,
-    ReadConsistency, ReadIndexEngine, ReadIndexTelemetry, RequestVoteArgs, RequestVoteReply,
+    ReadConsistency, ReadContextId, ReadIndexConfirmation, ReadIndexEngine, ReadIndexRequest,
+    ReadIndexTelemetry, RequestVoteArgs, RequestVoteReply,
     StorageHealthMetrics, StorageTelemetry, TopologyMutation,
 };
 pub use ecosystem::{

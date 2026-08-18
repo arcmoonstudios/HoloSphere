@@ -42,14 +42,25 @@ pub struct DistributedCoordinator {
 }
 
 impl DistributedCoordinator {
-    /// Creates a distributed coordinator.
+    /// Creates a distributed coordinator with an internally-managed Raft cluster.
     pub fn new(dimension: usize, num_shards: u32, max_mutable_capacity: usize) -> Self {
-        let topology = ClusterTopology::new(num_shards);
-        let mut local_shards = HashMap::new();
-
         let node_ids: Vec<u64> = (1..=3).collect();
         let raft_cluster = Arc::new(RaftCluster::new(&node_ids));
         let _ = raft_cluster.trigger_election(1);
+        Self::new_with_cluster(dimension, num_shards, max_mutable_capacity, raft_cluster)
+    }
+
+    /// Creates a distributed coordinator sharing the provided external `RaftCluster`.
+    /// Use this when a single `RaftCluster` instance must be shared across the coordinator
+    /// and other test or production components that hold a separate reference to it.
+    pub fn new_with_cluster(
+        dimension: usize,
+        num_shards: u32,
+        max_mutable_capacity: usize,
+        raft_cluster: Arc<RaftCluster>,
+    ) -> Self {
+        let topology = ClusterTopology::new(num_shards);
+        let mut local_shards = HashMap::new();
 
         for s in 0..num_shards {
             let engine = Arc::new(SegmentedEngine::new(dimension, max_mutable_capacity));
@@ -91,9 +102,95 @@ impl DistributedCoordinator {
         self.epoch.load(Ordering::Relaxed)
     }
 
+    /// Returns a snapshot of all local shards (primarily for testing / diagnostics).
+    #[must_use]
+    pub fn local_shards_snapshot(&self) -> Vec<Arc<LocalShard>> {
+        self.local_shards.read().values().cloned().collect()
+    }
+
     /// Inserts a vector by replicating through Raft quorum consensus with epoch fencing.
-    /// Strictly awaits quorum commit and state machine application before returning.
-    pub fn insert_fenced(
+    /// Asynchronously awaits quorum commit and state machine application without busy-spinning.
+    pub async fn insert_fenced(
+        &self,
+        id: impl Into<NodeId>,
+        vector: VectorEmbedding,
+        expected_epoch: Option<u64>,
+    ) -> HNSQRResult<crate::consensus::pending::CommitReceipt> {
+        let current_epoch = self.epoch();
+        if let Some(expected) = expected_epoch
+            && expected != current_epoch
+        {
+            return Err(HNSQRError::Internal(format!(
+                "Stale topology epoch: request epoch {expected}, current {current_epoch}"
+            )));
+        }
+
+        let node_id: Arc<str> = id.into();
+        let shard_id = { self.topology.read().shard_for_key(&node_id) };
+
+        // Validate role and build mutation while holding the lock, then drop it
+        // before any await point so the future remains Send.
+        let rx = {
+            let shards = self.local_shards.read();
+            let shard = shards.get(&shard_id).ok_or_else(|| {
+                HNSQRError::SearchError(format!("Shard {shard_id} not hosted locally"))
+            })?;
+            if shard.role != ShardRole::Leader {
+                return Err(HNSQRError::Internal(format!(
+                    "Cannot write to follower replica for shard {shard_id}"
+                )));
+            }
+            let mutation = DataMutation::new_upsert(node_id.to_string(), vector);
+            self.raft_cluster.propose_data_mutation(mutation)?
+            // `shards` guard drops here
+        };
+
+        // 2. Asynchronously await verified commit and state application receipt with timeout
+        let receipt_res = tokio::time::timeout(std::time::Duration::from_secs(5), rx)
+            .await
+            .map_err(|_| HNSQRError::Internal("Proposal timed out waiting for quorum commit".to_string()))?
+            .map_err(|_| HNSQRError::Internal("Proposal channel closed unexpectedly".to_string()))?;
+
+        let receipt = receipt_res.map_err(HNSQRError::from)?;
+        Ok(receipt)
+    }
+
+    /// Standard unfenced async insert helper.
+    pub async fn insert(&self, id: impl Into<NodeId>, vector: VectorEmbedding) -> HNSQRResult<crate::consensus::pending::CommitReceipt> {
+        self.insert_fenced(id, vector, None).await
+    }
+
+    /// Deletes a vector across the cluster through Raft state machine replication asynchronously.
+    pub async fn delete(&self, id: &str) -> HNSQRResult<crate::consensus::pending::CommitReceipt> {
+        let shard_id = { self.topology.read().shard_for_key(id) };
+
+        // Validate role and build mutation while holding the lock, then drop it
+        // before any await point so the future remains Send.
+        let rx = {
+            let shards = self.local_shards.read();
+            let shard = shards.get(&shard_id).ok_or_else(|| {
+                HNSQRError::SearchError(format!("Shard {shard_id} not hosted locally"))
+            })?;
+            if shard.role != ShardRole::Leader {
+                return Err(HNSQRError::Internal(format!(
+                    "Cannot delete on follower replica for shard {shard_id}"
+                )));
+            }
+            let mutation = DataMutation::new_delete(id);
+            self.raft_cluster.propose_data_mutation(mutation)?
+            // `shards` guard drops here
+        };
+
+        let receipt_res = tokio::time::timeout(std::time::Duration::from_secs(5), rx)
+            .await
+            .map_err(|_| HNSQRError::Internal("Proposal timed out waiting for quorum commit".to_string()))?
+            .map_err(|_| HNSQRError::Internal("Proposal channel closed unexpectedly".to_string()))?;
+
+        receipt_res.map_err(HNSQRError::from)
+    }
+
+    /// Synchronous blocking insert helper for non-async clients and deterministic test harnesses.
+    pub fn insert_fenced_blocking(
         &self,
         id: impl Into<NodeId>,
         vector: VectorEmbedding,
@@ -119,32 +216,11 @@ impl DistributedCoordinator {
                 )));
             }
 
-            // 1. Replicate mutation through Raft consensus leader
             let mutation = DataMutation::new_upsert(node_id.to_string(), vector);
-
-            let mut rx = self.raft_cluster.propose_data_mutation(mutation)?;
-
-            // 2. Await verified commit and state application receipt
-            let receipt_res = match rx.try_recv() {
-                Ok(res) => res,
-                Err(_) => {
-                    let start = std::time::Instant::now();
-                    let mut res = None;
-                    while start.elapsed() < std::time::Duration::from_secs(5) {
-                        if let Ok(r) = rx.try_recv() {
-                            res = Some(r);
-                            break;
-                        }
-                        std::thread::yield_now();
-                    }
-                    res.ok_or_else(|| {
-                        HNSQRError::Internal("Proposal timed out waiting for quorum commit".to_string())
-                    })?
-                }
-            };
-
-            let receipt = receipt_res.map_err(HNSQRError::from)?;
-            Ok(receipt)
+            let rx = self.raft_cluster.propose_data_mutation(mutation)?;
+            let receipt_res = rx.blocking_recv()
+                .map_err(|_| HNSQRError::Internal("Proposal channel closed".to_string()))?;
+            receipt_res.map_err(HNSQRError::from)
         } else {
             Err(HNSQRError::SearchError(format!(
                 "Shard {shard_id} not hosted locally"
@@ -152,13 +228,8 @@ impl DistributedCoordinator {
         }
     }
 
-    /// Standard unfenced insert helper.
-    pub fn insert(&self, id: impl Into<NodeId>, vector: VectorEmbedding) -> HNSQRResult<crate::consensus::pending::CommitReceipt> {
-        self.insert_fenced(id, vector, None)
-    }
-
-    /// Deletes a vector across the cluster through Raft state machine replication.
-    pub fn delete(&self, id: &str) -> HNSQRResult<crate::consensus::pending::CommitReceipt> {
+    /// Synchronous blocking delete helper for non-async clients and deterministic test harnesses.
+    pub fn delete_blocking(&self, id: &str) -> HNSQRResult<crate::consensus::pending::CommitReceipt> {
         let shard_id = { self.topology.read().shard_for_key(id) };
         let shards = self.local_shards.read();
         if let Some(shard) = shards.get(&shard_id) {
@@ -169,20 +240,9 @@ impl DistributedCoordinator {
             }
 
             let mutation = DataMutation::new_delete(id);
-
-            let mut rx = self.raft_cluster.propose_data_mutation(mutation)?;
-            let start = std::time::Instant::now();
-            let mut res = None;
-            while start.elapsed() < std::time::Duration::from_secs(5) {
-                if let Ok(r) = rx.try_recv() {
-                    res = Some(r);
-                    break;
-                }
-                std::thread::yield_now();
-            }
-            let receipt_res = res.ok_or_else(|| {
-                HNSQRError::Internal("Proposal timed out waiting for quorum commit".to_string())
-            })?;
+            let rx = self.raft_cluster.propose_data_mutation(mutation)?;
+            let receipt_res = rx.blocking_recv()
+                .map_err(|_| HNSQRError::Internal("Proposal channel closed".to_string()))?;
             receipt_res.map_err(HNSQRError::from)
         } else {
             Err(HNSQRError::SearchError(format!(

@@ -23,8 +23,8 @@ use hnsqr::service::{
 use hnsqr::VectorEmbedding;
 use num_complex::Complex32;
 
-#[test]
-fn test_live_cluster_end_to_end_mutation_pipeline_and_recovery() {
+#[tokio::test]
+async fn test_live_cluster_end_to_end_mutation_pipeline_and_recovery() {
     let tmp_base = std::env::temp_dir().join(format!("hnsqr_live_cluster_{:x}", rand::random::<u64>()));
     let node1_dir = tmp_base.join("node_1");
     let node2_dir = tmp_base.join("node_2");
@@ -63,7 +63,7 @@ fn test_live_cluster_end_to_end_mutation_pipeline_and_recovery() {
             metadata: None,
         };
 
-        let receipt = service.upsert(&ctx_admin, req).unwrap();
+        let receipt = service.upsert(&ctx_admin, req).await.unwrap();
         assert_eq!(receipt.durability, hnsqr::consensus::pending::DurabilityLevel::QuorumReplicated);
     }
 
@@ -97,7 +97,7 @@ fn test_live_cluster_end_to_end_mutation_pipeline_and_recovery() {
         vector: query.clone(),
         metadata: None,
     };
-    assert!(service.upsert(&ctx_reader, forbidden_req).is_err(), "Reader role must be rejected for mutations");
+    assert!(service.upsert(&ctx_reader, forbidden_req).await.is_err(), "Reader role must be rejected for mutations");
 
     let _ = std::fs::remove_dir_all(&tmp_base);
 }

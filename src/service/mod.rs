@@ -110,9 +110,10 @@ pub struct MutationReceipt {
 }
 
 /// Authoritative trait for mutation operations.
+#[async_trait::async_trait]
 pub trait MutationService: Send + Sync {
-    fn upsert(&self, ctx: &RequestContext, req: UpsertRequest) -> HNSQRResult<MutationReceipt>;
-    fn delete(&self, ctx: &RequestContext, req: DeleteRequest) -> HNSQRResult<MutationReceipt>;
+    async fn upsert(&self, ctx: &RequestContext, req: UpsertRequest) -> HNSQRResult<MutationReceipt>;
+    async fn delete(&self, ctx: &RequestContext, req: DeleteRequest) -> HNSQRResult<MutationReceipt>;
 }
 
 /// Authoritative trait for search retrieval operations.
@@ -145,10 +146,8 @@ impl StandaloneService {
     pub fn index(&self) -> &Arc<HNSQRIndex> {
         &self.index
     }
-}
 
-impl MutationService for StandaloneService {
-    fn upsert(&self, ctx: &RequestContext, req: UpsertRequest) -> HNSQRResult<MutationReceipt> {
+    pub fn upsert_blocking(&self, ctx: &RequestContext, req: UpsertRequest) -> HNSQRResult<MutationReceipt> {
         if ctx.role == AccessRole::ReadOnly {
             return Err(HNSQRError::Unauthorized("Role ReadOnly cannot perform Upsert".to_string()));
         }
@@ -172,7 +171,7 @@ impl MutationService for StandaloneService {
         })
     }
 
-    fn delete(&self, ctx: &RequestContext, req: DeleteRequest) -> HNSQRResult<MutationReceipt> {
+    pub fn delete_blocking(&self, ctx: &RequestContext, req: DeleteRequest) -> HNSQRResult<MutationReceipt> {
         if ctx.role == AccessRole::ReadOnly {
             return Err(HNSQRError::Unauthorized("Role ReadOnly cannot perform Delete".to_string()));
         }
@@ -190,6 +189,17 @@ impl MutationService for StandaloneService {
             topology_epoch: 1,
             durability: DurabilityLevel::MemoryOnly,
         })
+    }
+}
+
+#[async_trait::async_trait]
+impl MutationService for StandaloneService {
+    async fn upsert(&self, ctx: &RequestContext, req: UpsertRequest) -> HNSQRResult<MutationReceipt> {
+        self.upsert_blocking(ctx, req)
+    }
+
+    async fn delete(&self, ctx: &RequestContext, req: DeleteRequest) -> HNSQRResult<MutationReceipt> {
+        self.delete_blocking(ctx, req)
     }
 }
 
@@ -223,15 +233,13 @@ impl ClusterService {
     pub fn coordinator(&self) -> &Arc<DistributedCoordinator> {
         &self.coordinator
     }
-}
 
-impl MutationService for ClusterService {
-    fn upsert(&self, ctx: &RequestContext, req: UpsertRequest) -> HNSQRResult<MutationReceipt> {
+    pub fn upsert_blocking(&self, ctx: &RequestContext, req: UpsertRequest) -> HNSQRResult<MutationReceipt> {
         if ctx.role == AccessRole::ReadOnly {
             return Err(HNSQRError::Unauthorized("Role ReadOnly cannot perform Upsert".to_string()));
         }
 
-        let commit_receipt = self.coordinator.insert_fenced(req.id.clone(), req.vector, ctx.epoch)?;
+        let commit_receipt = self.coordinator.insert_fenced_blocking(req.id.clone(), req.vector, ctx.epoch)?;
         let shard_id = self.coordinator.shard_for_key(&req.id);
 
         Ok(MutationReceipt {
@@ -247,12 +255,57 @@ impl MutationService for ClusterService {
         })
     }
 
-    fn delete(&self, ctx: &RequestContext, req: DeleteRequest) -> HNSQRResult<MutationReceipt> {
+    pub fn delete_blocking(&self, ctx: &RequestContext, req: DeleteRequest) -> HNSQRResult<MutationReceipt> {
         if ctx.role == AccessRole::ReadOnly {
             return Err(HNSQRError::Unauthorized("Role ReadOnly cannot perform Delete".to_string()));
         }
 
-        let commit_receipt = self.coordinator.delete(&req.id)?;
+        let commit_receipt = self.coordinator.delete_blocking(&req.id)?;
+        let shard_id = self.coordinator.shard_for_key(&req.id);
+
+        Ok(MutationReceipt {
+            id: req.id,
+            shard_id,
+            mutation_id: commit_receipt.mutation_id,
+            term: commit_receipt.term,
+            log_index: commit_receipt.log_index,
+            applied_index: commit_receipt.applied_index,
+            applied_generation: 1,
+            topology_epoch: commit_receipt.topology_epoch,
+            durability: commit_receipt.durability,
+        })
+    }
+}
+
+#[async_trait::async_trait]
+impl MutationService for ClusterService {
+    async fn upsert(&self, ctx: &RequestContext, req: UpsertRequest) -> HNSQRResult<MutationReceipt> {
+        if ctx.role == AccessRole::ReadOnly {
+            return Err(HNSQRError::Unauthorized("Role ReadOnly cannot perform Upsert".to_string()));
+        }
+
+        let commit_receipt = self.coordinator.insert_fenced(req.id.clone(), req.vector, ctx.epoch).await?;
+        let shard_id = self.coordinator.shard_for_key(&req.id);
+
+        Ok(MutationReceipt {
+            id: req.id,
+            shard_id,
+            mutation_id: commit_receipt.mutation_id,
+            term: commit_receipt.term,
+            log_index: commit_receipt.log_index,
+            applied_index: commit_receipt.applied_index,
+            applied_generation: 1,
+            topology_epoch: commit_receipt.topology_epoch,
+            durability: commit_receipt.durability,
+        })
+    }
+
+    async fn delete(&self, ctx: &RequestContext, req: DeleteRequest) -> HNSQRResult<MutationReceipt> {
+        if ctx.role == AccessRole::ReadOnly {
+            return Err(HNSQRError::Unauthorized("Role ReadOnly cannot perform Delete".to_string()));
+        }
+
+        let commit_receipt = self.coordinator.delete(&req.id).await?;
         let shard_id = self.coordinator.shard_for_key(&req.id);
 
         Ok(MutationReceipt {

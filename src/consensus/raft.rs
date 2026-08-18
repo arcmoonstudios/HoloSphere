@@ -26,7 +26,8 @@ use crate::consensus::pending::{
     ApplyError, CommitReceipt, DurabilityLevel, PendingProposals, ProposalId,
 };
 pub use crate::consensus::read_index::{
-    LinearizableReadMode, ReadConsistency, ReadIndexEngine, ReadIndexTelemetry,
+    LinearizableReadMode, ReadConsistency, ReadContextId, ReadIndexConfirmation, ReadIndexEngine,
+    ReadIndexRequest, ReadIndexTelemetry,
 };
 use crate::consensus::storage::{
     MemoryRaftStorage, RaftHardState, RaftPersistentProgress, RaftStorage,
@@ -643,6 +644,26 @@ impl RaftNode {
         Ok(rx)
     }
 
+    /// Handles an incoming ReadIndex verification request from the current leader.
+    pub fn handle_read_index_request(&self, req: &ReadIndexRequest) -> ReadIndexConfirmation {
+        let current_term = *self.current_term.read();
+        if req.term < current_term {
+            return ReadIndexConfirmation {
+                context: req.context,
+                term: current_term,
+                node_id: self.id,
+                success: false,
+            };
+        }
+        *self.last_heartbeat_received.lock() = Instant::now();
+        ReadIndexConfirmation {
+            context: req.context,
+            term: req.term,
+            node_id: self.id,
+            success: true,
+        }
+    }
+
     pub fn linearizable_read_index(&self) -> HNSQRResult<u64> {
         self.linearizable_read_index_with_mode(LinearizableReadMode::ReadIndex)
     }
@@ -659,32 +680,33 @@ impl RaftNode {
         let term = *self.current_term.read();
         match mode {
             LinearizableReadMode::ReadIndex => {
-                if !self.read_index_engine.has_valid_lease(term) {
-                    return Err(HNSQRError::Internal(format!(
-                        "Leader lease expired for term {term}, quorum verification required"
-                    )));
+                let (_ctx, _req) = self.read_index_engine.start_read_index_round(term, self.id);
+                let read_idx = *self.commit_index.read();
+                let last_applied = *self.last_applied.read();
+                if last_applied < read_idx {
+                    self.read_index_engine.wait_applied(
+                        || *self.last_applied.read(),
+                        read_idx,
+                        std::time::Duration::from_millis(500),
+                    )?;
                 }
+                Ok(read_idx)
             }
-            LinearizableReadMode::LeaseRead { lease_duration_ms: _, max_clock_drift_ms: _ } => {
-                if !self.read_index_engine.has_valid_lease(term) {
-                    return Err(HNSQRError::Internal(format!(
-                        "Leader lease expired for term {term}"
-                    )));
+            LinearizableReadMode::LeaseRead { lease_duration_ms, max_clock_drift_ms } => {
+                ReadIndexEngine::validate_lease_contract(lease_duration_ms, max_clock_drift_ms, 1000)?;
+                self.read_index_engine.verify_lease_read(term, std::time::Duration::from_millis(lease_duration_ms))?;
+                let read_idx = *self.commit_index.read();
+                let last_applied = *self.last_applied.read();
+                if last_applied < read_idx {
+                    self.read_index_engine.wait_applied(
+                        || *self.last_applied.read(),
+                        read_idx,
+                        std::time::Duration::from_millis(500),
+                    )?;
                 }
+                Ok(read_idx)
             }
         }
-
-        let read_idx = *self.commit_index.read();
-        let last_applied = *self.last_applied.read();
-        if last_applied < read_idx {
-            self.read_index_engine.wait_applied(
-                || *self.last_applied.read(),
-                read_idx,
-                std::time::Duration::from_millis(500),
-            )?;
-        }
-
-        Ok(read_idx)
     }
 
     fn apply_committed_entries(&self, log: &[RaftLogEntry], target_commit: u64) {
@@ -1021,7 +1043,62 @@ impl RaftCluster {
             HNSQRError::Internal("No active Raft leader to coordinate ReadIndex".to_string())
         })?;
         let leader = self.nodes.get(&leader_id).unwrap();
-        self.broadcast_heartbeats(leader_id);
-        leader.linearizable_read_index_with_mode(mode)
+
+        match mode {
+            LinearizableReadMode::ReadIndex => {
+                let term = *leader.current_term.read();
+                let (_ctx, req) = leader.read_index_engine.start_read_index_round(term, leader_id);
+
+                let peers: Vec<RaftNodeId> = leader.voting_peers.read().iter().copied().collect();
+                let quorum_required = (peers.len() / 2) + 1;
+
+                for peer_id in &peers {
+                    if *peer_id == leader_id {
+                        continue;
+                    }
+                    if let Some(peer_node) = self.nodes.get(peer_id) {
+                        let confirmation = peer_node.handle_read_index_request(&req);
+                        let _ = leader.read_index_engine.handle_confirmation(&confirmation, term, quorum_required);
+                    }
+                }
+
+                // Invalidate if term changed during confirmation exchange
+                let term_after = *leader.current_term.read();
+                if term_after != term {
+                    leader.read_index_engine.readindex_term_invalidations.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    return Err(HNSQRError::Internal(format!(
+                        "ReadIndex round invalidated: term changed from {term} to {term_after}"
+                    )));
+                }
+
+                let read_idx = *leader.commit_index.read();
+                let last_applied = *leader.last_applied.read();
+                if last_applied < read_idx {
+                    leader.read_index_engine.wait_applied(
+                        || *leader.last_applied.read(),
+                        read_idx,
+                        std::time::Duration::from_millis(500),
+                    )?;
+                }
+                Ok(read_idx)
+            }
+            LinearizableReadMode::LeaseRead { lease_duration_ms, max_clock_drift_ms } => {
+                ReadIndexEngine::validate_lease_contract(lease_duration_ms, max_clock_drift_ms, 1000)?;
+                self.broadcast_heartbeats(leader_id);
+                let term = *leader.current_term.read();
+                leader.read_index_engine.verify_lease_read(term, std::time::Duration::from_millis(lease_duration_ms))?;
+
+                let read_idx = *leader.commit_index.read();
+                let last_applied = *leader.last_applied.read();
+                if last_applied < read_idx {
+                    leader.read_index_engine.wait_applied(
+                        || *leader.last_applied.read(),
+                        read_idx,
+                        std::time::Duration::from_millis(500),
+                    )?;
+                }
+                Ok(read_idx)
+            }
+        }
     }
 }

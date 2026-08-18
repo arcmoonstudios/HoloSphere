@@ -87,10 +87,10 @@ mod tests {
         .into_normalized();
 
         // Valid epoch write
-        assert!(coordinator.insert_fenced("doc_1", v.clone(), Some(cur_epoch)).is_ok());
+        assert!(coordinator.insert_fenced_blocking("doc_1", v.clone(), Some(cur_epoch)).is_ok());
 
         // Stale epoch write rejected
-        let stale_result = coordinator.insert_fenced("doc_2", v, Some(cur_epoch - 1));
+        let stale_result = coordinator.insert_fenced_blocking("doc_2", v, Some(cur_epoch - 1));
         assert!(stale_result.is_err(), "Stale epoch writes must be rejected!");
     }
 

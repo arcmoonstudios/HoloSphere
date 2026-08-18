@@ -34,7 +34,7 @@ fn run_concurrent_writer_benchmark(cluster_size: usize, concurrent_writers: usiz
     let _controller = Arc::new(DurabilityController::new(OperatorIntent::CertifiedExact, 20_000));
 
     // Warmup phase
-    for i in 0..50 {
+    for _i in 0..50 {
         let _ = leader.propose(RaftCommand::NoOp);
     }
     cluster.broadcast_heartbeats(1);
@@ -47,7 +47,7 @@ fn run_concurrent_writer_benchmark(cluster_size: usize, concurrent_writers: usiz
     let start = Instant::now();
     let mut handles = Vec::new();
 
-    for t in 0..concurrent_writers {
+    for _t in 0..concurrent_writers {
         let leader_clone = leader.clone();
         let cluster_clone = cluster.clone();
         let completed_clone = completed_ops.clone();
@@ -55,7 +55,7 @@ fn run_concurrent_writer_benchmark(cluster_size: usize, concurrent_writers: usiz
 
         handles.push(thread::spawn(move || {
             let mut local_latencies = Vec::with_capacity(ops_per_thread);
-            for i in 0..ops_per_thread {
+            for _i in 0..ops_per_thread {
                 let op_start = Instant::now();
                 let _idx = leader_clone.propose(RaftCommand::NoOp).unwrap();
                 cluster_clone.broadcast_heartbeats(1);

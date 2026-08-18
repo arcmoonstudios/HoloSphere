@@ -27,12 +27,15 @@ pub use raft::{
     RaftCommand, RaftLogEntry, RaftNode, RaftPipelineTelemetry, RaftRole, RequestVoteArgs,
     RequestVoteReply, StorageHealthMetrics, TopologyMutation,
 };
-pub use read_index::{LinearizableReadMode, ReadConsistency, ReadIndexEngine, ReadIndexTelemetry};
+pub use read_index::{
+    LinearizableReadMode, ReadConsistency, ReadContextId, ReadIndexConfirmation, ReadIndexEngine,
+    ReadIndexRequest, ReadIndexTelemetry,
+};
 pub use state_machine::{
     ApplyReceipt, ClientIdentity, DataMutation, DeduplicationHorizon, ReplicatedStateMachine,
     RetrySemantics, ShardStateMachine,
 };
 pub use storage::{
-    DurableRaftStorage, MemoryRaftStorage, RaftHardState, RaftPersistentProgress, RaftSnapshotMeta,
-    RaftStorage,
+    DurableRaftStorage, LogLocation, LogSegmentMeta, MemoryRaftStorage, RaftHardState,
+    RaftPersistentProgress, RaftSnapshotMeta, RaftStorage,
 };

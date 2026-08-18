@@ -28,7 +28,7 @@ use hnsqr::consensus::read_index::{LinearizableReadMode, ReadConsistency};
 use hnsqr::consensus::storage::{DurableRaftStorage, RaftStorage};
 use hnsqr::proof::lutz::SemanticRerankPlan;
 use hnsqr::service::{
-    ClusterService, DeleteRequest, MutationService, RequestContext, SearchService, UpsertRequest,
+    ClusterService, DeleteRequest, RequestContext, SearchService, UpsertRequest,
 };
 use hnsqr::storage::segment::SegmentedEngine;
 use hnsqr::{DistributedCoordinator, VectorEmbedding};
@@ -184,7 +184,7 @@ fn test_linearizable_read_index_contract() {
             vector: generate_test_vector(dim, i),
             metadata: None,
         };
-        let receipt = service.upsert(&ctx, req).expect("Upsert must succeed through Raft");
+        let receipt = service.upsert_blocking(&ctx, req).expect("Upsert must succeed through Raft");
         assert_eq!(receipt.durability, hnsqr::consensus::pending::DurabilityLevel::QuorumReplicated);
     }
 
@@ -221,7 +221,7 @@ fn test_distributed_mutation_service_deletes() {
 
     let vec = generate_test_vector(dim, 77);
     service
-        .upsert(
+        .upsert_blocking(
             &ctx,
             UpsertRequest {
                 id: "delete_target".to_string(),
@@ -239,7 +239,7 @@ fn test_distributed_mutation_service_deletes() {
 
     // Delete through authoritative Raft path
     service
-        .delete(
+        .delete_blocking(
             &ctx,
             DeleteRequest {
                 id: "delete_target".to_string(),

@@ -4,7 +4,7 @@
 //!▫~•◦-------------------------------------------------------------------‣
 //!
 //! Provides durable on-disk persistence for Raft HardState (current_term, voted_for),
-//! committed progress boundaries, append-only segmented log entries with CRC32C frame
+//! committed progress boundaries, append-only segmented log entries with CRC32 frame
 //! integrity, and snapshot metadata. Guarantees zero silent corruption, fails closed
 //! on torn records, and forms the single authoritative recovery source for state machine replay.
 /*▫~•◦------------------------------------------------------------------------------------‣
@@ -48,6 +48,24 @@ pub struct RaftSnapshotMeta {
     pub last_included_index: u64,
     pub last_included_term: u64,
     pub topology_epoch: u64,
+}
+
+/// Metadata describing a discrete on-disk log segment file (`.rlog`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LogSegmentMeta {
+    pub start_index: u64,
+    pub end_index: u64,
+    pub entry_count: u64,
+    pub byte_size: u64,
+    pub file_path: PathBuf,
+}
+
+/// Physical location of a single log record on disk.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LogLocation {
+    pub start_index: u64,
+    pub byte_offset: u64,
+    pub frame_length: u32,
 }
 
 /// Encodes payload with CRC32 integrity framing.
@@ -243,24 +261,28 @@ impl RaftStorage for MemoryRaftStorage {
     }
 }
 
-/// Production durable disk-backed Raft storage with CRC32 frame verification and append-only logging.
+/// Production durable Raft storage engine with append-only segmented log files (`.rlog`).
 pub struct DurableRaftStorage {
     base_dir: PathBuf,
+    log_dir: PathBuf,
     state_file: PathBuf,
     progress_file: PathBuf,
-    log_file: PathBuf,
     snapshot_file: PathBuf,
+    segments: RwLock<Vec<LogSegmentMeta>>,
+    max_entries_per_segment: usize,
+    max_segment_bytes: u64,
     memory_cache: MemoryRaftStorage,
 }
 
 impl DurableRaftStorage {
     pub fn open(dir: impl AsRef<Path>) -> HNSQRResult<Self> {
         let base_dir = dir.as_ref().to_path_buf();
+        let log_dir = base_dir.join("log");
         fs::create_dir_all(&base_dir)?;
+        fs::create_dir_all(&log_dir)?;
 
         let state_file = base_dir.join("raft_hard_state.bin");
         let progress_file = base_dir.join("raft_progress.bin");
-        let log_file = base_dir.join("raft_log.bin");
         let snapshot_file = base_dir.join("raft_snapshot_meta.bin");
 
         let memory_cache = MemoryRaftStorage::new();
@@ -295,31 +317,113 @@ impl DurableRaftStorage {
             }
         }
 
-        // 4. Recover Log Entries with sequential frame verification
-        if log_file.exists() {
-            let mut file = File::open(&log_file)?;
+        // 4. Recover Segmented Log Files (`.rlog`)
+        let mut segments = Vec::new();
+        let mut recovered_entries = Vec::new();
+
+        // Check for legacy single-file log `raft_log.bin` and migrate if present
+        let legacy_log_file = base_dir.join("raft_log.bin");
+        if legacy_log_file.exists() {
+            let mut file = File::open(&legacy_log_file)?;
             let mut buffer = Vec::new();
             file.read_to_end(&mut buffer)?;
 
             let mut offset = 0;
-            let mut recovered_entries = Vec::new();
+            let mut legacy_entries = Vec::new();
             while offset < buffer.len() {
-                let (entry, frame_len) = decode_framed_record::<RaftLogEntry>(&buffer[offset..])?;
-                recovered_entries.push(entry);
-                offset += frame_len;
+                if let Ok((entry, frame_len)) = decode_framed_record::<RaftLogEntry>(&buffer[offset..]) {
+                    legacy_entries.push(entry);
+                    offset += frame_len;
+                } else {
+                    break;
+                }
             }
 
-            if !recovered_entries.is_empty() {
-                *memory_cache.log.write() = recovered_entries;
+            if !legacy_entries.is_empty() {
+                // Write into segmented structure
+                let seg_path = log_dir.join("0000000000000001.rlog");
+                let mut framed = Vec::new();
+                for entry in &legacy_entries {
+                    framed.extend_from_slice(&encode_framed_record(entry)?);
+                }
+                let mut seg_file = File::create(&seg_path)?;
+                seg_file.write_all(&framed)?;
+                seg_file.sync_all()?;
             }
+            let _ = fs::remove_file(&legacy_log_file);
+        }
+
+        // Scan `log_dir` for `.rlog` segments
+        let mut segment_paths: Vec<PathBuf> = Vec::new();
+        for entry in fs::read_dir(&log_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) == Some("rlog") {
+                segment_paths.push(path);
+            }
+        }
+        segment_paths.sort();
+
+        for seg_path in &segment_paths {
+            let mut file = File::open(seg_path)?;
+            let mut buffer = Vec::new();
+            file.read_to_end(&mut buffer)?;
+
+            let mut offset = 0;
+            let mut seg_entries = Vec::new();
+            let mut last_valid_offset = 0;
+
+            while offset < buffer.len() {
+                match decode_framed_record::<RaftLogEntry>(&buffer[offset..]) {
+                    Ok((entry, frame_len)) => {
+                        seg_entries.push(entry);
+                        offset += frame_len;
+                        last_valid_offset = offset;
+                    }
+                    Err(e) => {
+                        // Tolerate torn tail record on the last segment; truncate off cleanly
+                        if seg_path == segment_paths.last().unwrap() && offset + RAFT_FRAME_HEADER_SIZE > buffer.len() {
+                            let f = OpenOptions::new().write(true).open(seg_path)?;
+                            f.set_len(last_valid_offset as u64)?;
+                            break;
+                        }
+                        return Err(HNSQRError::Internal(format!(
+                            "Corrupted Raft log frame in segment {:?} at offset {offset}: {e}",
+                            seg_path.file_name()
+                        )));
+                    }
+                }
+            }
+
+            if !seg_entries.is_empty() {
+                let start_index = seg_entries.first().unwrap().index;
+                let end_index = seg_entries.last().unwrap().index;
+                let byte_size = last_valid_offset as u64;
+
+                segments.push(LogSegmentMeta {
+                    start_index,
+                    end_index,
+                    entry_count: seg_entries.len() as u64,
+                    byte_size,
+                    file_path: seg_path.clone(),
+                });
+                recovered_entries.extend(seg_entries);
+            }
+        }
+
+        if !recovered_entries.is_empty() {
+            *memory_cache.log.write() = recovered_entries;
         }
 
         Ok(Self {
             base_dir,
+            log_dir,
             state_file,
             progress_file,
-            log_file,
             snapshot_file,
+            segments: RwLock::new(segments),
+            max_entries_per_segment: 10_000,
+            max_segment_bytes: 16 * 1024 * 1024, // 16MB
             memory_cache,
         })
     }
@@ -348,26 +452,129 @@ impl DurableRaftStorage {
         Ok(())
     }
 
-    fn rewrite_all_log_entries(&self) -> HNSQRResult<()> {
-        let log = self.memory_cache.log.read().clone();
-        let mut all_frames = Vec::new();
-        for entry in &log {
-            let frame = encode_framed_record(entry)?;
-            all_frames.extend_from_slice(&frame);
+    /// Appends framed entries to the active tail segment, rotating if size thresholds are met.
+    fn append_entries_segmented(&self, entries: &[RaftLogEntry]) -> HNSQRResult<()> {
+        if entries.is_empty() {
+            return Ok(());
         }
 
-        let tmp_file = self.base_dir.join("raft_log.bin.tmp");
-        {
+        let mut framed_bytes = Vec::new();
+        for entry in entries {
+            let frame = encode_framed_record(entry)?;
+            framed_bytes.extend_from_slice(&frame);
+        }
+
+        let mut segments = self.segments.write();
+        let need_rotation = segments.last().map(|s| {
+            s.entry_count >= self.max_entries_per_segment as u64 || s.byte_size >= self.max_segment_bytes
+        }).unwrap_or(true);
+
+        if need_rotation {
+            let start_idx = entries[0].index;
+            let file_name = format!("{start_idx:016}.rlog");
+            let file_path = self.log_dir.join(file_name);
+
             let mut file = OpenOptions::new()
                 .create(true)
                 .write(true)
                 .truncate(true)
-                .open(&tmp_file)?;
-            file.write_all(&all_frames)?;
+                .open(&file_path)?;
+            file.write_all(&framed_bytes)?;
             file.sync_all()?;
+
+            segments.push(LogSegmentMeta {
+                start_index: start_idx,
+                end_index: entries.last().unwrap().index,
+                entry_count: entries.len() as u64,
+                byte_size: framed_bytes.len() as u64,
+                file_path,
+            });
+        } else {
+            let last_seg = segments.last_mut().unwrap();
+            let mut file = OpenOptions::new()
+                .create(true)
+                .write(true)
+                .append(true)
+                .open(&last_seg.file_path)?;
+            file.write_all(&framed_bytes)?;
+            file.sync_all()?;
+
+            last_seg.end_index = entries.last().unwrap().index;
+            last_seg.entry_count += entries.len() as u64;
+            last_seg.byte_size += framed_bytes.len() as u64;
         }
-        fs::rename(tmp_file, &self.log_file)?;
-        if let Ok(dir_file) = File::open(&self.base_dir) {
+
+        if let Ok(dir_file) = File::open(&self.log_dir) {
+            let _ = dir_file.sync_all();
+        }
+        Ok(())
+    }
+
+    /// Surgical log truncation: removes segments strictly above `from_index` and rewrites
+    /// only the single containing segment at the truncation boundary without touching older segments.
+    fn truncate_suffix_segmented(&self, from_index: u64) -> HNSQRResult<()> {
+        let mut segments = self.segments.write();
+
+        // 1. Remove all segments strictly above `from_index`
+        segments.retain(|seg| {
+            if seg.start_index >= from_index {
+                let _ = fs::remove_file(&seg.file_path);
+                false
+            } else {
+                true
+            }
+        });
+
+        // 2. If the active boundary segment contains `from_index`, prune it
+        if let Some(boundary_seg) = segments.last_mut() {
+            if boundary_seg.end_index >= from_index {
+                // Read and re-encode only entries up to `from_index - 1`
+                let log = self.memory_cache.log.read();
+                let mut kept_frames = Vec::new();
+                let mut kept_count = 0u64;
+                let mut max_idx = boundary_seg.start_index;
+
+                for entry in log.iter().skip(boundary_seg.start_index as usize) {
+                    if entry.index >= from_index {
+                        break;
+                    }
+                    let frame = encode_framed_record(entry)?;
+                    kept_frames.extend_from_slice(&frame);
+                    kept_count += 1;
+                    max_idx = entry.index;
+                }
+
+                let mut file = OpenOptions::new()
+                    .write(true)
+                    .truncate(true)
+                    .open(&boundary_seg.file_path)?;
+                file.write_all(&kept_frames)?;
+                file.sync_all()?;
+
+                boundary_seg.end_index = max_idx;
+                boundary_seg.entry_count = kept_count;
+                boundary_seg.byte_size = kept_frames.len() as u64;
+            }
+        }
+
+        if let Ok(dir_file) = File::open(&self.log_dir) {
+            let _ = dir_file.sync_all();
+        }
+        Ok(())
+    }
+
+    /// Compacts log prefix by deleting segment files whose end_index <= snapshot_index.
+    pub fn compact_prefix(&self, snapshot_index: u64) -> HNSQRResult<()> {
+        let mut segments = self.segments.write();
+        segments.retain(|seg| {
+            if seg.end_index <= snapshot_index {
+                let _ = fs::remove_file(&seg.file_path);
+                false
+            } else {
+                true
+            }
+        });
+        if let Ok(dir_file) = File::open(&self.log_dir) {
             let _ = dir_file.sync_all();
         }
         Ok(())
@@ -396,30 +603,14 @@ impl RaftStorage for DurableRaftStorage {
     }
 
     fn append_entries(&self, entries: &[RaftLogEntry]) -> HNSQRResult<()> {
-        let mut framed_bytes = Vec::new();
-        for entry in entries {
-            let frame = encode_framed_record(entry)?;
-            framed_bytes.extend_from_slice(&frame);
-        }
-
-        // Append-only write with group fsync
-        {
-            let mut file = OpenOptions::new()
-                .create(true)
-                .write(true)
-                .append(true)
-                .open(&self.log_file)?;
-            file.write_all(&framed_bytes)?;
-            file.sync_all()?;
-        }
-
+        self.append_entries_segmented(entries)?;
         self.memory_cache.append_entries(entries)?;
         Ok(())
     }
 
     fn truncate_suffix(&self, from_index: u64) -> HNSQRResult<()> {
         self.memory_cache.truncate_suffix(from_index)?;
-        self.rewrite_all_log_entries()
+        self.truncate_suffix_segmented(from_index)
     }
 
     fn load_log_entries(&self, from_index: u64) -> HNSQRResult<Vec<RaftLogEntry>> {
@@ -437,9 +628,12 @@ impl RaftStorage for DurableRaftStorage {
     }
 
     fn flush(&self) -> HNSQRResult<()> {
-        if self.log_file.exists() {
-            let file = OpenOptions::new().write(true).open(&self.log_file)?;
-            file.sync_all()?;
+        let segments = self.segments.read();
+        if let Some(last_seg) = segments.last() {
+            if last_seg.file_path.exists() {
+                let file = OpenOptions::new().write(true).open(&last_seg.file_path)?;
+                file.sync_all()?;
+            }
         }
         Ok(())
     }

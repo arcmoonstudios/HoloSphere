@@ -17,6 +17,7 @@ use std::time::Instant;
 use num_complex::Complex32;
 use rayon::prelude::*;
 
+use hnsqr::cluster::state_machine::DataMutation;
 use hnsqr::consensus::raft::RaftCluster;
 use hnsqr::storage::two_tier_cache::TwoTierCache;
 use hnsqr::VectorEmbedding;
@@ -33,7 +34,9 @@ fn main() {
     println!("\n🔥 1. EXECUTING HIGH-CONCURRENCY PIPELINED RAFT BENCHMARK:");
     for _ in 0..100 {
         let v = VectorEmbedding::from_complex((0..dim).map(|i| Complex32::new(i as f32, 0.0)).collect());
-        let _ = cluster.client_propose_upsert("warmup_doc", v);
+        let _ = cluster.propose_data_mutation(
+            DataMutation::new_upsert("warmup_doc", v)
+        );
     }
 
     let writer_concurrencies = [1, 8, 32, 128, 512];
@@ -49,7 +52,9 @@ fn main() {
                     .collect(),
             )
             .into_normalized();
-            let res = cluster.client_propose_upsert(key, v);
+            let res = cluster.propose_data_mutation(
+                DataMutation::new_upsert(key, v)
+            );
             assert!(res.is_ok());
         });
         let elapsed = t0.elapsed().as_secs_f64();

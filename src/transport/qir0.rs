@@ -294,7 +294,7 @@ impl<S: HNSQRService + 'static> HNSQRServer<S> {
                                 metadata: None,
                             };
 
-                            match service.upsert(&ctx, req) {
+                            match service.upsert(&ctx, req).await {
                                 Ok(_receipt) => {
                                     let resp_header = MessageHeader {
                                         magic: PROTOCOL_MAGIC,

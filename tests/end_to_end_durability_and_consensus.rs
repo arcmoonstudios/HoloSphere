@@ -129,7 +129,7 @@ fn test_distributed_coordinator_raft_replicated_ingest() {
             .map(|d| Complex32::new((i * 3 + d) as f32, (i * 5 + d) as f32))
             .collect();
         let vec = VectorEmbedding::from_complex(coords).into_normalized();
-        coord.insert_fenced(format!("cluster_doc_{i}"), vec, Some(1)).unwrap();
+        coord.insert_fenced_blocking(format!("cluster_doc_{i}"), vec, Some(1)).unwrap();
     }
 
     // Verify Raft leader proposed and committed mutations containing vector data

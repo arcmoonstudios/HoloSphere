@@ -282,6 +282,14 @@ class AsyncHNSQRClient:
             total_voxels=data.get("total_voxels", 0),
         )
 
+    async def get_billing_report(self, tenant_id: str) -> Dict[str, Any]:
+        """Fetches usage-based metering and billing summary for a tenant."""
+        endpoint = self._select_endpoint(is_write=False)
+        url = f"{endpoint}/v1/dbaas/tenants/{tenant_id}/usage"
+        resp = await self._client.get(url, headers=self._headers())
+        resp.raise_for_status()
+        return resp.json()
+
     async def upsert(
         self,
         collection: str,
@@ -500,6 +508,14 @@ class HNSQRClient:
             values=data.get("values", []),
             total_voxels=data.get("total_voxels", 0),
         )
+
+    def get_billing_report(self, tenant_id: str) -> Dict[str, Any]:
+        """Fetches usage-based metering and billing summary for a tenant."""
+        endpoint = self._select_endpoint(is_write=False)
+        url = f"{endpoint}/v1/dbaas/tenants/{tenant_id}/usage"
+        resp = self._client.get(url, headers=self._headers())
+        resp.raise_for_status()
+        return resp.json()
 
     def upsert(
         self,

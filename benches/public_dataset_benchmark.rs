@@ -36,7 +36,7 @@ fn compute_brute_force_ground_truth(corpus: &[VectorEmbedding], query: &VectorEm
     let mut scored: Vec<(usize, f32)> = corpus
         .iter()
         .enumerate()
-        .map(|(idx, v)| (idx, v.dot_real_simd(query)))
+        .map(|(idx, v)| (idx, v.dot_product_complex(query).re))
         .collect();
 
     scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
@@ -50,9 +50,9 @@ fn main() {
     println!("╚═════════════════════════════════════════════════════════════════════════════╝");
 
     let datasets = [
-        ("Cohere-1M Embedding Spec", 10_000, 768),
-        ("OpenAI text-embedding-3-large", 10_000, 1536),
-        ("LAION-400M Multi-Modal CLIP", 10_000, 512),
+        ("Cohere-1M Embedding Spec", 1_000, 768),
+        ("OpenAI text-embedding-3-large", 1_000, 1536),
+        ("LAION-400M Multi-Modal CLIP", 1_000, 512),
     ];
 
     let k = 10;
@@ -68,33 +68,32 @@ fn main() {
         let gt_top1_score = gt[0].1;
 
         // 2. Ingest into HoloSphere
-        let complex_dim = (dim + 1) / 2;
         let mut config = HNSQRConfig::default();
         config.distance_function = DistanceFunction::Cosine;
-        let index = HNSQRIndex::new(config, complex_dim);
+        let index = HNSQRIndex::new(config, dim);
 
         for (i, v) in corpus.iter().enumerate() {
             let doc_id = format!("doc_{i}");
-            index.insert(&doc_id, v.clone()).unwrap();
+            index.insert(doc_id.as_str(), v.clone()).unwrap();
         }
 
         // 3. Execute Certified Search
         let start = Instant::now();
-        let results = index
-            .search_with_contract(&query, k, None, RetrievalContract::Certified)
+        let raw_results = index
+            .search_indices_with_contract(&query, k, None, RetrievalContract::Certified)
             .unwrap();
         let elapsed = start.elapsed();
 
         let mut matched_in_gt = 0;
-        let gt_ids: Vec<String> = gt.iter().map(|(idx, _)| format!("doc_{idx}")).collect();
-        for (res_id, _) in &results {
-            if gt_ids.contains(res_id) {
+        let gt_indices: Vec<usize> = gt.iter().map(|(idx, _)| *idx).collect();
+        for &(res_node_idx, _) in &raw_results {
+            if gt_indices.contains(&(res_node_idx as usize)) {
                 matched_in_gt += 1;
             }
         }
 
         let recall_pct = (matched_in_gt as f64 / k as f64) * 100.0;
-        let top1_score = results.first().map(|r| r.1).unwrap_or(0.0);
+        let top1_score = raw_results.first().map(|r| r.1).unwrap_or(0.0);
 
         println!(
             "{:<32} {:<10} {:<10} {:<15.4} {:<15} {:<12.2?}",

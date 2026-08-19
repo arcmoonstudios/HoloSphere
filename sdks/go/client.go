@@ -360,6 +360,27 @@ func (c *Client) SliceHypercube(ctx context.Context, spaceID string, minCoords [
 	return &result, err
 }
 
+func (c *Client) GetBillingReport(ctx context.Context, tenantID string) (map[string]interface{}, error) {
+	endpoint, err := c.selectEndpoint(false)
+	if err != nil {
+		return nil, err
+	}
+	url := fmt.Sprintf("%s/v1/dbaas/tenants/%s/usage", endpoint, tenantID)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	c.headers(req, "")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var report map[string]interface{}
+	err = json.NewDecoder(resp.Body).Decode(&report)
+	return report, err
+}
+
 func (c *Client) Upsert(ctx context.Context, collection string, id string, vector []float32, metadata map[string]interface{}, idempotencyKey string) (*MutationReceipt, error) {
 	payload := map[string]interface{}{
 		"id":       id,

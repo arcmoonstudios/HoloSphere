@@ -301,6 +301,20 @@ export class HNSQRClient {
     return (await res.json()) as HypercubeSliceResult;
   }
 
+  public async getBillingReport(tenantId: string): Promise<Record<string, unknown>> {
+    const endpoint = this.selectEndpoint(false);
+    const url = `${endpoint}/v1/dbaas/tenants/${tenantId}/usage`;
+    const res = await fetch(url, {
+      method: "GET",
+      headers: this.headers(),
+      signal: AbortSignal.timeout(this.timeoutMs),
+    });
+    if (!res.ok) {
+      throw new HNSQRError(`Get billing report failed: ${res.status}`);
+    }
+    return (await res.json()) as Record<string, unknown>;
+  }
+
   public async upsert(
     collection: string,
     id: string,

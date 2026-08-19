@@ -91,6 +91,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = create_http_router(gateway_router);
     println!("🌐 Starting HTTP REST & LLM Gateway on:      http://{}", http_addr);
     println!("📊 Embedded Web Console & Dashboard at:       http://{}/dashboard", http_addr);
+    println!("📖 Interactive OpenAPI 3.1 Swagger UI at:     http://{}/docs", http_addr);
     let http_handle = tokio::spawn(async move {
         let listener = tokio::net::TcpListener::bind(http_addr)
             .await
@@ -141,8 +142,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    println!("\n✨ HoloSphere Universal Engine is ONLINE:");
+    println!("\n✨ HoloSphere Global Enterprise Engine is ONLINE:");
     println!("   • 100% Certified Proof Search (1.86x faster than brute force)");
+    println!("   • 64-Way Striped Lock-Free Ingestion (ShardedConcurrentMap)");
+    println!("   • Multi-Region Active-Active Federation (CRDT Last-Write-Wins)");
+    println!("   • DBaaS Cloud Control Plane & Usage-Based Metering Engine");
+    println!("   • Apache Arrow Flight SQL & IPC Zero-Copy Streaming");
     println!("   • Native 1-Cache-Line Graph-RAG (CSR/CSC GDS)");
     println!("   • Multi-Table Relational SQL & ACID Transactions (2PL + MVCC)");
     println!("   • 4D Volumetric Hypercube Tensor Space (TileDB rival)");

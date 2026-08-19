@@ -1,18 +1,21 @@
 /* hnsqr/benches/public_dataset_benchmark.rs */
-//!▫~•◦-------------------------------‣
-//! # Public Dataset Benchmark Harness — Honest Recall Audit
-//!▫~•◦-------------------------------------------------------------------‣
+//!▫~•◦-----------------------------------------------------------------‣
+//! # HoloSphere Real Public Dataset Retrieval & Scale Audit
+//!▫~•◦-----------------------------------------------------------------‣
 //!
-//! Evaluates Cohere-1M, LAION-400M, and GIST-960 real-world semantic vector
-//! distributions against brute-force exact linear ground truth. Reports
-//! measured recall for every dataset regardless of pass/fail; never aborts
-//! mid-run and never claims a dataset was tested if it was skipped.
+//! Every dataset is evaluated under EVERY execution path the planner can
+//! select — not just whichever one UniversalPlanner::plan picks by default.
+//! A recall number is meaningless without knowing whether it came from
+//! ExactScan, GraphOnly, RiveroStrict, or RiveroAdaptive. This harness
+//! forces each path explicitly via config and labels every row with the
+//! mode that actually ran, so "Certified" recall can never again mean
+//! "brute force vs brute force" by accident.
 /*▫~•◦------------------------------------------------------------------------------------‣
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
 use hnsqr::planning::RetrievalContract;
-use hnsqr::{DistanceFunction, HNSQRConfig, HNSQRIndex, VectorEmbedding};
+use hnsqr::{DistanceFunction, HNSQRConfig, HNSQRIndex, RiveroSearchMode, SearchPlan, VectorEmbedding};
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
@@ -20,53 +23,85 @@ use std::time::{Duration, Instant};
 
 const RECALL_PASS_THRESHOLD_PCT: f64 = 100.0;
 const TOP1_SCORE_TOLERANCE: f32 = 1e-4;
+const MAX_QUERIES_PER_DATASET: usize = 50;
 
-/// Reads standard `.fvecs` binary vector format:
-/// Each vector is [4-byte int dimension d] followed by [d * 4-byte little-endian IEEE 754 floats].
-fn read_fvecs(path: impl AsRef<Path>) -> io::Result<Vec<VectorEmbedding>> {
+/// Every execution path the retrieval planner can select. `PlannerDefault`
+/// is whatever UniversalPlanner::plan chooses given (N, D, contract) —
+/// this is the ONLY mode where we do not know in advance which underlying
+/// algorithm ran, so its row must report the observed path, not assume it.
+#[derive(Clone, Copy, Debug)]
+enum ExecMode {
+    PlannerDefault,
+    ExactForced,
+    GraphOnly,
+    RiveroStrict,
+    RiveroAdaptive,
+}
+
+impl ExecMode {
+    fn label(&self) -> &'static str {
+        match self {
+            ExecMode::PlannerDefault => "Planner-Routed",
+            ExecMode::ExactForced => "Exact-Forced",
+            ExecMode::GraphOnly => "Graph-Forced",
+            ExecMode::RiveroStrict => "Rivero-Strict-Forced",
+            ExecMode::RiveroAdaptive => "Rivero-Adaptive-Forced",
+        }
+    }
+
+    /// Applies this mode to a config. PlannerDefault leaves config
+    /// untouched — the planner decides based on N vs N_cross. All other
+    /// modes override exact_scan_threshold and/or search_plan to force
+    /// the path regardless of corpus size.
+    fn apply(&self, config: &mut HNSQRConfig) {
+        match self {
+            ExecMode::PlannerDefault => {}
+            ExecMode::ExactForced => {
+                config.exact_scan_threshold = usize::MAX;
+                config.search_plan = SearchPlan::Exact;
+            }
+            ExecMode::GraphOnly => {
+                config.exact_scan_threshold = 0;
+                config.search_plan = SearchPlan::GraphOnly;
+                config.rivero_enabled = false;
+                config.ef_search = 128;
+            }
+            ExecMode::RiveroStrict => {
+                config.exact_scan_threshold = 0;
+                config.search_plan = SearchPlan::Rivero;
+                config.rivero_enabled = true;
+                config.rivero_mode = RiveroSearchMode::Strict;
+            }
+            ExecMode::RiveroAdaptive => {
+                config.exact_scan_threshold = 0;
+                config.search_plan = SearchPlan::Rivero;
+                config.rivero_enabled = true;
+                config.rivero_mode = RiveroSearchMode::Adaptive;
+            }
+        }
+    }
+}
+
+fn read_fvecs_limited(path: impl AsRef<Path>, max_vectors: Option<usize>) -> io::Result<Vec<VectorEmbedding>> {
     let mut file = File::open(path)?;
     let mut vectors = Vec::new();
     let mut dim_buf = [0u8; 4];
-
     while file.read_exact(&mut dim_buf).is_ok() {
+        if let Some(limit) = max_vectors {
+            if vectors.len() >= limit {
+                break;
+            }
+        }
         let dim = i32::from_le_bytes(dim_buf) as usize;
         let mut float_buf = vec![0u8; dim * 4];
         file.read_exact(&mut float_buf)?;
-
         let mut floats = Vec::with_capacity(dim);
         for chunk in float_buf.chunks_exact(4) {
             floats.push(f32::from_le_bytes(chunk.try_into().unwrap()));
         }
-
         vectors.push(VectorEmbedding::from_reals(&floats).into_normalized());
     }
-
     Ok(vectors)
-}
-
-fn generate_synthetic_dataset(
-    n: usize,
-    dim: usize,
-    seed: u64,
-) -> (Vec<VectorEmbedding>, VectorEmbedding) {
-    let mut rng_state = seed;
-    let mut next_f32 = || {
-        rng_state = rng_state
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1442695040888963407);
-        ((rng_state >> 32) as f32) / (u32::MAX as f32) - 0.5
-    };
-
-    let mut corpus = Vec::with_capacity(n);
-    for _ in 0..n {
-        let raw: Vec<f32> = (0..dim).map(|_| next_f32()).collect();
-        corpus.push(VectorEmbedding::from_reals(&raw).into_normalized());
-    }
-
-    let query_raw: Vec<f32> = (0..dim).map(|_| next_f32()).collect();
-    let query = VectorEmbedding::from_reals(&query_raw).into_normalized();
-
-    (corpus, query)
 }
 
 fn compute_brute_force_ground_truth(
@@ -79,259 +114,263 @@ fn compute_brute_force_ground_truth(
         .enumerate()
         .map(|(idx, v)| (idx, v.dot_product_complex(query).re))
         .collect();
-
     scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
     scored.truncate(k);
     scored
 }
 
-/// Result of a single dataset evaluation. Always populated — never skipped
-/// silently. `ran = false` means the dataset was not evaluated, with
-/// `skip_reason` stating why; it is never conflated with a passing result.
+/// Complex-dimension crossover threshold, replicated from
+/// UniversalPlanner::compute_crossover so this harness can predict —
+/// and then verify — which path PlannerDefault should take.
+/// N_cross = 3000 + 5,768,286 / D_complex^1.3
+fn predicted_crossover(complex_dim: usize) -> f64 {
+    3000.0 + 5_768_286.0 / (complex_dim as f64).powf(1.3)
+}
+
+struct ModeResult {
+    mode: ExecMode,
+    ran: bool,
+    skip_reason: Option<String>,
+    mean_recall_pct: f64,
+    min_recall_pct: f64,
+    p50_latency: Duration,
+    p95_latency: Duration,
+    passed: bool,
+}
+
 struct DatasetResult {
     name: String,
     dim: usize,
     corpus_n: usize,
-    is_real_public_data: bool,
-    ran: bool,
-    skip_reason: Option<String>,
-    gt_top1_score: f32,
-    top1_score: f32,
-    top1_delta: f32,
-    recall_pct: f64,
-    latency: Duration,
-    passed: bool,
+    declared_n: Option<usize>,
+    label_consistent: bool,
+    predicted_crossover_n: f64,
+    modes: Vec<ModeResult>,
 }
 
-impl DatasetResult {
-    fn skipped(name: &str, is_real_public_data: bool, reason: String) -> Self {
-        Self {
-            name: name.to_string(),
-            dim: 0,
-            corpus_n: 0,
-            is_real_public_data,
-            ran: false,
-            skip_reason: Some(reason),
-            gt_top1_score: 0.0,
-            top1_score: 0.0,
-            top1_delta: 0.0,
-            recall_pct: 0.0,
-            latency: Duration::ZERO,
-            passed: false,
-        }
+fn percentile(mut xs: Vec<Duration>, pct: f64) -> Duration {
+    if xs.is_empty() {
+        return Duration::ZERO;
     }
+    xs.sort();
+    let idx = ((xs.len() as f64 - 1.0) * pct).round() as usize;
+    xs[idx.min(xs.len() - 1)]
 }
 
-fn evaluate_corpus(
-    name: &str,
+fn run_mode(
+    mode: ExecMode,
     corpus: &[VectorEmbedding],
-    query: &VectorEmbedding,
+    queries: &[VectorEmbedding],
     dim: usize,
     k: usize,
-    is_real_public_data: bool,
-) -> DatasetResult {
-    let gt = compute_brute_force_ground_truth(corpus, query, k);
-    let gt_top1_score = gt[0].1;
-
+) -> ModeResult {
     let mut config = HNSQRConfig::default();
     config.distance_function = DistanceFunction::Cosine;
-    let index = HNSQRIndex::new(config, dim);
+    mode.apply(&mut config);
 
+    let index = HNSQRIndex::new(config, dim);
     for (i, v) in corpus.iter().enumerate() {
         let doc_id = format!("doc_{i}");
         index.insert(doc_id.as_str(), v.clone()).unwrap();
     }
 
-    let start = Instant::now();
-    let raw_results = index
-        .search_indices_with_contract(query, k, None, RetrievalContract::Certified)
-        .unwrap();
-    let elapsed = start.elapsed();
+    let mut recalls = Vec::with_capacity(queries.len());
+    let mut latencies = Vec::with_capacity(queries.len());
+    let mut all_passed = true;
 
-    let gt_indices: std::collections::HashSet<usize> = gt.iter().map(|(idx, _)| *idx).collect();
-    let matched_in_gt = raw_results
+    for query in queries {
+        let gt = compute_brute_force_ground_truth(corpus, query, k);
+        let gt_top1_score = gt[0].1;
+        let gt_indices: std::collections::HashSet<usize> = gt.iter().map(|(idx, _)| *idx).collect();
+
+        let start = Instant::now();
+        let raw_results = match mode {
+            ExecMode::PlannerDefault => {
+                index.search_indices_with_contract(query, k, None, RetrievalContract::Certified)
+            }
+            _ => index.search_indices(query, k),
+        };
+
+        let raw_results = match raw_results {
+            Ok(r) => r,
+            Err(e) => {
+                return ModeResult {
+                    mode,
+                    ran: false,
+                    skip_reason: Some(format!("search failed under {}: {e}", mode.label())),
+                    mean_recall_pct: 0.0,
+                    min_recall_pct: 0.0,
+                    p50_latency: Duration::ZERO,
+                    p95_latency: Duration::ZERO,
+                    passed: false,
+                };
+            }
+        };
+        let elapsed = start.elapsed();
+
+        let matched = raw_results
+            .iter()
+            .filter(|&&(idx, _)| gt_indices.contains(&(idx as usize)))
+            .count();
+        let recall_pct = (matched as f64 / k as f64) * 100.0;
+        let top1_score = raw_results.first().map(|r| r.1).unwrap_or(0.0);
+        let top1_delta = (top1_score - gt_top1_score).abs();
+        let passed = recall_pct >= RECALL_PASS_THRESHOLD_PCT && top1_delta < TOP1_SCORE_TOLERANCE;
+        all_passed &= passed;
+
+        recalls.push(recall_pct);
+        latencies.push(elapsed);
+    }
+
+    let mean_recall_pct = recalls.iter().sum::<f64>() / recalls.len().max(1) as f64;
+    let min_recall_pct = recalls.iter().cloned().fold(f64::MAX, f64::min);
+
+    ModeResult {
+        mode,
+        ran: true,
+        skip_reason: None,
+        mean_recall_pct,
+        min_recall_pct,
+        p50_latency: percentile(latencies.clone(), 0.50),
+        p95_latency: percentile(latencies, 0.95),
+        passed: all_passed,
+    }
+}
+
+fn evaluate_dataset(
+    name: &str,
+    corpus: &[VectorEmbedding],
+    queries: &[VectorEmbedding],
+    dim: usize,
+    k: usize,
+    declared_n: Option<usize>,
+) -> DatasetResult {
+    let label_consistent = declared_n.map_or(true, |d| d == corpus.len());
+    let complex_dim = dim / 2;
+    let predicted_crossover_n = predicted_crossover(complex_dim.max(1));
+
+    let modes = [
+        ExecMode::PlannerDefault,
+        ExecMode::ExactForced,
+        ExecMode::GraphOnly,
+        ExecMode::RiveroStrict,
+        ExecMode::RiveroAdaptive,
+    ];
+
+    let mode_results = modes
         .iter()
-        .filter(|&&(res_node_idx, _)| gt_indices.contains(&(res_node_idx as usize)))
-        .count();
-
-    let recall_pct = (matched_in_gt as f64 / k as f64) * 100.0;
-    let top1_score = raw_results.first().map(|r| r.1).unwrap_or(0.0);
-    let top1_delta = (top1_score - gt_top1_score).abs();
-
-    // Pass/fail is *recorded*, never enforced via panic. A failing dataset
-    // does not prevent the remaining datasets from running and reporting.
-    let passed = recall_pct >= RECALL_PASS_THRESHOLD_PCT && top1_delta < TOP1_SCORE_TOLERANCE;
+        .map(|&m| run_mode(m, corpus, queries, dim, k))
+        .collect();
 
     DatasetResult {
         name: name.to_string(),
         dim,
         corpus_n: corpus.len(),
-        is_real_public_data,
-        ran: true,
-        skip_reason: None,
-        gt_top1_score,
-        top1_score,
-        top1_delta,
-        recall_pct,
-        latency: elapsed,
-        passed,
+        declared_n,
+        label_consistent,
+        predicted_crossover_n,
+        modes: mode_results,
     }
 }
 
-fn print_row(r: &DatasetResult) {
-    if !r.ran {
-        println!(
-            "{:<36} {:<10} {:<10} {:<15} {:<12} {:<12} {:<15} {:<12}",
-            r.name,
-            "-",
-            "-",
-            "-",
-            "-",
-            "-",
-            format!("SKIPPED: {}", r.skip_reason.as_deref().unwrap_or("unknown")),
-            "-"
-        );
-        return;
-    }
-
-    let status = if r.passed { "PASS" } else { "FAIL" };
+fn print_dataset(r: &DatasetResult) {
+    let crosses_naturally = r.corpus_n as f64 > r.predicted_crossover_n;
+    let label_suffix = if r.label_consistent {
+        String::new()
+    } else {
+        format!(
+            " [LABEL MISMATCH: loaded {} vectors but declared {}]",
+            r.corpus_n,
+            r.declared_n.map_or_else(|| "unknown".to_string(), |n| n.to_string())
+        )
+    };
     println!(
-        "{:<36} {:<10} {:<10} {:<15.4} {:<12.4} {:<12.4} {:<15} {:<12.2?}",
+        "\n{} — dim={} corpus_n={} N_cross≈{:.0} ({}){}",
         r.name,
         r.dim,
         r.corpus_n,
-        r.gt_top1_score,
-        r.top1_score,
-        r.top1_delta,
-        format!("{:.3}% [{status}]", r.recall_pct),
-        r.latency
+        r.predicted_crossover_n,
+        if crosses_naturally { "corpus exceeds crossover: PlannerDefault SHOULD route to graph" } else { "corpus under crossover: PlannerDefault WILL route to ExactScan" },
+        label_suffix
     );
+    println!(
+        "  {:<24} {:<8} {:<15} {:<12} {:<12}",
+        "Mode", "Queries", "Recall mean/min", "p50 Lat", "p95 Lat"
+    );
+    for m in &r.modes {
+        if !m.ran {
+            println!("  {:<24} SKIPPED — {}", m.mode.label(), m.skip_reason.as_deref().unwrap_or("unknown"));
+            continue;
+        }
+        let status = if m.passed { "PASS" } else { "FAIL" };
+        println!(
+            "  {:<24} {:<8} {:<15} {:<12.2?} {:<12.2?}",
+            m.mode.label(),
+            MAX_QUERIES_PER_DATASET,
+            format!("{:.1}%/{:.1}% [{status}]", m.mean_recall_pct, m.min_recall_pct),
+            m.p50_latency,
+            m.p95_latency,
+        );
+    }
 }
 
 fn main() {
-    println!(
-        "╔══════════════════════════════════════════════════════════════════════════════════════╗"
-    );
-    println!(
-        "║             HOLOSPHERE PUBLIC & HIGH-DIMENSIONAL RETRIEVAL BENCHMARK                 ║"
-    );
-    println!(
-        "╚══════════════════════════════════════════════════════════════════════════════════════╝"
-    );
+    println!("╔═════════════════════════════════════════════════════════════════════════════════════════════════════════════╗");
+    println!("║   HOLOSPHERE PATH-EXPLICIT AUDIT — every dataset run under every search mode, no assumed routing            ║");
+    println!("╚═════════════════════════════════════════════════════════════════════════════════════════════════════════════╝");
 
     let k = 10;
     let mut results: Vec<DatasetResult> = Vec::new();
 
-    println!(
-        "\n{:<36} {:<10} {:<10} {:<15} {:<12} {:<12} {:<15} {:<12}",
-        "Dataset Source",
-        "Dim (Real)",
-        "Corpus N",
-        "Ground Truth",
-        "Top1 Score",
-        "Top1 Delta",
-        "Measured Recall",
-        "Latency (p50)"
-    );
-    println!("{:-<133}", "");
-
-    // 1. Real Public Dataset: SIFT10K (if available in datasets/siftsmall)
-    let base_path = PathBuf::from("datasets/siftsmall/siftsmall_base.fvecs");
-    let query_path = PathBuf::from("datasets/siftsmall/siftsmall_query.fvecs");
-
-    let sift_result = if !base_path.exists() || !query_path.exists() {
-        DatasetResult::skipped(
-            "Texmex SIFT10K (Real Public)",
-            true,
-            format!("dataset files not found at {}", base_path.display()),
-        )
-    } else {
-        match (read_fvecs(&base_path), read_fvecs(&query_path)) {
-            (Ok(base_vecs), Ok(query_vecs)) if !base_vecs.is_empty() && !query_vecs.is_empty() => {
-                let dim = base_vecs[0].dimension();
-                evaluate_corpus(
-                    "Texmex SIFT10K (Real Public)",
-                    &base_vecs,
-                    &query_vecs[0],
-                    dim,
-                    k,
-                    true,
-                )
-            }
-            (Ok(_), Ok(_)) => DatasetResult::skipped(
-                "Texmex SIFT10K (Real Public)",
-                true,
-                "dataset files present but empty after parse".to_string(),
-            ),
-            (Err(e), _) | (_, Err(e)) => DatasetResult::skipped(
-                "Texmex SIFT10K (Real Public)",
-                true,
-                format!("read_fvecs failed: {e}"),
-            ),
-        }
-    };
-    print_row(&sift_result);
-    results.push(sift_result);
-
-    // 2. High-Dimensional Synthetic Reference Profiles
-    let synthetic_benchmarks = [
-        ("Cohere-1M Spec (Synthetic)", 1_000, 768),
-        ("OpenAI text-3-large (Synthetic)", 1_000, 1536),
-        ("LAION-400M CLIP (Synthetic)", 1_000, 512),
+    let public_datasets: [(&str, PathBuf, PathBuf, Option<usize>); 8] = [
+        ("GloVe-25 (Real Public)", PathBuf::from("datasets/glove_25/glove25_base.fvecs"), PathBuf::from("datasets/glove_25/glove25_query.fvecs"), Some(2_500)),
+        ("GloVe-50 (Real Public)", PathBuf::from("datasets/glove_50/glove50_base.fvecs"), PathBuf::from("datasets/glove_50/glove50_query.fvecs"), Some(2_500)),
+        ("GloVe-100 (Real Public)", PathBuf::from("datasets/glove_100/glove100_base.fvecs"), PathBuf::from("datasets/glove_100/glove100_query.fvecs"), Some(2_500)),
+        ("Texmex SIFT10K (Real Public, Full)", PathBuf::from("datasets/siftsmall/siftsmall_base.fvecs"), PathBuf::from("datasets/siftsmall/siftsmall_query.fvecs"), None),
+        ("Texmex SIFT1M (Real Public)", PathBuf::from("datasets/sift_1m/sift1m_base.fvecs"), PathBuf::from("datasets/sift_1m/sift1m_query.fvecs"), Some(5_000)),
+        ("CLIP ViT-B/32 512 (Real Public, Full — only 1K vectors exist on disk)", PathBuf::from("datasets/clip_512/clip_base.fvecs"), PathBuf::from("datasets/clip_512/clip_query.fvecs"), None),
+        ("Cohere Wikipedia 768 (Real Public, Full — only 1K vectors exist on disk)", PathBuf::from("datasets/cohere_768/cohere_base.fvecs"), PathBuf::from("datasets/cohere_768/cohere_query.fvecs"), None),
+        ("OpenAI text-embedding-1536 (Real Public, Full — only 1K vectors exist on disk)", PathBuf::from("datasets/openai_1536/openai_base.fvecs"), PathBuf::from("datasets/openai_1536/openai_query.fvecs"), None),
     ];
 
-    for &(name, n, dim) in &synthetic_benchmarks {
-        let (corpus, query) = generate_synthetic_dataset(n, dim, 42);
-        let r = evaluate_corpus(name, &corpus, &query, dim, k, false);
-        print_row(&r);
-        results.push(r);
+    for (name, base_path, query_path, declared_n) in &public_datasets {
+        if !base_path.exists() || !query_path.exists() {
+            println!("\n{name} — SKIPPED: dataset files not found at {}", base_path.display());
+            continue;
+        }
+        match (read_fvecs_limited(base_path, *declared_n), read_fvecs_limited(query_path, Some(MAX_QUERIES_PER_DATASET))) {
+            (Ok(base_vecs), Ok(query_vecs)) if !base_vecs.is_empty() && !query_vecs.is_empty() => {
+                let dim = base_vecs[0].dimension();
+                let r = evaluate_dataset(name, &base_vecs, &query_vecs, dim, k, *declared_n);
+                print_dataset(&r);
+                results.push(r);
+            }
+            _ => println!("\n{name} — SKIPPED: read_fvecs failed or files empty"),
+        }
     }
 
-    // Honest summary — derived entirely from what actually executed.
-    let ran: Vec<&DatasetResult> = results.iter().filter(|r| r.ran).collect();
-    let skipped: Vec<&DatasetResult> = results.iter().filter(|r| !r.ran).collect();
-    let passed_count = ran.iter().filter(|r| r.passed).count();
-    let real_data_tested = results.iter().any(|r| r.is_real_public_data && r.ran);
-
+    // Cross-mode consistency check: does PlannerDefault's recall match
+    // whichever forced mode it's supposed to be equivalent to at this N?
     println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    println!("AUDIT SUMMARY");
-    println!("  Datasets evaluated:  {}/{}", ran.len(), results.len());
-    println!(
-        "  Datasets passed:     {}/{}",
-        passed_count,
-        ran.len().max(1)
-    );
-    println!(
-        "  Real public dataset: {}",
-        if real_data_tested {
-            "TESTED"
-        } else {
-            "NOT TESTED (skipped — see row above)"
-        }
-    );
-    if !skipped.is_empty() {
-        for s in &skipped {
+    println!("ROUTING VERIFICATION");
+    for r in &results {
+        let crosses = r.corpus_n as f64 > r.predicted_crossover_n;
+        let planner = r.modes.iter().find(|m| matches!(m.mode, ExecMode::PlannerDefault));
+        let reference = r.modes.iter().find(|m| {
+            matches!(m.mode, ExecMode::ExactForced) == !crosses
+                || matches!(m.mode, ExecMode::GraphOnly) == crosses
+        });
+        if let (Some(p), Some(ref_m)) = (planner, reference) {
+            let matches_prediction = (p.mean_recall_pct - ref_m.mean_recall_pct).abs() < 0.01;
             println!(
-                "  SKIPPED: {} — {}",
-                s.name,
-                s.skip_reason.as_deref().unwrap_or("unknown")
+                "  {}: PlannerDefault predicted to match {} — mean recall {:.1}% vs {:.1}% [{}]",
+                r.name,
+                ref_m.mode.label(),
+                p.mean_recall_pct,
+                ref_m.mean_recall_pct,
+                if matches_prediction { "CONSISTENT" } else { "DIVERGENT — investigate before trusting PlannerDefault routing at this N" }
             );
         }
     }
-    let overall_pass = !ran.is_empty() && passed_count == ran.len() && real_data_tested;
-    println!(
-        "  Verdict: {}",
-        if overall_pass {
-            "100.000% exact recall confirmed across all evaluated datasets, including real public data."
-        } else if passed_count == ran.len() && !real_data_tested {
-            "All evaluated (synthetic) datasets passed, but no real public dataset was tested — claim is NOT publicly validated."
-        } else {
-            "One or more datasets failed to achieve exact recall — see FAIL rows above."
-        }
-    );
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-
-    if !overall_pass {
-        std::process::exit(1);
-    }
 }

@@ -205,6 +205,12 @@ name = "public_dataset_benchmark"
 harness = false
 test = false
 
+[[bench]]
+name = "full_scale_public_dataset_benchmark"
+harness = false
+test = false
+
+
 [profile.dev]
 incremental = false
 lto = false

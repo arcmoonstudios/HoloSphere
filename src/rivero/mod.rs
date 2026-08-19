@@ -576,14 +576,15 @@ impl RiveroConfidence {
         };
 
         // Balanced Composite Confidence
-        // 25% Territorial Consensus + 50% Semantic Hermitian Metrics + 25% Margins & Dependencies
+        // 25% Territorial Consensus + 45% Semantic Hermitian Metrics + 30% Margins & Dependencies
         let mut score = 0.10 * vote_concentration
             + 0.10 * vote_margin
             + 0.05 * vote_score_concordance
-            + 0.35 * semantic_quality
+            + 0.30 * semantic_quality
             + 0.15 * topk_separation
             + 0.10 * (1.0 - witness_dependency * 0.5)
-            + 0.15 * (top1_margin.min(0.02) / 0.02);
+            + 0.10 * (top1_margin.min(0.02) / 0.02)
+            + 0.10 * (topk_tail_margin.min(0.02) / 0.02);
 
         if let Some(s) = cross_stage_stability {
             score = score * 0.5 + s * 0.5;
@@ -592,14 +593,16 @@ impl RiveroConfidence {
         let score = score.clamp(0.0, 1.0);
         let threshold = match profile {
             RiveroProfile::Fast => 0.42,
-            RiveroProfile::Balanced => 0.38,
-            RiveroProfile::Strict => 0.32,
+            RiveroProfile::Balanced => 0.36,
+            RiveroProfile::Strict => 0.28,
         };
 
         let escalation_recommended = score < threshold
             || scored.len() < k
-            || top_fidelity < 0.35
-            || (cross_stage_stability.is_some_and(|s| s < 0.50));
+            || top_fidelity < 0.20
+            || (witness_dependency > 0.50)
+            || (scored.len() > k && topk_tail_margin < 0.0005)
+            || (cross_stage_stability.is_some_and(|s| s < 0.80));
 
         Self {
             score,
@@ -721,21 +724,22 @@ impl RiveroCompiler {
 
         match self.config.projection {
             RiveroProjectionMode::GlobalMix => {
-                for (index, value) in data.iter().copied().take(limit).enumerate() {
-                    if !value.re.is_finite() || !value.im.is_finite() {
-                        continue;
-                    }
-                    let p_row = &self.phase_seeds[index];
-                    for foundation in 0..foundation_count {
-                        let mixed = p_row[foundation];
+                for foundation in 0..foundation_count {
+                    let mut ref_acc = Complex32::new(0.0, 0.0);
+                    for (index, &value) in data[..limit].iter().enumerate() {
+                        if !value.re.is_finite() || !value.im.is_finite() {
+                            continue;
+                        }
+                        let mixed = self.phase_seeds[index][foundation];
                         let weighted = match (mixed >> 20) & 3 {
                             0 => value,
                             1 => -value,
                             2 => Complex32::new(-value.im, value.re),
                             _ => Complex32::new(value.im, -value.re),
                         };
-                        references[foundation] += weighted;
+                        ref_acc += weighted;
                     }
+                    references[foundation] = ref_acc;
                 }
 
                 let fallback_rotation = canonical_phase_rotation(&data[..limit]);
@@ -747,20 +751,21 @@ impl RiveroCompiler {
                     }
                 }
 
-                for (index, value) in data.iter().copied().take(limit).enumerate() {
-                    if !value.re.is_finite() || !value.im.is_finite() {
-                        continue;
-                    }
-                    let r_row = &self.rot_seeds[index];
-                    for foundation in 0..foundation_count {
-                        let canonical = value * rotations[foundation];
-                        let mixed = r_row[foundation];
+                for foundation in 0..foundation_count {
+                    let rot = rotations[foundation];
+                    let f_arr = &mut foundations[foundation];
+                    for (index, &value) in data[..limit].iter().enumerate() {
+                        if !value.re.is_finite() || !value.im.is_finite() {
+                            continue;
+                        }
+                        let canonical = value * rot;
+                        let mixed = self.rot_seeds[index][foundation];
                         let re_lane = (mixed & 7) as usize;
                         let im_lane = ((mixed >> 8) & 7) as usize;
                         let re_sign = if mixed & (1 << 16) == 0 { 1.0 } else { -1.0 };
                         let im_sign = if mixed & (1 << 17) == 0 { 1.0 } else { -1.0 };
-                        foundations[foundation][re_lane] += canonical.re * re_sign;
-                        foundations[foundation][im_lane] += canonical.im * im_sign;
+                        f_arr[re_lane] += canonical.re * re_sign;
+                        f_arr[im_lane] += canonical.im * im_sign;
                     }
                 }
             }
@@ -1870,7 +1875,29 @@ const fn foundation_seed(foundation: usize) -> u64 {
     splitmix64(FOUNDATION_SEED ^ (foundation as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15))
 }
 
-#[inline]
+static SIMHASH_MASKS: LazyLock<[[u8; RIVERO_SIMHASH_BITS]; RIVERO_MAX_FOUNDATIONS]> =
+    LazyLock::new(|| {
+        let mut table = [[0u8; RIVERO_SIMHASH_BITS]; RIVERO_MAX_FOUNDATIONS];
+        for foundation in 0..RIVERO_MAX_FOUNDATIONS {
+            for bit in 0..RIVERO_SIMHASH_BITS {
+                let bit_seed = splitmix64(
+                    foundation_seed(foundation) ^ (bit as u64).wrapping_mul(0xa076_1d64_78bd_642f),
+                );
+                let mut mask = 0u8;
+                for lane in 0..8 {
+                    let lane_seed =
+                        splitmix64(bit_seed ^ (lane as u64).wrapping_mul(0xe703_7ed1_a0b4_28db));
+                    if lane_seed & 1 != 0 {
+                        mask |= 1 << lane;
+                    }
+                }
+                table[foundation][bit] = mask;
+            }
+        }
+        table
+    });
+
+#[inline(always)]
 pub(crate) fn simhash_signature(
     coords: &[f32; 8],
     foundation: usize,
@@ -1878,25 +1905,26 @@ pub(crate) fn simhash_signature(
     let mut signature = 0u16;
     let mut margin = 0.0f32;
     let mut margins = [0.0f32; RIVERO_SIMHASH_BITS];
-    for (bit, bit_margin) in margins.iter_mut().enumerate() {
-        let bit_seed = splitmix64(
-            foundation_seed(foundation) ^ (bit as u64).wrapping_mul(0xa076_1d64_78bd_642f),
-        );
-        let mut projection = 0.0f32;
-        for (lane, coordinate) in coords.iter().copied().enumerate() {
-            let lane_seed =
-                splitmix64(bit_seed ^ (lane as u64).wrapping_mul(0xe703_7ed1_a0b4_28db));
-            projection += if lane_seed & 1 == 0 {
-                coordinate
-            } else {
-                -coordinate
-            };
-        }
+    let masks = &SIMHASH_MASKS[foundation];
+
+    for bit in 0..RIVERO_SIMHASH_BITS {
+        let mask = masks[bit];
+        let p0 = if mask & 1 == 0 { coords[0] } else { -coords[0] };
+        let p1 = if mask & 2 == 0 { coords[1] } else { -coords[1] };
+        let p2 = if mask & 4 == 0 { coords[2] } else { -coords[2] };
+        let p3 = if mask & 8 == 0 { coords[3] } else { -coords[3] };
+        let p4 = if mask & 16 == 0 { coords[4] } else { -coords[4] };
+        let p5 = if mask & 32 == 0 { coords[5] } else { -coords[5] };
+        let p6 = if mask & 64 == 0 { coords[6] } else { -coords[6] };
+        let p7 = if mask & 128 == 0 { coords[7] } else { -coords[7] };
+        let projection = p0 + p1 + p2 + p3 + p4 + p5 + p6 + p7;
+
         if projection >= 0.0 {
             signature |= 1u16 << bit;
         }
-        *bit_margin = projection.abs();
-        margin += *bit_margin;
+        let bit_abs = projection.abs();
+        margins[bit] = bit_abs;
+        margin += bit_abs;
     }
     (signature, margin, margins)
 }
@@ -1948,7 +1976,12 @@ pub(crate) fn simhash_probe_signatures(
         }
     }
     debug_assert_eq!(cursor, RIVERO_SIMHASH_PROBE_POOL);
-    pool.sort_unstable_by(|lhs, rhs| lhs.0.total_cmp(&rhs.0).then_with(|| lhs.1.cmp(&rhs.1)));
+    pool.select_nth_unstable_by(RIVERO_SIMHASH_BUILD_PROBES - 1, |lhs, rhs| {
+        lhs.0.total_cmp(&rhs.0).then_with(|| lhs.1.cmp(&rhs.1))
+    });
+    pool[..RIVERO_SIMHASH_BUILD_PROBES].sort_unstable_by(|lhs, rhs| {
+        lhs.0.total_cmp(&rhs.0).then_with(|| lhs.1.cmp(&rhs.1))
+    });
 
     let mut probes = [0u16; RIVERO_SIMHASH_BUILD_PROBES];
     for (probe, &(_, mask)) in probes.iter_mut().zip(pool.iter()) {

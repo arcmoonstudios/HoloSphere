@@ -3422,17 +3422,18 @@ impl HNSQRIndex {
 
         let query_data = query.complex_data();
         let query_norm_sq = query.norm_squared();
-        let (witness_degree, witness_seed_limit, witness_second_seed_limit) = {
+        let (witness_degree, witness_seed_limit, witness_second_seed_limit, dist_fn) = {
             let cfg = self.config.read();
             (
                 rivero_witness::bounded_degree(cfg.rivero_witness_degree),
                 rivero_witness::bounded_seeds(cfg.rivero_witness_seeds),
                 rivero_witness::bounded_seeds(cfg.rivero_witness_second_seeds),
+                cfg.distance_function,
             )
         };
 
         let mut route_state = AdaptiveRouteState::new();
-        let mut exact_scores: HashMap<NodeIndex, SimilarityScore> = HashMap::with_capacity(512);
+        let mut all_scored: Vec<(NodeIndex, SimilarityScore)> = Vec::with_capacity(1024);
         let mut previous_topk: Vec<(NodeIndex, SimilarityScore)> = Vec::new();
         let mut current_profile = RiveroProfile::Fast;
         let initial_profile = current_profile;
@@ -3442,24 +3443,31 @@ impl HNSQRIndex {
         let mut latest_rivero_diag = RiveroSearchDiagnostics::default();
         let mut latest_results: Vec<(NodeIndex, SimilarityScore)> = Vec::new();
 
-        loop {
-            stages_executed += 1;
-            route_state.expand_to_profile(&self.rivero_index, &address, current_profile);
-            let target_config = current_profile.config();
-            let selected_cap = target_config.query_candidate_cap;
+        THREAD_VISITED_POOL.with(|pool| {
+            let mut visited = pool.borrow_mut();
+            let epoch = visited.next_epoch(self.arena.len());
 
-            let candidates: Vec<NodeIndex> = route_state
-                .current_voted
-                .iter()
-                .take(selected_cap)
-                .map(|candidate| candidate.slot)
-                .collect();
+            loop {
+                stages_executed += 1;
+                route_state.expand_to_profile(&self.rivero_index, &address, current_profile);
+                let target_config = current_profile.config();
+                let selected_cap = target_config.query_candidate_cap;
 
-            let mut non_live_rejections = 0usize;
-            let mut filter_rejections = 0usize;
+                let candidates: Vec<NodeIndex> = route_state
+                    .current_voted
+                    .iter()
+                    .take(selected_cap)
+                    .map(|candidate| candidate.slot)
+                    .collect();
 
-            for &cand in &candidates {
-                if let std::collections::hash_map::Entry::Vacant(e) = exact_scores.entry(cand) {
+                let mut non_live_rejections = 0usize;
+                let mut filter_rejections = 0usize;
+
+                for &cand in &candidates {
+                    if visited.is_visited(cand, epoch) {
+                        continue;
+                    }
+                    visited.mark_visited(cand, epoch);
                     if !self.arena.is_live(cand) {
                         non_live_rejections += 1;
                         continue;
@@ -3470,175 +3478,183 @@ impl HNSQRIndex {
                     }
                     let v = self.arena.get_vector_slice(cand);
                     let norm_sq = self.arena.get_norm_squared(cand);
-                    let score = self.similarity_score_slices(query_data, v, query_norm_sq, norm_sq);
-                    e.insert(score);
+                    let score = self.similarity_score_slices_with_metric(
+                        query_data,
+                        v,
+                        query_norm_sq,
+                        norm_sq,
+                        dist_fn,
+                    );
+                    all_scored.push((cand, score));
+                }
+
+                // Witness expansion
+                all_scored.sort_unstable_by(|lhs, rhs| {
+                    rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
+                });
+                let mut seeds: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_SEEDS]> = SmallVec::new();
+                seeds.extend(all_scored.iter().take(witness_seed_limit).map(|c| c.0));
+
+                let mut witness_candidates_added = 0usize;
+                let mut first_hop_scored: SmallVec<
+                    [(NodeIndex, SimilarityScore);
+                        RIVERO_WITNESS_MAX_DEGREE * RIVERO_WITNESS_MAX_SEEDS],
+                > = SmallVec::new();
+                let mut connections: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_DEGREE]> = SmallVec::new();
+                let mut witness_edges_scanned = 0usize;
+
+                for &seed in &seeds {
+                    self.copy_rivero_witness_connections(seed, true, witness_degree, &mut connections);
+                    for &index in &connections {
+                        witness_edges_scanned += 1;
+                        if visited.is_visited(index, epoch) {
+                            continue;
+                        }
+                        visited.mark_visited(index, epoch);
+                        witness_candidates_added += 1;
+                        if !self.arena.is_live(index) {
+                            non_live_rejections += 1;
+                            continue;
+                        }
+                        if filter_mask.is_some_and(|m| !m.contains(index)) {
+                            filter_rejections += 1;
+                            continue;
+                        }
+                        let v = self.arena.get_vector_slice(index);
+                        let norm_sq = self.arena.get_norm_squared(index);
+                        let score = self.similarity_score_slices_with_metric(
+                            query_data,
+                            v,
+                            query_norm_sq,
+                            norm_sq,
+                            dist_fn,
+                        );
+                        let candidate = (index, score);
+                        all_scored.push(candidate);
+                        first_hop_scored.push(candidate);
+                    }
+                }
+
+                first_hop_scored.sort_unstable_by(|lhs, rhs| {
+                    rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
+                });
+
+                let mut second_seeds: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_SEEDS]> = SmallVec::new();
+                second_seeds.extend(
+                    first_hop_scored
+                        .iter()
+                        .take(witness_second_seed_limit)
+                        .map(|c| c.0),
+                );
+
+                for &seed in &second_seeds {
+                    self.copy_rivero_witness_connections(seed, true, witness_degree, &mut connections);
+                    for &index in &connections {
+                        witness_edges_scanned += 1;
+                        if visited.is_visited(index, epoch) {
+                            continue;
+                        }
+                        visited.mark_visited(index, epoch);
+                        witness_candidates_added += 1;
+                        if !self.arena.is_live(index) {
+                            non_live_rejections += 1;
+                            continue;
+                        }
+                        if filter_mask.is_some_and(|m| !m.contains(index)) {
+                            filter_rejections += 1;
+                            continue;
+                        }
+                        let v = self.arena.get_vector_slice(index);
+                        let norm_sq = self.arena.get_norm_squared(index);
+                        let score = self.similarity_score_slices_with_metric(
+                            query_data,
+                            v,
+                            query_norm_sq,
+                            norm_sq,
+                            dist_fn,
+                        );
+                        all_scored.push((index, score));
+                    }
+                }
+
+                all_scored.sort_unstable_by(|lhs, rhs| {
+                    rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
+                });
+
+                let returned_limit = k.min(all_scored.len());
+                let current_topk: Vec<(NodeIndex, SimilarityScore)> =
+                    all_scored[..returned_limit].to_vec();
+
+                // Cross-stage stability calculation
+                let cross_stage_stability = if !previous_topk.is_empty() && k > 0 {
+                    let current_set: HashSet<NodeIndex> =
+                        current_topk.iter().take(k).map(|c| c.0).collect();
+                    let hits = previous_topk
+                        .iter()
+                        .take(k)
+                        .filter(|c| current_set.contains(&c.0))
+                        .count();
+                    Some((hits as f32) / (k as f32))
+                } else {
+                    None
+                };
+
+                let conf = RiveroConfidence::evaluate(
+                    &route_state.current_voted,
+                    &route_state.current_diagnostics,
+                    &all_scored,
+                    witness_candidates_added,
+                    k,
+                    cross_stage_stability,
+                    current_profile,
+                );
+
+                if stages_executed == 1 {
+                    confidence_initial = conf.score;
+                }
+                latest_confidence = conf;
+                latest_results = current_topk.clone();
+
+                latest_rivero_diag = RiveroSearchDiagnostics {
+                    cells_probed: route_state.cells_visited,
+                    resident_reads: route_state.cumulative_reads,
+                    resident_scans: route_state.cumulative_scans,
+                    candidate_read_bound: target_config.candidate_read_bound(),
+                    resident_scan_bound: target_config.resident_scan_bound(),
+                    unique_candidates: all_scored.len(),
+                    raw_unique_candidates: route_state.current_diagnostics.raw_unique_candidates,
+                    route_candidates_selected: candidates.len(),
+                    raw_unique_candidate_bound: target_config.candidate_read_bound(),
+                    selected_candidate_bound: selected_cap,
+                    non_live_rejections,
+                    filter_rejections,
+                    exact_score_evaluations: all_scored.len(),
+                    witness_seeds: seeds.len(),
+                    witness_second_hop_seeds: second_seeds.len(),
+                    witness_edges_scanned,
+                    witness_candidates_added,
+                    witness_edge_scan_bound: rivero_witness::witness_two_hop_edge_scan_bound(
+                        witness_seed_limit,
+                        witness_second_seed_limit,
+                        witness_degree,
+                    ),
+                    results_returned: current_topk.len(),
+                    fallback_used: false,
+                };
+
+                // Check stopping condition
+                if !conf.escalation_recommended || current_profile == RiveroProfile::Strict {
+                    break;
+                }
+
+                previous_topk = current_topk;
+                if let Some(next_prof) = current_profile.next_escalation() {
+                    current_profile = next_prof;
+                } else {
+                    break;
                 }
             }
-
-            // Witness expansion
-            let mut seeds: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_SEEDS]> = SmallVec::new();
-            // We use a temporary sort here only for seeding the witness
-            let mut temp_scored: Vec<(NodeIndex, SimilarityScore)> = candidates
-                .iter()
-                .filter_map(|&cand| exact_scores.get(&cand).map(|&score| (cand, score)))
-                .collect();
-            temp_scored.sort_unstable_by(|lhs, rhs| {
-                rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
-            });
-            seeds.extend(temp_scored.iter().take(witness_seed_limit).map(|c| c.0));
-
-            let mut witness_candidates: SmallVec<
-                [NodeIndex; RIVERO_WITNESS_MAX_DEGREE * RIVERO_WITNESS_MAX_SEEDS * 2],
-            > = SmallVec::new();
-            let mut first_hop_scored: SmallVec<
-                [(NodeIndex, SimilarityScore);
-                    RIVERO_WITNESS_MAX_DEGREE * RIVERO_WITNESS_MAX_SEEDS],
-            > = SmallVec::new();
-            let mut connections: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_DEGREE]> = SmallVec::new();
-            let mut witness_edges_scanned = 0usize;
-
-            for &seed in &seeds {
-                self.copy_rivero_witness_connections(seed, true, witness_degree, &mut connections);
-                for &index in &connections {
-                    witness_edges_scanned += 1;
-                    if exact_scores.contains_key(&index) || witness_candidates.contains(&index) {
-                        continue;
-                    }
-                    witness_candidates.push(index);
-                    if !self.arena.is_live(index) {
-                        non_live_rejections += 1;
-                        continue;
-                    }
-                    if filter_mask.is_some_and(|m| !m.contains(index)) {
-                        filter_rejections += 1;
-                        continue;
-                    }
-                    let v = self.arena.get_vector_slice(index);
-                    let norm_sq = self.arena.get_norm_squared(index);
-                    let score = self.similarity_score_slices(query_data, v, query_norm_sq, norm_sq);
-                    exact_scores.insert(index, score);
-                    first_hop_scored.push((index, score));
-                }
-            }
-
-            first_hop_scored.sort_unstable_by(|lhs, rhs| {
-                rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
-            });
-
-            let mut second_seeds: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_SEEDS]> = SmallVec::new();
-            second_seeds.extend(
-                first_hop_scored
-                    .iter()
-                    .take(witness_second_seed_limit)
-                    .map(|c| c.0),
-            );
-
-            for &seed in &second_seeds {
-                self.copy_rivero_witness_connections(seed, true, witness_degree, &mut connections);
-                for &index in &connections {
-                    witness_edges_scanned += 1;
-                    if exact_scores.contains_key(&index) || witness_candidates.contains(&index) {
-                        continue;
-                    }
-                    witness_candidates.push(index);
-                    if !self.arena.is_live(index) {
-                        non_live_rejections += 1;
-                        continue;
-                    }
-                    if filter_mask.is_some_and(|m| !m.contains(index)) {
-                        filter_rejections += 1;
-                        continue;
-                    }
-                    let v = self.arena.get_vector_slice(index);
-                    let norm_sq = self.arena.get_norm_squared(index);
-                    let score = self.similarity_score_slices(query_data, v, query_norm_sq, norm_sq);
-                    exact_scores.insert(index, score);
-                }
-            }
-
-            // Materialize all accumulated exact_scores into current top-k ranking
-            let mut all_scored: Vec<(NodeIndex, SimilarityScore)> = exact_scores
-                .iter()
-                .map(|(&idx, &score)| (idx, score))
-                .collect();
-
-            all_scored.sort_unstable_by(|lhs, rhs| {
-                rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
-            });
-
-            let returned_limit = k.min(all_scored.len());
-            let current_topk: Vec<(NodeIndex, SimilarityScore)> =
-                all_scored[..returned_limit].to_vec();
-
-            // Cross-stage stability calculation
-            let cross_stage_stability = if !previous_topk.is_empty() && k > 0 {
-                let current_set: HashSet<NodeIndex> =
-                    current_topk.iter().take(k).map(|c| c.0).collect();
-                let hits = previous_topk
-                    .iter()
-                    .take(k)
-                    .filter(|c| current_set.contains(&c.0))
-                    .count();
-                Some((hits as f32) / (k as f32))
-            } else {
-                None
-            };
-
-            let conf = RiveroConfidence::evaluate(
-                &route_state.current_voted,
-                &route_state.current_diagnostics,
-                &all_scored,
-                witness_candidates.len(),
-                k,
-                cross_stage_stability,
-                current_profile,
-            );
-
-            if stages_executed == 1 {
-                confidence_initial = conf.score;
-            }
-            latest_confidence = conf;
-            latest_results = current_topk.clone();
-
-            latest_rivero_diag = RiveroSearchDiagnostics {
-                cells_probed: route_state.cells_visited,
-                resident_reads: route_state.cumulative_reads,
-                resident_scans: route_state.cumulative_scans,
-                candidate_read_bound: target_config.candidate_read_bound(),
-                resident_scan_bound: target_config.resident_scan_bound(),
-                unique_candidates: exact_scores.len(),
-                raw_unique_candidates: route_state.current_diagnostics.raw_unique_candidates,
-                route_candidates_selected: candidates.len(),
-                raw_unique_candidate_bound: target_config.candidate_read_bound(),
-                selected_candidate_bound: selected_cap,
-                non_live_rejections,
-                filter_rejections,
-                exact_score_evaluations: exact_scores.len(),
-                witness_seeds: seeds.len(),
-                witness_second_hop_seeds: second_seeds.len(),
-                witness_edges_scanned,
-                witness_candidates_added: witness_candidates.len(),
-                witness_edge_scan_bound: rivero_witness::witness_two_hop_edge_scan_bound(
-                    witness_seed_limit,
-                    witness_second_seed_limit,
-                    witness_degree,
-                ),
-                results_returned: current_topk.len(),
-                fallback_used: false,
-            };
-
-            // Check stopping condition
-            if !conf.escalation_recommended || current_profile == RiveroProfile::Strict {
-                break;
-            }
-
-            previous_topk = current_topk;
-            if let Some(next_prof) = current_profile.next_escalation() {
-                current_profile = next_prof;
-            } else {
-                break;
-            }
-        }
+        });
 
         let mut graph_fallback_used = false;
         if latest_confidence.escalation_recommended
@@ -3663,7 +3679,7 @@ impl HNSQRIndex {
             escalated: stages_executed > 1,
             graph_fallback_used,
             cumulative_resident_scans: route_state.cumulative_scans,
-            cumulative_exact_scores: exact_scores.len(),
+            cumulative_exact_scores: all_scored.len(),
             confidence: latest_confidence,
             rivero: latest_rivero_diag,
         };
@@ -4070,20 +4086,21 @@ impl HNSQRIndex {
         self.validate_rivero_query(query, address)?;
         let query_data = query.complex_data();
         let query_norm_sq = query.norm_squared();
-        let (witness_degree, witness_seed_limit, witness_second_seed_limit, strict_rivero) = {
+        let (witness_degree, witness_seed_limit, witness_second_seed_limit, strict_rivero, dist_fn) = {
             let config = self.config.read();
             (
                 rivero_witness::bounded_degree(config.rivero_witness_degree),
                 rivero_witness::bounded_seeds(config.rivero_witness_seeds),
                 rivero_witness::bounded_seeds(config.rivero_witness_second_seeds),
                 !config.rivero_fallback_on_underfill,
+                config.distance_function,
             )
         };
 
         Ok(self
             .rivero_index
             .with_candidates_config(address, rivero_config, |candidates, route| {
-                let mut scored = Vec::with_capacity(candidates.len());
+                let mut scored = Vec::with_capacity(candidates.len() + witness_seed_limit * witness_degree * 2);
                 let mut diagnostics = RiveroSearchDiagnostics {
                     cells_probed: route.cells_probed,
                     resident_reads: route.resident_reads,
@@ -4102,117 +4119,13 @@ impl HNSQRIndex {
                     ),
                     ..RiveroSearchDiagnostics::default()
                 };
-                for &index in candidates {
-                    if !self.arena.is_live(index) {
-                        diagnostics.non_live_rejections += 1;
-                        continue;
-                    }
-                    if filter_mask.is_some_and(|mask| !mask.contains(index)) {
-                        diagnostics.filter_rejections += 1;
-                        continue;
-                    }
-                    let vector = self.arena.get_vector_slice(index);
-                    let norm_sq = self.arena.get_norm_squared(index);
-                    diagnostics.exact_score_evaluations += 1;
-                    scored.push((
-                        index,
-                        self.similarity_score_slices(query_data, vector, query_norm_sq, norm_sq),
-                    ));
-                }
 
-                scored.sort_unstable_by(|lhs, rhs| {
-                    rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
-                });
-                let mut seeds: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_SEEDS]> = SmallVec::new();
-                seeds.extend(
-                    scored
-                        .iter()
-                        .take(witness_seed_limit)
-                        .map(|candidate| candidate.0),
-                );
-                diagnostics.witness_seeds = seeds.len();
+                THREAD_VISITED_POOL.with(|pool| {
+                    let mut visited = pool.borrow_mut();
+                    let epoch = visited.next_epoch(self.arena.len());
 
-                let mut witness_candidates: SmallVec<
-                    [NodeIndex; RIVERO_WITNESS_MAX_DEGREE * RIVERO_WITNESS_MAX_SEEDS * 2],
-                > = SmallVec::new();
-                let mut first_hop_scored: SmallVec<
-                    [(NodeIndex, SimilarityScore);
-                        RIVERO_WITNESS_MAX_DEGREE * RIVERO_WITNESS_MAX_SEEDS],
-                > = SmallVec::new();
-                let mut connections: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_DEGREE]> =
-                    SmallVec::new();
-                for seed in seeds {
-                    self.copy_rivero_witness_connections(
-                        seed,
-                        strict_rivero,
-                        witness_degree,
-                        &mut connections,
-                    );
-                    for &index in &connections {
-                        diagnostics.witness_edges_scanned += 1;
-                        if candidates.binary_search(&index).is_ok()
-                            || witness_candidates.contains(&index)
-                        {
-                            continue;
-                        }
-                        witness_candidates.push(index);
-                        diagnostics.witness_candidates_added += 1;
-                        diagnostics.unique_candidates += 1;
-                        if !self.arena.is_live(index) {
-                            diagnostics.non_live_rejections += 1;
-                            continue;
-                        }
-                        if filter_mask.is_some_and(|mask| !mask.contains(index)) {
-                            diagnostics.filter_rejections += 1;
-                            continue;
-                        }
-                        let vector = self.arena.get_vector_slice(index);
-                        let norm_sq = self.arena.get_norm_squared(index);
-                        diagnostics.exact_score_evaluations += 1;
-                        let candidate = (
-                            index,
-                            self.similarity_score_slices(
-                                query_data,
-                                vector,
-                                query_norm_sq,
-                                norm_sq,
-                            ),
-                        );
-                        scored.push(candidate);
-                        first_hop_scored.push(candidate);
-                    }
-                }
-
-                first_hop_scored.sort_unstable_by(|lhs, rhs| {
-                    rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
-                });
-                let mut second_seeds: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_SEEDS]> =
-                    SmallVec::new();
-                second_seeds.extend(
-                    first_hop_scored
-                        .iter()
-                        .take(witness_second_seed_limit)
-                        .map(|candidate| candidate.0),
-                );
-                diagnostics.witness_second_hop_seeds = second_seeds.len();
-
-                for seed in second_seeds {
-                    self.copy_rivero_witness_connections(
-                        seed,
-                        strict_rivero,
-                        witness_degree,
-                        &mut connections,
-                    );
-                    for &index in &connections {
-                        diagnostics.witness_edges_scanned += 1;
-                        if candidates.binary_search(&index).is_ok()
-                            || witness_candidates.contains(&index)
-                        {
-                            continue;
-                        }
-                        witness_candidates.push(index);
-                        diagnostics.witness_candidates_added += 1;
-                        diagnostics.unique_candidates += 1;
+                    for &index in candidates {
+                        visited.mark_visited(index, epoch);
                         if !self.arena.is_live(index) {
                             diagnostics.non_live_rejections += 1;
                             continue;
@@ -4226,34 +4139,149 @@ impl HNSQRIndex {
                         diagnostics.exact_score_evaluations += 1;
                         scored.push((
                             index,
-                            self.similarity_score_slices(
+                            self.similarity_score_slices_with_metric(
                                 query_data,
                                 vector,
                                 query_norm_sq,
                                 norm_sq,
+                                dist_fn,
                             ),
                         ));
                     }
-                }
 
-                debug_assert!(
-                    diagnostics.witness_edges_scanned <= diagnostics.witness_edge_scan_bound
-                );
-                debug_assert!(
-                    diagnostics.witness_candidates_added <= diagnostics.witness_edges_scanned
-                );
-                scored.sort_unstable_by(|lhs, rhs| {
-                    rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
-                });
-                scored.truncate(k);
-                diagnostics.results_returned = scored.len();
-                debug_assert_eq!(
-                    diagnostics.exact_score_evaluations
-                        + diagnostics.non_live_rejections
-                        + diagnostics.filter_rejections,
-                    diagnostics.unique_candidates
-                );
-                (scored, diagnostics)
+                    scored.sort_unstable_by(|lhs, rhs| {
+                        rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
+                    });
+                    let mut seeds: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_SEEDS]> = SmallVec::new();
+                    seeds.extend(
+                        scored
+                            .iter()
+                            .take(witness_seed_limit)
+                            .map(|candidate| candidate.0),
+                    );
+                    diagnostics.witness_seeds = seeds.len();
+
+                    let mut first_hop_scored: SmallVec<
+                        [(NodeIndex, SimilarityScore);
+                            RIVERO_WITNESS_MAX_DEGREE * RIVERO_WITNESS_MAX_SEEDS],
+                    > = SmallVec::new();
+                    let mut connections: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_DEGREE]> =
+                        SmallVec::new();
+                    for seed in seeds {
+                        self.copy_rivero_witness_connections(
+                            seed,
+                            strict_rivero,
+                            witness_degree,
+                            &mut connections,
+                        );
+                        for &index in &connections {
+                            diagnostics.witness_edges_scanned += 1;
+                            if visited.is_visited(index, epoch) {
+                                continue;
+                            }
+                            visited.mark_visited(index, epoch);
+                            diagnostics.witness_candidates_added += 1;
+                            diagnostics.unique_candidates += 1;
+                            if !self.arena.is_live(index) {
+                                diagnostics.non_live_rejections += 1;
+                                continue;
+                            }
+                            if filter_mask.is_some_and(|mask| !mask.contains(index)) {
+                                diagnostics.filter_rejections += 1;
+                                continue;
+                            }
+                            let vector = self.arena.get_vector_slice(index);
+                            let norm_sq = self.arena.get_norm_squared(index);
+                            diagnostics.exact_score_evaluations += 1;
+                            let score = self.similarity_score_slices_with_metric(
+                                query_data,
+                                vector,
+                                query_norm_sq,
+                                norm_sq,
+                                dist_fn,
+                            );
+                            let candidate = (index, score);
+                            scored.push(candidate);
+                            first_hop_scored.push(candidate);
+                        }
+                    }
+
+                    first_hop_scored.sort_unstable_by(|lhs, rhs| {
+                        rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
+                    });
+                    let mut second_seeds: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_SEEDS]> =
+                        SmallVec::new();
+                    second_seeds.extend(
+                        first_hop_scored
+                            .iter()
+                            .take(witness_second_seed_limit)
+                            .map(|candidate| candidate.0),
+                    );
+                    diagnostics.witness_second_hop_seeds = second_seeds.len();
+
+                    for seed in second_seeds {
+                        self.copy_rivero_witness_connections(
+                            seed,
+                            strict_rivero,
+                            witness_degree,
+                            &mut connections,
+                        );
+                        for &index in &connections {
+                            diagnostics.witness_edges_scanned += 1;
+                            if visited.is_visited(index, epoch) {
+                                continue;
+                            }
+                            visited.mark_visited(index, epoch);
+                            diagnostics.witness_candidates_added += 1;
+                            diagnostics.unique_candidates += 1;
+                            if !self.arena.is_live(index) {
+                                diagnostics.non_live_rejections += 1;
+                                continue;
+                            }
+                            if filter_mask.is_some_and(|mask| !mask.contains(index)) {
+                                diagnostics.filter_rejections += 1;
+                                continue;
+                            }
+                            let vector = self.arena.get_vector_slice(index);
+                            let norm_sq = self.arena.get_norm_squared(index);
+                            diagnostics.exact_score_evaluations += 1;
+                            scored.push((
+                                index,
+                                self.similarity_score_slices_with_metric(
+                                    query_data,
+                                    vector,
+                                    query_norm_sq,
+                                    norm_sq,
+                                    dist_fn,
+                                ),
+                            ));
+                        }
+                    }
+
+                    debug_assert!(
+                        diagnostics.witness_edges_scanned <= diagnostics.witness_edge_scan_bound
+                    );
+                    debug_assert!(
+                        diagnostics.witness_candidates_added <= diagnostics.witness_edges_scanned
+                    );
+                    if scored.len() > k {
+                        scored.select_nth_unstable_by(k - 1, |lhs, rhs| {
+                            rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
+                        });
+                        scored.truncate(k);
+                    }
+                    scored.sort_unstable_by(|lhs, rhs| {
+                        rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
+                    });
+                    diagnostics.results_returned = scored.len();
+                    debug_assert_eq!(
+                        diagnostics.exact_score_evaluations
+                            + diagnostics.non_live_rejections
+                            + diagnostics.filter_rejections,
+                        diagnostics.unique_candidates
+                    );
+                    (scored, diagnostics)
+                })
             }))
     }
 

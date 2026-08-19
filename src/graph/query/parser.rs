@@ -1,9 +1,9 @@
 /* hnsqr/src/graph/query/parser.rs */
 //!▫~•◦-------------------------------‣
-//! # Zero-Copy Cypher Parser
+//! # Zero-Copy GraphQuery Parser
 //!▫~•◦-------------------------------------------------------------------‣
 //!
-//! Converts a `&str` Cypher query directly into a [`QueryAst`] using the
+//! Converts a `&str` GraphQuery query directly into a [`QueryAst`] using the
 //! zero-copy [`Lexer`].  No heap allocation occurs during tokenisation;
 //! the only allocations are the final `String` fields inside `QueryAst`
 //! (one per unique identifier / literal).
@@ -61,7 +61,7 @@ use crate::graph::query::lexer::{LexError, Lexer, Token};
 
 // ── ParseError ───────────────────────────────────────────────────────────────
 
-/// Errors produced by the Cypher parser.
+/// Errors produced by the GraphQuery parser.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ParseError {
     /// Wrapped lexer error.
@@ -94,7 +94,7 @@ impl From<LexError> for ParseError {
 
 // ── Parser ───────────────────────────────────────────────────────────────────
 
-/// Recursive-descent Cypher parser.
+/// Recursive-descent GraphQuery parser.
 ///
 /// Holds references to the label and relationship-type catalogs so that
 /// `Label` and `RelType` names are resolved to compact IDs at parse time,
@@ -319,7 +319,12 @@ impl<'src> Parser<'src> {
             let outgoing_suffix = match self.lex.peek()? {
                 Token::Dash => {
                     self.lex.advance()?;
-                    false
+                    if let Token::Gt = self.lex.peek()? {
+                        self.lex.advance()?;
+                        true
+                    } else {
+                        false
+                    }
                 }
                 Token::Gt => {
                     self.lex.advance()?; // consume `>`
@@ -764,7 +769,7 @@ impl<'src> Parser<'src> {
     fn expect_ident(&mut self) -> Result<String, ParseError> {
         match self.lex.advance()? {
             // Any keyword token that is also a valid identifier in a property-reference
-            // context (Cypher allows `n.where`, `r.return`, etc.).
+            // context (GraphQuery allows `n.where`, `r.return`, etc.).
             Token::Ident(s) => Ok(s.to_string()),
             // Allow keyword tokens to act as identifiers where unambiguous.
             Token::Match     => Ok("match".to_string()),
@@ -798,7 +803,7 @@ impl<'src> Parser<'src> {
 
 // ── Public entry-point ────────────────────────────────────────────────────────
 
-/// Parses a Cypher query string into a [`QueryAst`].
+/// Parses a GraphQuery query string into a [`QueryAst`].
 ///
 /// `label_catalog` and `rel_catalog` are used to resolve label and relationship-type
 /// names to their compact integer IDs at parse time — no second pass required.
@@ -1006,7 +1011,7 @@ mod tests {
     fn test_planner_compiles_full_chain() {
         let (lc, rc) = catalogs();
         let src = "MATCH (p:Person)-[:WORKS_AT]->(c:Company)<-[:INVESTED_IN]-(v:VC) RETURN p, c, v LIMIT 50";
-        let compiled = QueryPlanner::compile(src, &lc, &rc).unwrap();
+        let compiled = QueryPlanner::compile(src, &lc, &rc, None).unwrap();
 
         // Physical plan must have at least: NodeScan + 2 × Expand + Project + Limit
         assert!(compiled.plan.ops.len() >= 4, "Expected ≥4 physical ops, got {}", compiled.plan.ops.len());
@@ -1021,7 +1026,7 @@ mod tests {
     fn test_planner_where_and_limit() {
         let (lc, rc) = catalogs();
         let src = "MATCH (p:Person)-[:WORKS_AT]->(c:Company) WHERE p.name = 'Alice' RETURN p, c LIMIT 5";
-        let compiled = QueryPlanner::compile(src, &lc, &rc).unwrap();
+        let compiled = QueryPlanner::compile(src, &lc, &rc, None).unwrap();
         assert_eq!(compiled.column_names, vec!["p", "c"]);
         // Should have a Limit op at the tail.
         use crate::graph::query::physical::PhysicalOp;

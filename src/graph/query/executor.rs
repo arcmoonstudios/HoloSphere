@@ -17,11 +17,13 @@ use crate::graph::query::physical::{PhysicalOp, PhysicalPlan};
 use crate::graph::storage::generation::GraphReadGeneration;
 use crate::{HNSQRResult, NodeIndex};
 
+use serde::{Deserialize, Serialize};
+
 /// A single result row: one `NodeIndex` per output column.
 pub type ResultRow = Vec<NodeIndex>;
 
 /// Complete query result.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct QueryResult {
     /// Column names in return order.
     pub column_names: Vec<String>,

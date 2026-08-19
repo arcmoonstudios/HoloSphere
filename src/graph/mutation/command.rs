@@ -21,7 +21,7 @@ pub type GraphProperties = HashMap<PropertyKey, GraphPropertyValue>;
 
 /// Complete command set for graph topology and property mutations.
 ///
-/// Corresponds to the Cypher CREATE / DELETE / MERGE / SET primitives.
+/// Corresponds to the GraphQuery CREATE / DELETE / MERGE / SET primitives.
 /// All variants are Raft-replicated before touching local state.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum GraphMutation {

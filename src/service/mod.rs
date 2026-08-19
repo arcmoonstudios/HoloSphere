@@ -134,6 +134,12 @@ pub trait SearchService: Send + Sync {
         k: usize,
         rerank_plan: SemanticRerankPlan,
     ) -> HNSQRResult<Vec<(Arc<str>, SimilarityScore)>>;
+
+    fn graph_query(
+        &self,
+        ctx: &RequestContext,
+        query: &str,
+    ) -> HNSQRResult<crate::graph::query::executor::QueryResult>;
 }
 
 /// Combined HNSQR production service contract.
@@ -232,6 +238,16 @@ impl SearchService for StandaloneService {
             slo.record_query_event(res.is_ok());
         }
         res
+    }
+
+    fn graph_query(
+        &self,
+        _ctx: &RequestContext,
+        _query: &str,
+    ) -> HNSQRResult<crate::graph::query::executor::QueryResult> {
+        Err(HNSQRError::UnsupportedFeature(
+            "Graph queries require ClusterService".to_string(),
+        ))
     }
 }
 
@@ -352,6 +368,39 @@ impl SearchService for ClusterService {
     ) -> HNSQRResult<Vec<(Arc<str>, SimilarityScore)>> {
         let pinned = self.coordinator.obtain_cluster_pinned_snapshot(ReadConsistency::Linearizable)?;
         Ok(self.coordinator.search_pinned(&pinned, query, k, rerank_plan))
+    }
+
+    fn graph_query(&self, _ctx: &RequestContext, query: &str) -> HNSQRResult<crate::graph::query::executor::QueryResult> {
+        let shards = self.coordinator.local_shards_snapshot();
+        let shard = shards.first().ok_or_else(|| HNSQRError::Internal("No shards available".to_string()))?;
+
+        let graph_applier = shard.state_machine.graph.as_ref().ok_or_else(|| {
+            HNSQRError::Internal("Graph engine not enabled on this shard".to_string())
+        })?;
+
+        let label_catalog = graph_applier.label_catalog();
+        let rel_catalog = graph_applier.rel_catalog();
+
+        let compiled = crate::graph::query::planner::QueryPlanner::compile(query, &label_catalog, &rel_catalog, None)
+            .map_err(|e| HNSQRError::Internal(e.to_string()))?;
+
+        let gen_lock = graph_applier.generation();
+        let gen_id = gen_lock.read().generation;
+        let read_gen = Arc::new(crate::graph::storage::generation::GraphReadGeneration::new(
+            gen_lock, gen_id,
+        ));
+        let exec_ctx = crate::graph::query::executor::ExecutionContext::new(read_gen);
+
+        if !compiled.ast.mutations.is_empty() {
+            let mutations = crate::graph::query::executor::ExecutionContext::compile_mutations(&compiled.ast.mutations);
+            for m in mutations {
+                let _ = self.coordinator.raft_cluster.propose_data_mutation(crate::cluster::state_machine::DataMutation::new_graph(m));
+            }
+        }
+
+        let mut result = exec_ctx.execute(&compiled.plan)?;
+        result.column_names = compiled.column_names;
+        Ok(result)
     }
 }
 

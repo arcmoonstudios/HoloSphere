@@ -8,7 +8,7 @@
 //!   - the whole graph
 //!   - a filtered subgraph (specific labels, rel types, property predicates)
 //!   - a single tenant's namespace
-//!   - a Cypher-derived subgraph
+//!   - a GraphQuery-derived subgraph
 //!
 //! This separation means algorithms never need rewriting when the projection
 //! source changes.

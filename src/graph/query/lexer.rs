@@ -1,6 +1,6 @@
 /* hnsqr/src/graph/query/lexer.rs */
 //!▫~•◦-------------------------------‣
-//! # Zero-Copy Cypher Lexer
+//! # Zero-Copy GraphQuery Lexer
 //!▫~•◦-------------------------------------------------------------------‣
 //!
 //! A hand-rolled, allocation-free lexer over a borrowed `&str` input.
@@ -215,6 +215,18 @@ impl<'src> Lexer<'src> {
                     Ok(Token::Gt)
                 }
             }
+            b'<' => {
+                if self.byte_at(1) == Some(b'=') {
+                    self.pos += 2;
+                    Ok(Token::Le)
+                } else if self.byte_at(1) == Some(b'>') {
+                    self.pos += 2;
+                    Ok(Token::Ne)
+                } else {
+                    self.pos += 1;
+                    Ok(Token::Lt)
+                }
+            }
             b'-' => { self.pos += 1; Ok(Token::Dash) }
             // String literals: single or double quoted.
             b'\'' | b'"' => self.lex_string_literal(b),
@@ -307,7 +319,7 @@ impl<'src> Lexer<'src> {
 /// Resolves a raw word slice to a keyword token or falls back to `Ident`.
 /// Case-insensitive: `MATCH`, `match`, `Match` all produce `Token::Match`.
 fn keyword_or_ident(word: &str) -> Token<'_> {
-    // A 32-byte stack buffer is enough for any Cypher keyword.
+    // A 32-byte stack buffer is enough for any GraphQuery keyword.
     let mut buf = [0u8; 32];
     let len = word.len().min(buf.len());
     for (i, &b) in word.as_bytes()[..len].iter().enumerate() {

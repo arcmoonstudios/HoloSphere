@@ -59,6 +59,8 @@ pub enum OpCode {
     BatchSearch = 0x0004,
     /// Index Telemetry & Operational Statistics.
     Stats = 0x0005,
+    /// GraphQuery Graph Query Execution.
+    GraphQuery = 0x0006,
     /// Error response from server.
     Error = 0x00FF,
 }
@@ -74,6 +76,7 @@ impl TryFrom<u16> for OpCode {
             0x0003 => Ok(OpCode::Search),
             0x0004 => Ok(OpCode::BatchSearch),
             0x0005 => Ok(OpCode::Stats),
+            0x0006 => Ok(OpCode::GraphQuery),
             0x00FF => Ok(OpCode::Error),
             _ => Err(HNSQRError::SerializationError(format!(
                 "Unknown opcode: 0x{:04X}",
@@ -489,6 +492,34 @@ impl<S: HNSQRService + 'static> HNSQRServer<S> {
                     };
                     resp_header.encode(&mut write_buf);
                     write_buf.put_slice(json.as_bytes());
+                }
+                OpCode::GraphQuery => {
+                    let q_len = payload.get_u32() as usize;
+                    if payload.len() < q_len {
+                        Self::write_error(&mut write_buf, header.request_id, "Truncated graph query payload");
+                    } else {
+                        let q_bytes = payload.split_to(q_len);
+                        let q_str = std::str::from_utf8(&q_bytes).unwrap_or("");
+                        let ctx = RequestContext {
+                            request_id: header.request_id as u64,
+                            ..Default::default()
+                        };
+                        match service.graph_query(&ctx, q_str) {
+                            Ok(query_result) => {
+                                let json = serde_json::to_string(&query_result).unwrap_or_default();
+                                let resp_header = MessageHeader {
+                                    magic: PROTOCOL_MAGIC,
+                                    opcode: OpCode::GraphQuery,
+                                    flags: 0,
+                                    request_id: header.request_id,
+                                    payload_len: json.len() as u32,
+                                };
+                                resp_header.encode(&mut write_buf);
+                                write_buf.put_slice(json.as_bytes());
+                            }
+                            Err(e) => Self::write_error(&mut write_buf, header.request_id, &e.to_string()),
+                        }
+                    }
                 }
                 _ => {
                     Self::write_error(&mut write_buf, header.request_id, "Unsupported opcode");

@@ -53,6 +53,10 @@ impl GraphMutationApplier {
         }
     }
 
+    pub fn label_catalog(&self) -> Arc<LabelCatalog> { self.label_catalog.clone() }
+    pub fn rel_catalog(&self) -> Arc<RelTypeCatalog> { self.rel_catalog.clone() }
+    pub fn generation(&self) -> Arc<RwLock<GraphGeneration>> { self.generation.clone() }
+
     /// Applies a committed `GraphMutation`.  Called from the state machine apply loop.
     pub fn apply(&self, mutation: &GraphMutation) -> HNSQRResult<()> {
         match mutation {

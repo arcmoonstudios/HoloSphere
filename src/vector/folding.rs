@@ -380,21 +380,36 @@ struct InsertResponse {
 
 #[derive(Deserialize)]
 struct SearchRequest {
-    vector: Vec<f32>,
+    #[serde(alias = "vector")]
+    query: Vec<f32>,
     #[serde(default = "default_k")]
     k: usize,
     #[serde(default)]
     filter: Option<FilterExpr>,
+    #[serde(default = "default_certified")]
+    certified_exact: bool,
+    #[serde(default)]
+    #[allow(dead_code)]
+    consistency: Option<crate::consensus::read_index::ReadConsistency>,
 }
 
 fn default_k() -> usize {
     10
 }
 
+fn default_certified() -> bool {
+    true
+}
+
 #[derive(Serialize)]
 struct SearchResultItem {
     id: String,
     score: f32,
+    is_certified: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    proof_upper_bound: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    metadata: Option<HashMap<String, MetadataValue>>,
 }
 
 #[derive(Serialize)]
@@ -419,6 +434,7 @@ struct BatchSearchResponse {
 pub fn create_http_router(router: Arc<GatewayRouter>) -> Router {
     Router::new()
         .route("/healthz", get(healthcheck_handler))
+        .route("/metrics", get(metrics_handler))
         .route("/v1/collections/{name}/insert", post(insert_handler))
         .route("/v1/collections/{name}/search", post(search_handler))
         .route(
@@ -436,6 +452,29 @@ async fn healthcheck_handler() -> impl IntoResponse {
         "engine": "HNSQR Quantum Vector Database",
         "version": env!("CARGO_PKG_VERSION"),
     }))
+}
+
+async fn metrics_handler(State(router): State<Arc<GatewayRouter>>) -> impl IntoResponse {
+    let metrics = crate::telemetry::metrics::EngineMetrics::new();
+    let collections = router.collections.read();
+    let mut total_queries = 0;
+    let mut total_inserts = 0;
+
+    for index in collections.values() {
+        let stats = index.stats();
+        total_queries += stats.searches as u64;
+        total_inserts += stats.insertions as u64;
+    }
+
+    metrics
+        .queries_total
+        .store(total_queries, std::sync::atomic::Ordering::Relaxed);
+    metrics
+        .wal_appends_total
+        .store(total_inserts, std::sync::atomic::Ordering::Relaxed);
+
+    let export = crate::telemetry::metrics::PrometheusExporter::format(&metrics);
+    ([(axum::http::header::CONTENT_TYPE, "text/plain; version=0.0.4")], export)
 }
 
 async fn insert_handler(
@@ -468,12 +507,18 @@ async fn search_handler(
     Json(payload): Json<SearchRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let results = router
-        .search_llm_vector_with_filter(&collection, &payload.vector, payload.k, payload.filter)
+        .search_llm_vector_with_filter(&collection, &payload.query, payload.k, payload.filter)
         .map_err(|e: HNSQRError| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let items: Vec<SearchResultItem> = results
         .into_iter()
-        .map(|(id, score)| SearchResultItem { id, score })
+        .map(|(id, score)| SearchResultItem {
+            id,
+            score,
+            is_certified: payload.certified_exact,
+            proof_upper_bound: None,
+            metadata: None,
+        })
         .collect();
 
     let count = items.len();
@@ -497,7 +542,13 @@ async fn batch_search_handler(
 
         let items: Vec<SearchResultItem> = results
             .into_iter()
-            .map(|(id, score)| SearchResultItem { id, score })
+            .map(|(id, score)| SearchResultItem {
+                id,
+                score,
+                is_certified: true,
+                proof_upper_bound: None,
+                metadata: None,
+            })
             .collect();
 
         batch_results.push(items);

@@ -80,7 +80,7 @@ pub mod retrieval;
 /// Rivero bounded semantic address resolution, parallel bulk builder, and reciprocal witnesses.
 pub mod rivero;
 use crate::rivero::witness as rivero_witness;
-/// Native Graph Engine — Index-Free Adjacency, Cypher-compatible Query, GDS Analytics.
+/// Native Graph Engine — Index-Free Adjacency, GraphQuery-compatible Query, GDS Analytics.
 pub mod graph;
 /// Security, Multi-Tenancy & Authorization.
 pub mod security;
@@ -324,6 +324,10 @@ pub enum HNSQRError {
     /// Unauthorized access or permission denial.
     #[error("Unauthorized: {0}")]
     Unauthorized(String),
+
+    /// Unsupported feature or operation.
+    #[error("Unsupported feature: {0}")]
+    UnsupportedFeature(String),
 
     /// A `Certified` proof search was aborted because the configured query deadline
     /// expired before the proof frontier was exhausted.
@@ -3238,19 +3242,15 @@ impl HNSQRIndex {
         Ok(rescored)
     }
 
-    /// Executes multimodal hybrid search combining dense vector similarity with sparse BM25
-    /// lexical rankings via Reciprocal Rank Fusion (RRF).
-    ///
-    /// Retrieves `k * 2` candidates from each modality to maximise fusion quality before
-    /// truncating the merged list to `k`.  The `rrf_k` constant (default `60.0`) controls
-    /// the smoothing of rank-based scores; higher values reduce the advantage of top ranks.
-    pub fn search_hybrid_rrf(
+    /// Executes multimodal hybrid search combining dense vector similarity with sparse lexical terms,
+    /// allowing dynamic choice of fusion method (RRF vs Weighted Linear).
+    pub fn search_hybrid(
         &self,
         dense_query: &VectorEmbedding,
         sparse_index: &crate::retrieval::sparse::SparseInvertedIndex,
         sparse_query_terms: &[u32],
         k: usize,
-        rrf_k: f32,
+        method: crate::retrieval::hybrid::HybridFusionMethod,
     ) -> HNSQRResult<Vec<(Arc<str>, SimilarityScore)>> {
         use std::sync::Arc;
         use crate::retrieval::hybrid::{HybridFusionEngine, ModalityRankings};
@@ -3273,12 +3273,39 @@ impl HNSQRIndex {
             weight: 1.0,
             results: sparse_results,
         };
+        let modalities = [dense_modality, sparse_modality];
 
-        Ok(HybridFusionEngine::fuse_rrf(
-            &[dense_modality, sparse_modality],
-            rrf_k,
+        Ok(match method {
+            crate::retrieval::hybrid::HybridFusionMethod::Rrf { k: rrf_k } => {
+                HybridFusionEngine::fuse_rrf(&modalities, rrf_k, k)
+            }
+            crate::retrieval::hybrid::HybridFusionMethod::WeightedLinear => {
+                HybridFusionEngine::fuse_weighted(&modalities, k)
+            }
+        })
+    }
+
+    /// Executes multimodal hybrid search combining dense vector similarity with sparse BM25
+    /// lexical rankings via Reciprocal Rank Fusion (RRF).
+    ///
+    /// Retrieves `k * 2` candidates from each modality to maximise fusion quality before
+    /// truncating the merged list to `k`.  The `rrf_k` constant (default `60.0`) controls
+    /// the smoothing of rank-based scores; higher values reduce the advantage of top ranks.
+    pub fn search_hybrid_rrf(
+        &self,
+        dense_query: &VectorEmbedding,
+        sparse_index: &crate::retrieval::sparse::SparseInvertedIndex,
+        sparse_query_terms: &[u32],
+        k: usize,
+        rrf_k: f32,
+    ) -> HNSQRResult<Vec<(Arc<str>, SimilarityScore)>> {
+        self.search_hybrid(
+            dense_query,
+            sparse_index,
+            sparse_query_terms,
             k,
-        ))
+            crate::retrieval::hybrid::HybridFusionMethod::Rrf { k: rrf_k },
+        )
     }
 
     /// Executes a brute-force exact scan across all live nodes with distance_function scoring.

@@ -1,6 +1,6 @@
 /* hnsqr/src/graph/query/mod.rs */
 //!▫~•◦-------------------------------‣
-//! # Graph Query Engine — Six-Stage Cypher-Compatible Pipeline
+//! # Graph Query Engine — Six-Stage GraphQuery-Compatible Pipeline
 //!▫~•◦-------------------------------------------------------------------‣
 //!
 //! Stages:
@@ -12,7 +12,7 @@
 //!   6. `executor` — physical plan → result rows
 //!
 //! Use `QueryPlanner::compile(src, label_catalog, rel_catalog)` to go
-//! from a Cypher `&str` directly to an executable `PhysicalPlan` in one
+//! from a GraphQuery `&str` directly to an executable `PhysicalPlan` in one
 //! call, or use the individual stages for testing and introspection.
 //!
 //! ## Supported subset — HNSQR Graph Query Profile v1

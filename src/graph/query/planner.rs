@@ -3,7 +3,7 @@
 //! # Query Planner — Text → Executable Physical Plan
 //!▫~•◦-------------------------------------------------------------------‣
 //!
-//! `QueryPlanner::compile` is the single entry-point for taking a Cypher
+//! `QueryPlanner::compile` is the single entry-point for taking a GraphQuery
 //! query string all the way through to an executable `PhysicalPlan`:
 //!
 //! ```text
@@ -74,11 +74,11 @@ pub struct CompiledQuery {
 
 // ── QueryPlanner ─────────────────────────────────────────────────────────────
 
-/// Compiles Cypher text all the way to a `PhysicalPlan`.
+/// Compiles GraphQuery text all the way to a `PhysicalPlan`.
 pub struct QueryPlanner;
 
 impl QueryPlanner {
-    /// Parses, semantically analyses, optimises and lowers a Cypher query.
+    /// Parses, semantically analyses, optimises and lowers a GraphQuery query.
     ///
     /// `label_catalog` and `rel_catalog` are borrowed at parse time so label
     /// and relationship-type names are resolved to compact IDs without a
@@ -87,6 +87,7 @@ impl QueryPlanner {
         src: &str,
         label_catalog: &LabelCatalog,
         rel_catalog: &RelTypeCatalog,
+        stats: Option<&crate::graph::stats::cardinality::GraphCardinalityStats>,
     ) -> Result<CompiledQuery, CompileError> {
         // 1. Parse → QueryAst (zero-copy lexer)
         let ast = parse_query(src, label_catalog, rel_catalog).map_err(CompileError::Parse)?;
@@ -99,7 +100,7 @@ impl QueryPlanner {
         let logical = Self::build_logical_plan(&ast, &symbols);
 
         // 4. Heuristic optimisation
-        let logical = Optimizer::optimise(logical);
+        let logical = Optimizer::optimise(logical, stats);
 
         // 5. Physical lowering
         let plan = PhysicalPlan::lower(logical);

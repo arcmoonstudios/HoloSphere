@@ -28,7 +28,7 @@ pub enum FactCategory {
 }
 
 /// An extracted atomic fact with confidence and salience ratings.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct EpisodicFact {
     pub fact_id: String,
     pub subject: String,
@@ -104,6 +104,11 @@ impl AutonomousMemoryConsolidator {
 
         self.total_consolidations.fetch_add(1, Ordering::Relaxed);
         Ok(())
+    }
+
+    /// Fetches the consolidated user persona profile.
+    pub fn get_profile(&self, user_id: &str) -> Option<UserPersonaProfile> {
+        self.profiles.read().get(user_id).cloned()
     }
 
     /// Evaluates Ebbinghaus retention score: $R = e^{-\frac{\Delta t}{S \cdot (1 + \text{salience})}}$

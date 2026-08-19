@@ -81,6 +81,11 @@ impl HypercubeTensorSpace {
         }
     }
 
+    /// Returns the number of dimensions in this tensor space.
+    pub fn dimensions(&self) -> usize {
+        self.shape.len()
+    }
+
     /// Sets a voxel value at the given $N$-dimensional coordinate.
     pub fn set_voxel(&self, coords: CoordinateND, value: f32) -> HNSQRResult<()> {
         if coords.len() != self.shape.len() {

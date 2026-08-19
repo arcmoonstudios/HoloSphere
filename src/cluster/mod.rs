@@ -32,7 +32,7 @@ pub use ring::{ConsistentHashRing, ShardId};
 pub use serverless::{EphemeralWorker, ServerlessQueryRouter, WorkerState};
 pub use state_machine::{
     ApplyReceipt, ClientIdentity, DataMutation, DeduplicationHorizon, ReplicatedStateMachine,
-    RetrySemantics, ShardStateMachine,
+    RetrySemantics, ShardStateMachine, UniversalSnapshotHandle,
 };
 pub use stream_ingest::{AsyncLogStreamIngestor, StreamIngestStats};
 pub use topology::{ClusterTopology, NodeAddress, ShardReplica, ShardRole};

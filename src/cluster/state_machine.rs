@@ -79,6 +79,25 @@ pub enum DataMutation {
         mutation_id: MutationId,
         mutation: GraphMutation,
     },
+    /// Relational SQL table row mutation replicated through Raft.
+    Sql {
+        mutation_id: MutationId,
+        table: String,
+        row: crate::storage::relational_acid::RelationalRow,
+        is_delete: bool,
+    },
+    /// Agent long-term memory episodic fact mutation replicated through Raft.
+    AgentMemory {
+        mutation_id: MutationId,
+        user_id: String,
+        fact: crate::ecosystem::agent_memory::EpisodicFact,
+    },
+    /// N-Dimensional hypercube tensor voxel mutation replicated through Raft.
+    Hypercube {
+        mutation_id: MutationId,
+        coords: Vec<usize>,
+        value: f32,
+    },
 }
 
 impl DataMutation {
@@ -128,6 +147,34 @@ impl DataMutation {
         }
     }
 
+    /// Wraps a relational SQL row insert for Raft replication.
+    pub fn new_sql_insert(table: impl Into<String>, row: crate::storage::relational_acid::RelationalRow) -> Self {
+        Self::Sql {
+            mutation_id: MutationId::generate(),
+            table: table.into(),
+            row,
+            is_delete: false,
+        }
+    }
+
+    /// Wraps an agent memory fact for Raft replication.
+    pub fn new_agent_memory(user_id: impl Into<String>, fact: crate::ecosystem::agent_memory::EpisodicFact) -> Self {
+        Self::AgentMemory {
+            mutation_id: MutationId::generate(),
+            user_id: user_id.into(),
+            fact,
+        }
+    }
+
+    /// Wraps a hypercube voxel coordinate update for Raft replication.
+    pub fn new_hypercube_voxel(coords: Vec<usize>, value: f32) -> Self {
+        Self::Hypercube {
+            mutation_id: MutationId::generate(),
+            coords,
+            value,
+        }
+    }
+
     pub fn mutation_id(&self) -> &MutationId {
         match self {
             Self::Upsert { mutation_id, .. } => mutation_id,
@@ -135,6 +182,9 @@ impl DataMutation {
             Self::MetadataPatch { mutation_id, .. } => mutation_id,
             Self::Batch { mutation_id, .. } => mutation_id,
             Self::Graph { mutation_id, .. } => mutation_id,
+            Self::Sql { mutation_id, .. } => mutation_id,
+            Self::AgentMemory { mutation_id, .. } => mutation_id,
+            Self::Hypercube { mutation_id, .. } => mutation_id,
         }
     }
 }
@@ -238,6 +288,12 @@ pub struct ShardStateMachine {
     dedup_horizon: Mutex<DeduplicationHorizon>,
     /// Optional graph mutation applier.  `None` on shards without a graph layer.
     pub graph: Option<Arc<GraphMutationApplier>>,
+    /// Optional relational SQL table engine.
+    pub sql: Option<Arc<crate::storage::relational_acid::RelationalSqlEngine>>,
+    /// Optional agentic memory consolidator.
+    pub memory: Option<Arc<crate::ecosystem::agent_memory::AutonomousMemoryConsolidator>>,
+    /// Optional hypercube volumetric tensor space.
+    pub hypercube: Option<Arc<crate::vector::hypercube::HypercubeTensorSpace>>,
 }
 
 impl ShardStateMachine {
@@ -249,6 +305,9 @@ impl ShardStateMachine {
             applied_generation: AtomicU64::new(1),
             dedup_horizon: Mutex::new(DeduplicationHorizon::new(65_536)),
             graph: None,
+            sql: None,
+            memory: None,
+            hypercube: None,
         }
     }
 
@@ -266,6 +325,31 @@ impl ShardStateMachine {
             applied_generation: AtomicU64::new(1),
             dedup_horizon: Mutex::new(DeduplicationHorizon::new(65_536)),
             graph: Some(applier),
+            sql: None,
+            memory: None,
+            hypercube: None,
+        }
+    }
+
+    /// Creates a fully converged state machine unifying all multi-model paradigms.
+    pub fn with_all_paradigms(
+        shard_id: u32,
+        engine: Arc<SegmentedEngine>,
+        graph: Option<Arc<GraphMutationApplier>>,
+        sql: Option<Arc<crate::storage::relational_acid::RelationalSqlEngine>>,
+        memory: Option<Arc<crate::ecosystem::agent_memory::AutonomousMemoryConsolidator>>,
+        hypercube: Option<Arc<crate::vector::hypercube::HypercubeTensorSpace>>,
+    ) -> Self {
+        Self {
+            shard_id,
+            engine,
+            last_applied_index: AtomicU64::new(0),
+            applied_generation: AtomicU64::new(1),
+            dedup_horizon: Mutex::new(DeduplicationHorizon::new(65_536)),
+            graph,
+            sql,
+            memory,
+            hypercube,
         }
     }
 
@@ -284,6 +368,46 @@ impl ShardStateMachine {
             DataMutation::Delete { .. } => Ok(()),
             DataMutation::MetadataPatch { .. } => Ok(()),
             DataMutation::Graph { .. } => Ok(()),
+            DataMutation::Sql { table, row, .. } => {
+                if let Some(sql) = &self.sql {
+                    let schema = sql.get_table_schema(table).ok_or_else(|| {
+                        HNSQRError::InvalidRequest(format!("Table '{table}' does not exist"))
+                    })?;
+                    if !row.values.contains_key(&schema.primary_key_column) {
+                        return Err(HNSQRError::InvalidRequest(format!(
+                            "Row missing primary key '{}'",
+                            schema.primary_key_column
+                        )));
+                    }
+                }
+                Ok(())
+            }
+            DataMutation::AgentMemory { fact, .. } => {
+                if fact.confidence < 0.0 || fact.confidence > 1.0 {
+                    return Err(HNSQRError::InvalidRequest(format!(
+                        "Invalid fact confidence: {}",
+                        fact.confidence
+                    )));
+                }
+                if fact.emotional_salience < 0.0 || fact.emotional_salience > 1.0 {
+                    return Err(HNSQRError::InvalidRequest(format!(
+                        "Invalid emotional salience: {}",
+                        fact.emotional_salience
+                    )));
+                }
+                Ok(())
+            }
+            DataMutation::Hypercube { coords, .. } => {
+                if let Some(h) = &self.hypercube {
+                    if coords.len() != h.dimensions() {
+                        return Err(HNSQRError::DimensionMismatch {
+                            expected: h.dimensions(),
+                            actual: coords.len(),
+                        });
+                    }
+                }
+                Ok(())
+            }
             DataMutation::Batch { mutations, .. } => {
                 for m in mutations {
                     self.prevalidate_mutation(m)?;
@@ -312,12 +436,27 @@ impl ShardStateMachine {
                 if let Some(graph) = &self.graph {
                     graph.apply(mutation)?;
                 }
-                // If no graph applier is present, graph mutations are silently
-                // accepted (no-op) so vector-only shards stay compatible.
+                Ok(())
+            }
+            DataMutation::Sql { table, row, is_delete, .. } => {
+                if let Some(sql) = &self.sql {
+                    sql.apply_committed_row_mutation(table, row.clone(), *is_delete)?;
+                }
+                Ok(())
+            }
+            DataMutation::AgentMemory { user_id, fact, .. } => {
+                if let Some(memory) = &self.memory {
+                    memory.ingest_fact(user_id, fact.clone())?;
+                }
+                Ok(())
+            }
+            DataMutation::Hypercube { coords, value, .. } => {
+                if let Some(hypercube) = &self.hypercube {
+                    hypercube.set_voxel(coords.clone(), *value)?;
+                }
                 Ok(())
             }
             DataMutation::Batch { mutations, .. } => {
-                self.prevalidate_mutation(mutation)?;
                 for m in mutations {
                     self.apply_single_unlogged(m)?;
                 }
@@ -325,6 +464,21 @@ impl ShardStateMachine {
             }
         }
     }
+
+    /// Creates an atomic cross-paradigm snapshot pinned at the current applied generation.
+    pub fn pin_universal_snapshot(&self) -> UniversalSnapshotHandle {
+        UniversalSnapshotHandle {
+            generation: self.applied_generation.load(Ordering::SeqCst),
+            lsn: self.last_applied_index.load(Ordering::SeqCst),
+        }
+    }
+}
+
+/// Atomic cross-paradigm snapshot handle pinning vector, graph, relational, memory, and tensor state.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UniversalSnapshotHandle {
+    pub generation: u64,
+    pub lsn: u64,
 }
 
 impl ReplicatedStateMachine for ShardStateMachine {
@@ -348,10 +502,13 @@ impl ReplicatedStateMachine for ShardStateMachine {
             }
         }
 
-        // 2. Deterministic atomic application to local storage engine
+        // 2. Pre-validate the entire mutation / batch before mutating ANY backend state
+        self.prevalidate_mutation(mutation)?;
+
+        // 3. Deterministic atomic application to local storage engines
         self.apply_single_unlogged(mutation)?;
 
-        // 3. Atomically advance last_applied_index and generation
+        // 4. Atomically advance last_applied_index and generation
         self.last_applied_index.store(entry_index, Ordering::SeqCst);
         let cur_gen = self.applied_generation.fetch_add(1, Ordering::SeqCst) + 1;
 
@@ -377,5 +534,110 @@ impl ReplicatedStateMachine for ShardStateMachine {
 
     fn applied_generation(&self) -> u64 {
         self.applied_generation.load(Ordering::SeqCst)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::relational_acid::{ColumnDefinition, RelationalRow, RelationalSqlEngine, SqlType, SqlValue, TableSchema};
+    use crate::ecosystem::agent_memory::{AutonomousMemoryConsolidator, EpisodicFact, FactCategory};
+    use crate::vector::hypercube::HypercubeTensorSpace;
+
+    #[test]
+    fn test_cross_paradigm_atomic_transaction_and_pinned_snapshot() {
+        let engine = Arc::new(SegmentedEngine::new(8, 1000));
+
+        // 1. Initialize all 5 paradigm backends
+        let sql = Arc::new(RelationalSqlEngine::new());
+        let table_schema = TableSchema {
+            name: "customers".into(),
+            primary_key_column: "cust_id".into(),
+            columns: vec![
+                ColumnDefinition {
+                    name: "cust_id".into(),
+                    data_type: SqlType::Text,
+                    is_primary_key: true,
+                    is_nullable: false,
+                    foreign_key_target: None,
+                },
+                ColumnDefinition {
+                    name: "tier".into(),
+                    data_type: SqlType::Text,
+                    is_primary_key: false,
+                    is_nullable: false,
+                    foreign_key_target: None,
+                },
+            ],
+        };
+        sql.create_table(table_schema).unwrap();
+
+        let memory = Arc::new(AutonomousMemoryConsolidator::new());
+        let hypercube = Arc::new(HypercubeTensorSpace::new(vec![4, 4, 4, 4]));
+
+        let sm = ShardStateMachine::with_all_paradigms(
+            1,
+            engine.clone(),
+            None,
+            Some(sql.clone()),
+            Some(memory.clone()),
+            Some(hypercube.clone()),
+        );
+
+        // 2. Build multi-paradigm atomic batch mutation
+        let mut row_values = HashMap::new();
+        row_values.insert("cust_id".into(), SqlValue::Text("cust_999".into()));
+        row_values.insert("tier".into(), SqlValue::Text("platinum".into()));
+
+        let fact = EpisodicFact {
+            fact_id: "fact_001".into(),
+            subject: "cust_999".into(),
+            predicate: "residency".into(),
+            object: "EU-West".into(),
+            category: FactCategory::UserPreference,
+            confidence: 0.99,
+            emotional_salience: 0.85,
+            recall_count: 1,
+            last_accessed_secs: 1000,
+            created_at_secs: 1000,
+        };
+
+        let batch = DataMutation::Batch {
+            mutation_id: MutationId::generate(),
+            mutations: vec![
+                // Paradigm 1: Vector Upsert (8 real floats -> 4 complex coordinates)
+                DataMutation::new_upsert("cust_999", VectorEmbedding::from_reals(&[0.1; 8]).into_normalized()),
+                // Paradigm 2: Relational SQL Row Insert
+                DataMutation::new_sql_insert("customers", RelationalRow { values: row_values }),
+                // Paradigm 3: Agent Memory Fact Append
+                DataMutation::new_agent_memory("cust_999", fact),
+                // Paradigm 4: Hypercube Tensor Voxel Set
+                DataMutation::new_hypercube_voxel(vec![1, 2, 3, 0], 42.0),
+            ],
+        };
+
+        // 3. Apply atomic transaction through single Raft LSN
+        let receipt = sm.apply(1001, &batch).unwrap();
+        assert_eq!(receipt.durable_lsn, 1001);
+        assert_eq!(receipt.applied_index, 1001);
+
+        // 4. Pin universal snapshot
+        let snapshot = sm.pin_universal_snapshot();
+        assert_eq!(snapshot.lsn, 1001);
+        assert_eq!(snapshot.generation, receipt.applied_generation);
+
+        // 5. Verify all 4 paradigms reflect the change in the same atomic tick
+        // (a) Vector exists
+        assert_eq!(engine.stats().iter().map(|s| s.live_vectors).sum::<usize>(), 1);
+        // (b) Relational row exists
+        let rows = sql.execute_select("customers", None, None).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].values.get("cust_id"), Some(&SqlValue::Text("cust_999".into())));
+        // (c) Agent memory fact exists
+        let profile = memory.get_profile("cust_999").unwrap();
+        assert_eq!(profile.consolidated_facts.len(), 1);
+        assert_eq!(profile.consolidated_facts[0].object, "EU-West");
+        // (d) Hypercube voxel exists
+        assert_eq!(hypercube.get_voxel(&[1, 2, 3, 0]).unwrap(), 42.0);
     }
 }

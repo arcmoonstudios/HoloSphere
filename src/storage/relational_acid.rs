@@ -282,6 +282,44 @@ impl RelationalSqlEngine {
 
         Ok(results)
     }
+
+    /// Directly applies a committed Raft mutation to table storage without two-phase locking.
+    pub fn apply_committed_row_mutation(
+        &self,
+        table: &str,
+        row: RelationalRow,
+        is_delete: bool,
+    ) -> HNSQRResult<()> {
+        let tables = self.tables.read();
+        let schema = tables.get(table).ok_or_else(|| {
+            HNSQRError::InvalidRequest(format!("Table '{table}' does not exist"))
+        })?;
+
+        let pk_val = row.values.get(&schema.primary_key_column).ok_or_else(|| {
+            HNSQRError::InvalidRequest(format!("Row missing primary key '{}'", schema.primary_key_column))
+        })?;
+
+        let pk_str = match pk_val {
+            SqlValue::Text(s) => s.clone(),
+            SqlValue::Integer(i) => i.to_string(),
+            _ => return Err(HNSQRError::InvalidRequest("Primary key must be Text or Integer".into())),
+        };
+
+        let mut storage = self.storage.write();
+        let table_storage = storage.entry(table.to_string()).or_insert_with(BTreeMap::new);
+
+        if is_delete {
+            table_storage.remove(&pk_str);
+        } else {
+            table_storage.insert(pk_str, row);
+        }
+        Ok(())
+    }
+
+    /// Fetches the table schema definition if it exists.
+    pub fn get_table_schema(&self, table: &str) -> Option<TableSchema> {
+        self.tables.read().get(table).cloned()
+    }
 }
 
 impl Default for RelationalSqlEngine {

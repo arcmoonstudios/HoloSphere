@@ -2,20 +2,20 @@
 
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
 [![Rust: 2024](https://img.shields.io/badge/Rust-2024%20Edition-orange.svg)](https://www.rust-lang.org/)
-[![Tests](https://img.shields.io/badge/Tests-151%2F151%20Passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-153%2F153%20Passing-brightgreen.svg)]()
 [![Clippy](https://img.shields.io/badge/Clippy%20-D%20warnings-clean-brightgreen.svg)]()
 [![PGO: Optimized](https://img.shields.io/badge/PGO-LLVM%20Profile%20Guided-purple.svg)](docs/PROFILE_GUIDED_OPTIMIZATION.md)
 
-> **HoloSphere is a universal proof-carrying retrieval, graph-vector, multi-model database, and state-machine replication engine.**
+> **HoloSphere is a replicated universal state engine in which vector, graph, relational, temporal-memory, metadata, and multidimensional representations participate in one atomic logical history and one versioned query snapshot.**
 > It executes on bare-metal CPU/GPU hardware using AVX2/AVX-512 SIMD, complex isometric linear algebra,
 > lattice routing, admissible geometric bounds, quantized lookup tables, Raft consensus SMR,
 > durable segmented logs, and memory-mapped storage.
-> It does **not** require quantum hardware and makes no claim of quantum computational speedup.
 
-HoloSphere is designed around explicit contract-driven retrieval:
+HoloSphere is designed around explicit contract-driven retrieval and unified all-or-nothing multi-model state machine replication:
 
 > **When `Certified` retrieval is requested (the system default), HoloSphere establishes the mathematically exact Top-K for the
 > pinned corpus snapshot, or returns an explicit failure instead of silently degrading correctness.**
+> **When a multi-model transaction is committed (`DataMutation::Batch`), all 5 paradigm representations (Vectors, Graphs, Relational SQL, Agent Memory, Hypercube Tensors) advance in a single atomic Raft LSN, visible under one pinned universal snapshot.**
 
 The system unifies exact dense retrieval, Rivero $E_8$ candidate routing, SemanticProofTree
 geometric bounding, LUTz progressive lookup tables, SIMD exact scoring, sparse/hybrid

@@ -25,4 +25,4 @@ pub use search::{
     DenseExactProof, Finalist, GlobalExactProofSearch, ProofFrontierEntry, SegmentProofView,
     TopKAccumulator,
 };
-pub use tree::{PROOF_LEAF_TARGET, ProofNode, SemanticProofTree};
+pub use tree::{ManifoldGeometryProfile, PROOF_LEAF_TARGET, ProofNode, SemanticProofTree};

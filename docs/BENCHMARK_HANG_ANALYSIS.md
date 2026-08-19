@@ -20,7 +20,7 @@ The `benches/rivero_scaling.rs` benchmark appears to "hang" when run without env
 ### 1. **Expensive Exact Ground Truth Computation (Fixed)**
 The benchmark computes exact brute-force k-NN for every query to validate approximate results:
 - **16,384 vectors × 64 queries × 64 complex dimensions = 67M+ distance computations**
-- Each quantum fidelity calculation involves 128 float operations (64 complex pairs)
+- Each complex projective overlap calculation involves 128 float operations (64 complex pairs)
 - Plus sorting 16,384 scores per query
 
 **Solution Applied:** Parallelized with Rayon - reduces time from ~minutes to <1 second.

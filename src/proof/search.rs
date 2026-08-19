@@ -405,13 +405,91 @@ impl GlobalExactProofSearch {
                 }
             }
         }
+        // ── Stage 2.5: Fast Flat LUTz Sieve for Isotropic / Diffuse Segments ───
+        for seg in segments {
+            if !seg.tree.is_spatially_prunable() {
+                if let Some(lutz_codes) = seg.lutz_codes {
+                    let n_vecs = seg.vectors.len();
+                    proof.leaf_vectors_considered += n_vecs;
+                    proof.l0_bytes_touched += n_vecs * std::mem::size_of::<LutzCode>();
+
+                    for slot in 0..n_vecs as NodeIndex {
+                        if evaluated_slots.contains(slot) {
+                            continue;
+                        }
+                        if seg.tombstones.is_some_and(|t| t.contains(slot))
+                            || filter_mask.is_some_and(|m| !m.contains(slot))
+                        {
+                            evaluated_slots.insert(slot);
+                            proof.filtered_or_tombstoned += 1;
+                            continue;
+                        }
+
+                        let code = &lutz_codes[slot as usize];
+                        proof.lutz_l0_evaluations += 1;
+                        let approx0 = query_lut.score_candidate_l0(code);
+                        let res0 = query_lut.blockwise_residual_l0(code);
+                        let ub0 = approx0 + res0 + 1e-7;
+
+                        let curr_tau = topk.kth_score();
+                        if topk.is_full() && ub0 < curr_tau {
+                            proof.lutz_l0_pruned += 1;
+                            evaluated_slots.insert(slot);
+                            continue;
+                        }
+
+                        // L1 Progressive Refinement
+                        if code.codes_l1.is_some() {
+                            let res1 = query_lut.blockwise_residual_l1(code) as f64;
+                            let ub1 = (approx0 as f64) + res1 + 1e-7;
+                            proof.lutz_l1_evaluations += 1;
+                            proof.l1_bytes_touched +=
+                                code.codes_l1.as_deref().map_or(0, |c| c.len() * 2);
+
+                            if topk.is_full() && ub1 < curr_tau as f64 {
+                                proof.lutz_l1_pruned += 1;
+                                evaluated_slots.insert(slot);
+                                continue;
+                            }
+                        }
+
+                        // Escalates to exact SIMD evaluation
+                        let v = &seg.vectors[slot as usize];
+                        let score = (query_vector.dot_product_complex(v)).re;
+                        topk.offer(slot, score);
+                        proof.exact_evaluations += 1;
+                        proof.exact_bytes_touched += seg.tree.dimension * 8;
+                        evaluated_slots.insert(slot);
+                    }
+                } else {
+                    for slot in 0..seg.vectors.len() as NodeIndex {
+                        if evaluated_slots.contains(slot) {
+                            continue;
+                        }
+                        if seg.tombstones.is_some_and(|t| t.contains(slot))
+                            || filter_mask.is_some_and(|m| !m.contains(slot))
+                        {
+                            evaluated_slots.insert(slot);
+                            proof.filtered_or_tombstoned += 1;
+                            continue;
+                        }
+                        let v = &seg.vectors[slot as usize];
+                        let score = (query_vector.dot_product_complex(v)).re;
+                        topk.offer(slot, score);
+                        proof.exact_evaluations += 1;
+                        proof.exact_bytes_touched += seg.tree.dimension * 8;
+                        evaluated_slots.insert(slot);
+                    }
+                }
+            }
+        }
         check_deadline_stage!(topk);
 
-        // ── Stage 3: Frontier initialisation ─────────────────────────────
+        // ── Stage 3: Frontier initialisation (Spatially Prunable Segments) ───
         let mut frontier: BinaryHeap<ProofFrontierEntry> = BinaryHeap::new();
 
         for (seg_idx, seg) in segments.iter().enumerate() {
-            if seg.tree.nodes.is_empty() {
+            if !seg.tree.is_spatially_prunable() || seg.tree.nodes.is_empty() {
                 continue;
             }
             let ub = seg.tree.upper_bound(&query, seg.tree.root);

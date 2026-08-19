@@ -9,7 +9,7 @@
 //!
 //! Address compilation is O(D) in source dimension. Territory lookup performs a
 //! fixed number of hash probes and bounded resident reads independent of corpus
-//! size. Exact quantum-fidelity reranking remains bounded by the resolved candidate
+//! size. Exact projective-overlap reranking remains bounded by the resolved candidate
 //! budget and source dimension.
 /*▫~•◦------------------------------------------------------------------------------------‣
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶

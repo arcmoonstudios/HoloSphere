@@ -42,7 +42,7 @@ fn main() {
         "  ┌─────────┬──────────────┬──────────────┬──────────────────┬────────────────────────┐"
     );
     println!(
-        "  │ Phase φ │ Real Cosine  │ Quantum Fid. │ Folded Hermitian │ Interpretation         │"
+        "  │ Phase φ │ Real Cosine  │ Proj.Overlap │ Folded Hermitian │ Interpretation         │"
     );
     println!(
         "  ├─────────┼──────────────┼──────────────┼──────────────────┼────────────────────────┤"
@@ -55,7 +55,7 @@ fn main() {
         let rotated: Vec<Complex32> = q_vec.complex_data().iter().map(|z| z * rot).collect();
         let rot_embed = VectorEmbedding::from_complex(rotated);
 
-        // 1. Quantum state fidelity
+        // 1. Complex Projective Overlap (CPO)
         let dot = q_vec.dot_product_complex(&rot_embed);
         let fid =
             (dot.norm_sqr() / (q_vec.norm_squared() * rot_embed.norm_squared())).clamp(0.0, 1.0);

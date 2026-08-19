@@ -140,7 +140,7 @@ For production deployment, extend to serialize:
 
 ### Problem Statement
 
-The engine implements elegant quantum fidelity math, but lacks empirical proof that real-world embeddings, when phase-encoded, yield **greater semantic cluster separation** than standard cosine distance on original vectors. Without this evidence, critics can dismiss the approach as mathematically interesting but practically unproven.
+The engine implements elegant complex projective overlap math, but lacks empirical proof that real-world embeddings, when phase-encoded, yield **greater semantic cluster separation** than standard cosine distance on original vectors. Without this evidence, critics can dismiss the approach as mathematically interesting but practically unproven.
 
 ### Solution Architecture
 
@@ -155,12 +155,12 @@ Margin = (Intra-cluster similarity) - (Inter-cluster similarity)
 2. Fold each vector to ℂ^768 using pairwise phase encoding
 3. Sample 1000 random pairs, computing:
    - Real cosine similarity in ℝ^1536
-   - Quantum fidelity in ℂ^768
+   - complex projective overlap in ℂ^768
 4. Calculate separation margins and improvement percentage
 
 ### Expected Results
 
-If quantum fidelity preserves semantic structure:
+If complex projective overlap preserves semantic structure:
 - **Baseline:** Margin improvement ≥ -5% (non-degradation)
 - **Target:** Margin improvement ≥ +10% (clear superiority)
 
@@ -173,7 +173,7 @@ cargo bench --bench metric_superiority
 **Sample Output:**
 ```
 ╔══════════════════════════════════════════════════════════════════════╗
-║ HNSQR METRIC SUPERIORITY ANALYSIS: COSINE (R) vs QUANTUM FIDELITY (C)║
+║ HNSQR METRIC SUPERIORITY ANALYSIS: COSINE (R) vs complex projective overlap (C)║
 ╚══════════════════════════════════════════════════════════════════════╝
 
 REAL (Cosine) Similarity Metrics:
@@ -181,7 +181,7 @@ REAL (Cosine) Similarity Metrics:
   Inter-cluster avg: 0.1234
   Separation Margin: 0.8189
 
-COMPLEX (Quantum Fidelity) Metrics:
+COMPLEX (complex projective overlap) Metrics:
   Intra-cluster avg: 0.9567
   Inter-cluster avg: 0.0987
   Separation Margin: 0.8580
@@ -265,7 +265,7 @@ Extend to verify:
 |---|-------------|--------|------------------|-----------------|
 | 1 | RiveroCompiler | ✅ | 42-53x faster compilation | Eliminates D=4096 scalability barrier |
 | 2 | Snapshot Persistence | ✅ | Instant restart | True database durability |
-| 3 | Metric Superiority | ✅ | Empirical validation | Proves business value of quantum math |
+| 3 | Metric Superiority | ✅ | Empirical validation | Proves business value of complex projective linear algebra |
 | 4 | Loom Concurrency | ✅ | Formal race-freedom proof | Enterprise safety guarantees |
 
 ---

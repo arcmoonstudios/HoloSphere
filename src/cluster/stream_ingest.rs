@@ -38,10 +38,12 @@ pub struct StreamIngestStats {
     pub average_batch_size: f64,
 }
 
-/// Decoupled Streaming Ingestor.
+const NUM_INGEST_SHARDS: usize = 16;
+
+/// Decoupled Streaming Ingestor with Striped Concurrent Shards.
 #[allow(dead_code)]
 pub struct AsyncLogStreamIngestor {
-    queue: Mutex<VecDeque<QueuedMutation>>,
+    shards: Vec<Mutex<VecDeque<QueuedMutation>>>,
     queue_len: AtomicUsize,
     max_queue_capacity: usize,
     batch_flush_size: usize,
@@ -49,12 +51,19 @@ pub struct AsyncLogStreamIngestor {
     total_ingested: AtomicU64,
     total_flushes: AtomicU64,
     pub is_shutting_down: AtomicBool,
+    drain_cursor: AtomicUsize,
 }
 
 impl AsyncLogStreamIngestor {
     pub fn new(capacity: usize, batch_size: usize, flush_timeout: Duration) -> Self {
+        let shard_cap = (capacity / NUM_INGEST_SHARDS).max(16);
+        let mut shards = Vec::with_capacity(NUM_INGEST_SHARDS);
+        for _ in 0..NUM_INGEST_SHARDS {
+            shards.push(Mutex::new(VecDeque::with_capacity(shard_cap)));
+        }
+
         Self {
-            queue: Mutex::new(VecDeque::with_capacity(capacity.min(65536))),
+            shards,
             queue_len: AtomicUsize::new(0),
             max_queue_capacity: capacity,
             batch_flush_size: batch_size,
@@ -62,10 +71,11 @@ impl AsyncLogStreamIngestor {
             total_ingested: AtomicU64::new(0),
             total_flushes: AtomicU64::new(0),
             is_shutting_down: AtomicBool::new(false),
+            drain_cursor: AtomicUsize::new(0),
         }
     }
 
-    /// Submits a mutation to the lock-free ingestion stream with backpressure checks.
+    /// Submits a mutation to the striped concurrent stream with backpressure checks.
     pub fn submit_mutation(
         &self,
         tenant_id: &str,
@@ -78,8 +88,9 @@ impl AsyncLogStreamIngestor {
             return Ok(false);
         }
 
+        let shard_idx = (mutation_id as usize) % NUM_INGEST_SHARDS;
         {
-            let mut q = self.queue.lock();
+            let mut q = self.shards[shard_idx].lock();
             q.push_back(QueuedMutation {
                 tenant_id: tenant_id.to_string(),
                 mutation_id,
@@ -93,11 +104,18 @@ impl AsyncLogStreamIngestor {
         Ok(true)
     }
 
-    /// Drains up to `batch_flush_size` mutations from the streaming queue for batch commit.
+    /// Drains up to `batch_flush_size` mutations across all striped shards for batch commit.
     pub fn drain_batch(&self) -> Vec<QueuedMutation> {
         let mut batch = Vec::with_capacity(self.batch_flush_size);
-        {
-            let mut q = self.queue.lock();
+        let start_shard = self.drain_cursor.fetch_add(1, Ordering::Relaxed) % NUM_INGEST_SHARDS;
+
+        for offset in 0..NUM_INGEST_SHARDS {
+            if batch.len() >= self.batch_flush_size {
+                break;
+            }
+
+            let shard_idx = (start_shard + offset) % NUM_INGEST_SHARDS;
+            let mut q = self.shards[shard_idx].lock();
             while batch.len() < self.batch_flush_size {
                 if let Some(item) = q.pop_front() {
                     batch.push(item);

@@ -29,7 +29,7 @@
 
 ### ⚠️ What's Unproven (Critical Gaps)
 
-1. **Core differentiation claim: quantum fidelity vs cosine**
+1. **Core differentiation claim: complex projective overlap vs cosine**
    - **Status:** Untested on real retrieval tasks
    - **Impact:** Decides if HNSQR is novel or just "fast unproven metric"
    - Mathematical analysis shows: `F = cos² + Cross²`
@@ -125,7 +125,7 @@
 | Chaos testing (partitions, failures) | ❌ | ✅ | ✅ | ✅ | Reliability proof |
 | Public benchmarks (SIFT1M, Deep1B) | ❌ | ✅ | ✅ | ✅ | Reproducible claims |
 | **Unique Differentiators** |
-| Quantum fidelity metric | ✅ | ❌ | ❌ | ❌ | **Unproven value** |
+| complex projective overlap metric | ✅ | ❌ | ❌ | ❌ | **Unproven value** |
 | O(1)-in-N latency contract | ✅ | ❌ | ❌ | ❌ | **If scales to enterprise N** |
 | Fixed-work proof diagnostics | ✅ | ❌ | ❌ | ❌ | Transparency strength |
 
@@ -144,7 +144,7 @@ These are **non-negotiable** for enterprise consideration:
 
 1. **Metric validation** (Phase 0)
    - Prove fidelity beats cosine on real retrieval, or pivot
-   - Without this, "quantum fidelity" is a liability, not an asset
+   - Without this, "complex projective overlap" is a liability, not an asset
 
 2. **Filtered search at scale** (Phase 1.1)
    - Filter-aware routing with adaptive expansion
@@ -218,7 +218,7 @@ These enable broader adoption:
 - Prepare pivot options:
   - **Option A:** Learned pairing (train dimension pairing on relevance data)
   - **Option B:** Drop metric claim, sell pure latency contract ("fastest O(1) ANN")
-  - **Option C:** Alternative quantum-inspired metrics with principled basis
+  - **Option C:** Alternative complex projective metrics with principled basis
 
 ### Risk 2: Filtered Search Recall Collapse
 **Probability:** High (known mathematical issue)  
@@ -264,7 +264,7 @@ These enable broader adoption:
 
 **If YES (statistically significant improvement on real IR tasks):**
 - ✅ **Proceed to Phase 1** (enterprise features)
-- Market as: "Novel quantum-inspired metric with proven retrieval advantage"
+- Market as: "Novel complex projective metric with proven retrieval advantage"
 - Publish: Academic paper, blog posts, benchmark results
 
 **If NO (no improvement or worse than cosine):**
@@ -272,7 +272,7 @@ These enable broader adoption:
 - Options:
   - Pivot A: Research learned pairing (requires ML training pipeline)
   - Pivot B: Rebrand as "fastest O(1) ANN with bounded latency guarantees"
-  - Pivot C: Explore alternative quantum metrics (Bures, trace distance, others)
+  - Pivot C: Explore alternative complex projective metrics (Bures, trace distance, others)
 - Update: All marketing, documentation, README claims
 
 ### Question 2: Can we achieve enterprise-scale (1M+) with 95%+ recall? (Phase 1)
@@ -361,7 +361,7 @@ These enable broader adoption:
 
 **HNSQR has proven its bounded-latency methodology is real, not vaporware.** The engineering is solid, the architecture is novel, and the 65K audit moved the needle from "toy scale" to "verified within tested bounds."
 
-**The critical gap is proving the value proposition.** The quantum fidelity claim is unproven and mathematically suspect. Phase 0 validation (1-2 weeks) is the decisive fork in the road.
+**The critical gap is proving the value proposition.** The complex projective overlap claim is unproven and mathematically suspect. Phase 0 validation (1-2 weeks) is the decisive fork in the road.
 
 **Enterprise features are table-stakes, not differentiators.** Filtered search, persistence, verified concurrency — these must exist but won't win deals. They're prerequisites to be considered.
 

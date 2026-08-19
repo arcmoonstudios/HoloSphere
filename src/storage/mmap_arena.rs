@@ -291,7 +291,7 @@ impl MmapArena {
         self.len() == 0
     }
 
-    /// Evaluates asymmetric quantum fidelity between an uncompressed query and the mmap-backed quantized vector.
+    /// Evaluates asymmetric projective overlap between an uncompressed query and the mmap-backed quantized vector.
     #[inline(always)]
     pub fn compute_fidelity(
         &self,

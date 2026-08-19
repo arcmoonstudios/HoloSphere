@@ -252,8 +252,8 @@ impl GatewayRouter {
         llm_vector: &[f32],
     ) -> HNSQRResult<NodeIndex> {
         let target_index = self.get_or_create_collection(collection, llm_vector.len())?;
-        let quantum_embedding = ComplexWeaver::fold_llm_embedding(llm_vector);
-        target_index.insert(id, quantum_embedding)
+        let complex_embedding = ComplexWeaver::fold_llm_embedding(llm_vector);
+        target_index.insert(id, complex_embedding)
     }
 
     /// Ingests a raw real-valued LLM vector with structured metadata into a target collection.
@@ -265,8 +265,8 @@ impl GatewayRouter {
         metadata: HashMap<String, MetadataValue>,
     ) -> HNSQRResult<NodeIndex> {
         let target_index = self.get_or_create_collection(collection, llm_vector.len())?;
-        let quantum_embedding = ComplexWeaver::fold_llm_embedding(llm_vector);
-        target_index.insert_with_metadata(id, quantum_embedding, metadata)
+        let complex_embedding = ComplexWeaver::fold_llm_embedding(llm_vector);
+        target_index.insert_with_metadata(id, complex_embedding, metadata)
     }
 
     /// Parallel batch ingestion of LLM vectors using Rayon multi-threading.
@@ -321,8 +321,8 @@ impl GatewayRouter {
         k: usize,
     ) -> HNSQRResult<Vec<(String, SimilarityScore)>> {
         let target_index = self.get_or_create_collection(collection, llm_query.len())?;
-        let quantum_query = ComplexWeaver::fold_llm_embedding(llm_query);
-        target_index.search(&quantum_query, k).map(|results| {
+        let complex_query = ComplexWeaver::fold_llm_embedding(llm_query);
+        target_index.search(&complex_query, k).map(|results| {
             results
                 .into_iter()
                 .map(|(id, score)| (id.to_string(), score))
@@ -352,17 +352,17 @@ impl GatewayRouter {
         certified_exact: bool,
     ) -> HNSQRResult<(Vec<(String, SimilarityScore)>, bool, Option<f32>)> {
         let target_index = self.get_or_create_collection(collection, llm_query.len())?;
-        let quantum_query = ComplexWeaver::fold_llm_embedding(llm_query);
+        let complex_query = ComplexWeaver::fold_llm_embedding(llm_query);
         let filter_mask = filter.and_then(|f| target_index.compile_filter_mask(&f).ok());
 
         if certified_exact {
-            let (results, proof) = target_index.search_indices_with_proof(&quantum_query, k, filter_mask.as_ref())?;
+            let (results, proof) = target_index.search_indices_with_proof(&complex_query, k, filter_mask.as_ref())?;
             let mapped = results.into_iter().filter_map(|(idx, score)| {
                 target_index.arena.get_node(idx).map(|n| (n.external_id.to_string(), score))
             }).collect();
             Ok((mapped, proof.globally_exact, Some(proof.max_remaining_upper_bound as f32)))
         } else {
-            let results = target_index.search_indices_filtered(&quantum_query, k, filter_mask.as_ref())?;
+            let results = target_index.search_indices_filtered(&complex_query, k, filter_mask.as_ref())?;
             let mapped = results.into_iter().filter_map(|(idx, score)| {
                 target_index.arena.get_node(idx).map(|n| (n.external_id.to_string(), score))
             }).collect();
@@ -475,7 +475,7 @@ pub fn create_http_router(router: Arc<GatewayRouter>) -> Router {
 async fn healthcheck_handler() -> impl IntoResponse {
     Json(serde_json::json!({
         "status": "healthy",
-        "engine": "HNSQR Quantum Vector Database",
+        "engine": "HoloSphere Vector Database",
         "version": env!("CARGO_PKG_VERSION"),
     }))
 }
@@ -625,11 +625,11 @@ mod tests {
         // Simulating a 1536-dimensional OpenAI embedding
         let raw_openai_vec: Vec<f32> = (0..1536).map(|i| (i as f32) / 1536.0).collect();
 
-        let quantum_emb = ComplexWeaver::fold_llm_embedding(&raw_openai_vec);
-        assert_eq!(quantum_emb.dimension(), 768); // 1536 -> 768 complex elements
-        assert!((quantum_emb.norm_squared() - 1.0).abs() < 1e-4);
+        let complex_emb = ComplexWeaver::fold_llm_embedding(&raw_openai_vec);
+        assert_eq!(complex_emb.dimension(), 768); // 1536 -> 768 complex elements
+        assert!((complex_emb.norm_squared() - 1.0).abs() < 1e-4);
 
-        let unfolded = ComplexWeaver::unfold_to_real(&quantum_emb, 1536);
+        let unfolded = ComplexWeaver::unfold_to_real(&complex_emb, 1536);
         assert_eq!(unfolded.len(), 1536);
     }
 

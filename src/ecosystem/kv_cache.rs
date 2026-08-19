@@ -34,9 +34,9 @@ struct KvEntry {
     expires_at: Option<Instant>,
 }
 
-/// In-Memory Multi-Model Key-Value Store.
+/// In-Memory Multi-Model Key-Value Store with raw byte key indexing.
 pub struct MemoryKvStore {
-    entries: RwLock<HashMap<String, KvEntry>>,
+    entries: RwLock<HashMap<Vec<u8>, KvEntry>>,
     total_ops: AtomicU64,
     hits: AtomicU64,
     misses: AtomicU64,
@@ -52,16 +52,16 @@ impl MemoryKvStore {
         }
     }
 
-    /// Sets a string key-value pair with optional TTL.
-    pub fn set(&self, key: &str, value: KvValue, ttl: Option<Duration>) {
+    /// Sets a raw byte key-value pair with optional TTL with zero UTF-8 allocation overhead.
+    pub fn set_raw(&self, key: &[u8], value: KvValue, ttl: Option<Duration>) {
         self.total_ops.fetch_add(1, Ordering::Relaxed);
         let expires_at = ttl.map(|d| Instant::now() + d);
         let entry = KvEntry { value, expires_at };
-        self.entries.write().insert(key.to_string(), entry);
+        self.entries.write().insert(key.to_vec(), entry);
     }
 
-    /// Gets a value by key, honoring TTL expiration.
-    pub fn get(&self, key: &str) -> Option<KvValue> {
+    /// Gets a value by raw byte slice key, honoring TTL expiration with zero string allocations.
+    pub fn get_raw(&self, key: &[u8]) -> Option<KvValue> {
         self.total_ops.fetch_add(1, Ordering::Relaxed);
         let now = Instant::now();
         let mut entries = self.entries.write();
@@ -82,17 +82,17 @@ impl MemoryKvStore {
         }
     }
 
-    /// Deletes a key from the cache.
-    pub fn delete(&self, key: &str) -> bool {
+    /// Deletes a key by raw byte slice.
+    pub fn delete_raw(&self, key: &[u8]) -> bool {
         self.total_ops.fetch_add(1, Ordering::Relaxed);
         self.entries.write().remove(key).is_some()
     }
 
-    /// Atomic integer increment (INCRBY equivalent).
-    pub fn incr_by(&self, key: &str, delta: i64) -> i64 {
+    /// Atomic integer increment over raw byte slice key.
+    pub fn incr_by_raw(&self, key: &[u8], delta: i64) -> i64 {
         self.total_ops.fetch_add(1, Ordering::Relaxed);
         let mut entries = self.entries.write();
-        let entry = entries.entry(key.to_string()).or_insert_with(|| KvEntry {
+        let entry = entries.entry(key.to_vec()).or_insert_with(|| KvEntry {
             value: KvValue::Integer(0),
             expires_at: None,
         });
@@ -109,11 +109,31 @@ impl MemoryKvStore {
         }
     }
 
+    /// Sets a string key-value pair with optional TTL.
+    pub fn set(&self, key: &str, value: KvValue, ttl: Option<Duration>) {
+        self.set_raw(key.as_bytes(), value, ttl);
+    }
+
+    /// Gets a value by string key.
+    pub fn get(&self, key: &str) -> Option<KvValue> {
+        self.get_raw(key.as_bytes())
+    }
+
+    /// Deletes a string key from the cache.
+    pub fn delete(&self, key: &str) -> bool {
+        self.delete_raw(key.as_bytes())
+    }
+
+    /// Atomic integer increment by string key.
+    pub fn incr_by(&self, key: &str, delta: i64) -> i64 {
+        self.incr_by_raw(key.as_bytes(), delta)
+    }
+
     /// Adds a tag to a string set (SADD equivalent).
     pub fn set_add(&self, key: &str, member: &str) -> bool {
         self.total_ops.fetch_add(1, Ordering::Relaxed);
         let mut entries = self.entries.write();
-        let entry = entries.entry(key.to_string()).or_insert_with(|| KvEntry {
+        let entry = entries.entry(key.as_bytes().to_vec()).or_insert_with(|| KvEntry {
             value: KvValue::HashSet(HashSet::new()),
             expires_at: None,
         });
@@ -132,7 +152,7 @@ impl MemoryKvStore {
     pub fn set_is_member(&self, key: &str, member: &str) -> bool {
         self.total_ops.fetch_add(1, Ordering::Relaxed);
         let entries = self.entries.read();
-        if let Some(entry) = entries.get(key) {
+        if let Some(entry) = entries.get(key.as_bytes()) {
             if let KvValue::HashSet(set) = &entry.value {
                 return set.contains(member);
             }

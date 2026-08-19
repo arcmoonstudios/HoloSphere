@@ -51,10 +51,10 @@ impl TriangleCount {
                 if v <= u {
                     continue; // Only process each pair (u,v) with u < v once.
                 }
-                // Count common neighbours using sorted merge.
+                // Count common neighbours using Leapfrog galloping intersection.
                 let nu = &adj[u as usize];
                 let nv = &adj[v as usize];
-                let common = Self::sorted_intersection_count(nu, nv);
+                let common = crate::graph::storage::csr::CsrAdjacency::intersect_sorted_galloping(nu, nv);
                 triangles += common as u64;
                 local_t[u as usize] += common as u64;
                 local_t[v as usize] += common as u64;
@@ -74,22 +74,5 @@ impl TriangleCount {
             .collect();
 
         Self { triangles, local_clustering }
-    }
-
-    fn sorted_intersection_count(a: &[NodeIndex], b: &[NodeIndex]) -> usize {
-        let mut count = 0;
-        let (mut i, mut j) = (0, 0);
-        while i < a.len() && j < b.len() {
-            match a[i].cmp(&b[j]) {
-                std::cmp::Ordering::Equal => {
-                    count += 1;
-                    i += 1;
-                    j += 1;
-                }
-                std::cmp::Ordering::Less => i += 1,
-                std::cmp::Ordering::Greater => j += 1,
-            }
-        }
-        count
     }
 }

@@ -247,7 +247,7 @@ macro_rules! defer {
 pub type Dimension = usize;
 /// Type alias for internal integer node identifiers in the contiguous arena.
 pub type NodeIndex = u32;
-/// Type alias for similarity score values returned during searches (e.g. Quantum Fidelity in [0, 1]).
+/// Type alias for similarity score values returned during searches (e.g. Projective Overlap in [0, 1]).
 pub type SimilarityScore = f32;
 /// Type alias for user-facing external node identifiers.
 /// `Arc<str>` instead of `String`: cloning a search result ID is an O(1) atomic
@@ -774,7 +774,7 @@ pub fn prefetch_vector(data: &[Complex32]) {
     }
 }
 
-/// A complex-valued, phase-encoded quantum vector embedding.
+/// A complex-valued, phase-encoded vector embedding.
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct VectorEmbedding {
     data: Vec<Complex32>,
@@ -813,7 +813,7 @@ impl VectorEmbedding {
         Self::from_reals(&data)
     }
 
-    /// Constructs a quantum state embedding from real float values ($z_j = x_j + 0i$).
+    /// Constructs a complex vector embedding from real float values ($z_j = x_j + 0i$).
     pub fn from_reals(data: &[f32]) -> Self {
         let complex_data = data.iter().map(|&x| Complex32::new(x, 0.0)).collect();
         Self { data: complex_data }
@@ -859,7 +859,7 @@ impl VectorEmbedding {
         self.data.iter().map(|z| z.arg()).collect()
     }
 
-    /// Computes the squared $L_2$ norm $\langle\psi|\psi\rangle = \sum_j |z_j|^2$.
+    /// Computes the squared $L_2$ norm $\sum_j |z_j|^2$.
     #[inline]
     pub fn norm_squared(&self) -> f32 {
         let mut sum = 0.0f32;
@@ -884,7 +884,7 @@ impl VectorEmbedding {
         self.norm_squared().sqrt()
     }
 
-    /// Returns a normalized quantum state vector such that $||\psi|| = 1$.
+    /// Returns a normalized complex vector such that $||\psi|| = 1$.
     pub fn normalize(&self) -> Self {
         Self::from_complex(self.data.clone()).into_normalized()
     }
@@ -1008,26 +1008,14 @@ pub enum DistanceFunction {
     #[default]
     Cosine,
     /// Complex Projective Overlap (CPO): $P(\psi, \phi) = |\langle\psi|\phi\rangle|^2 / (||\psi||^2 ||\phi||^2)$ (Similarity $\in [0, 1]$).
-    #[serde(alias = "QuantumFidelity")]
     ProjectiveOverlap,
     /// Projective Sine Distance: $D(\psi, \phi) = \sqrt{1 - P(\psi, \phi)}$ (Distance $\in [0, 1]$).
-    #[serde(alias = "TraceDistance")]
     ProjectiveSineDistance,
     /// Phase-Aligned Chordal Distance: $D(\psi, \phi) = \sqrt{2(1 - \sqrt{P(\psi, \phi)})}$.
-    /// Note: Mathematically equivalent to the pure-state Bures metric evaluated classically.
-    #[serde(alias = "BuresDistance")]
+    /// Note: Chordal projective metric on the complex projective manifold.
     PhaseAlignedChordalDistance,
     /// Complex Euclidean Distance.
     Euclidean,
-}
-
-/// Backward-compatibility constants for legacy distance metric identifiers.
-#[allow(non_upper_case_globals)]
-pub mod distance_compat {
-    use super::DistanceFunction;
-    pub const QuantumFidelity: DistanceFunction = DistanceFunction::ProjectiveOverlap;
-    pub const TraceDistance: DistanceFunction = DistanceFunction::ProjectiveSineDistance;
-    pub const BuresDistance: DistanceFunction = DistanceFunction::PhaseAlignedChordalDistance;
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -1050,7 +1038,7 @@ pub struct HNSQRConfig {
     pub level_multiplier: f32,
     /// Maximum number of nodes the index arena is bounded to. Default: 100,000.
     pub max_elements: usize,
-    /// Distance and similarity metric. Default: QuantumFidelity.
+    /// Distance and similarity metric. Default: ProjectiveOverlap.
     pub distance_function: DistanceFunction,
     /// Execution plan and automatic small-corpus crossover strategy. Default: Auto.
     pub search_plan: SearchPlan,
@@ -1060,11 +1048,11 @@ pub struct HNSQRConfig {
     pub superposition_beam_width: usize,
     /// Softmax temperature $\tau$ for attention weight distribution. Default: 0.15.
     pub attention_temperature: f32,
-    /// Weight $\lambda \in [0, 1]$ given to superposition interference vs query fidelity. Default: 0.35.
-    pub quantum_interference_weight: f32,
+    /// Weight $\lambda \in [0, 1]$ given to beam interference vs query projective overlap. Default: 0.35.
+    pub interference_weight: f32,
     /// Maximum search queue exploration limit. Default: 2,000.
     pub search_queue_size: usize,
-    /// Candidate over-sampling factor $\alpha$ for exact quantum rescoring. Default: 3.0.
+    /// Candidate over-sampling factor $\alpha$ for exact rescoring. Default: 3.0.
     pub oversample_factor: f32,
     /// Enables Heuristic Diverse Edge Selection (Algorithm 4). Default: true.
     pub heuristic_edge_selection: bool,
@@ -1128,7 +1116,7 @@ impl Default for HNSQRConfig {
             exact_scan_threshold: 2000,
             superposition_beam_width: 8,
             attention_temperature: 0.15,
-            quantum_interference_weight: 0.35,
+            interference_weight: 0.35,
             search_queue_size: 2000,
             oversample_factor: 3.0,
             heuristic_edge_selection: true,
@@ -1188,7 +1176,7 @@ impl HNSQRConfig {
     }
 }
 
-/// Dynamic contextual intent applied during search and quantum re-ranking.
+/// Dynamic contextual intent applied during search and complex phase re-ranking.
 #[derive(Clone, Default)]
 pub struct SearchIntent {
     /// Recency bias factor $[0, 1]$ prioritizing freshly inserted nodes. Default: 0.0.
@@ -1642,7 +1630,7 @@ pub struct AdaptiveSearchDiagnostics {
 // 6. MAIN HNSQR INDEX IMPLEMENTATION
 // ════════════════════════════════════════════════════════════════════════════════
 
-/// Hierarchical Navigable Small Quantum Realm (HNSQR) Vector Index.
+/// Hierarchical Navigable Semantic Query Resolver (HNSQR) Vector Index.
 pub struct HNSQRIndex {
     config: RwLock<HNSQRConfig>,
     dimension: Dimension,
@@ -2664,7 +2652,7 @@ impl HNSQRIndex {
         let config = self.config.read();
         let base_beam_width = config.superposition_beam_width.max(1);
         let temp = config.attention_temperature.max(1e-4);
-        let lambda = config.quantum_interference_weight.clamp(0.0, 1.0);
+        let lambda = config.interference_weight.clamp(0.0, 1.0);
 
         THREAD_SEARCH_SCRATCHPAD.with(|pad_cell| {
             let mut pad_guard = pad_cell.borrow_mut();
@@ -2762,7 +2750,7 @@ impl HNSQRIndex {
                         continue;
                     }
 
-                    // 3. Evaluate Quantum Interference & Total Superposition Scores with Single-Pass SIMD
+                    // 3. Evaluate Phase Interference & Total Superposition Scores with Single-Pass SIMD
                     scored_neighbors.clear();
                     for &(n_idx, _) in neighbor_candidates.iter() {
                         let n_slice = self.arena.get_vector_slice(n_idx);
@@ -2854,7 +2842,7 @@ impl HNSQRIndex {
     }
 
     // ────────────────────────────────────────────────────────────────────────
-    // 4. SEARCH API WITH OVER-SAMPLING & QUANTUM RESCORING
+    // 4. SEARCH API WITH OVER-SAMPLING & EXACT RESCORING
     // ────────────────────────────────────────────────────────────────────────
 
     /// Searches for the $k$ nearest neighbors to the query vector.
@@ -3712,7 +3700,7 @@ impl HNSQRIndex {
     /// Strict Rivero search using a precompiled fixed-size address.
     ///
     /// This avoids dimension-dependent address compilation inside the resolver. Exact
-    /// quantum-fidelity reranking still reads the bounded candidates' full vectors.
+    /// complex-metric reranking still reads the bounded candidates' full vectors.
     pub fn search_indices_with_rivero_address(
         &self,
         query: &VectorEmbedding,

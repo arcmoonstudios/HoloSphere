@@ -23,7 +23,7 @@ This guide helps you upgrade from the research prototype to the enterprise-grade
 3. **Metric Validation Benchmark**
    - New benchmark validates semantic preservation
    - Run with: `cargo bench --bench metric_superiority`
-   - Proves mathematical superiority of quantum fidelity
+   - Proves mathematical superiority of complex projective overlap
 
 4. **Loom Concurrency Testing**
    - Formal race-freedom validation added
@@ -98,7 +98,7 @@ cargo bench --bench metric_superiority
 ```
 Margin Improvement: +4.77%
 ```
-- **Positive:** Quantum fidelity provides better semantic separation
+- **Positive:** complex projective overlap provides better semantic separation
 - **Near zero:** Equivalent performance (still benefits from other optimizations)
 - **Negative > -5%:** Within acceptable degradation threshold
 

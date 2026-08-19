@@ -174,6 +174,11 @@ impl EdgeDelta {
         idx < live.len() && live[idx]
     }
 
+    /// Number of live edges in this delta.
+    pub fn len(&self) -> usize {
+        self.live.read().iter().filter(|&&b| b).count()
+    }
+
     /// Iterates the outgoing edge chain for `node` starting at `head`.
     ///
     /// Skips tombstoned records so callers always see consistent live edges.

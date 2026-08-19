@@ -112,7 +112,7 @@ pub struct SnapshotHeaderV2 {
     pub rivero_schema_version: u16,
     /// Rivero operational profile tag.
     pub rivero_profile: u8,
-    /// Distance metric tag (0 = Quantum Fidelity, 1 = Cosine).
+    /// Distance metric tag (0 = Projective Overlap / CPO, 1 = Cosine).
     pub distance_metric: u8,
     /// Total number of section descriptors in the section table.
     pub section_count: u32,

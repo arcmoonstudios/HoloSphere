@@ -6,7 +6,7 @@ Successfully implemented four critical architectural integrations that bridge th
 
 - **42-53x faster** address compilation at high dimensions
 - **Instant restart** capability via structural snapshots
-- **Empirical validation** of quantum fidelity superiority
+- **Empirical validation** of complex projective overlap superiority
 - **Formal proof** of lock-free concurrency safety
 
 **Total Impact:** Eliminates scalability barriers, enables true database durability, and provides mathematical validation—positioning HNSQR to compete with Milvus, Qdrant, and Pinecone.
@@ -99,7 +99,7 @@ index.load_snapshot("index.hnsqr-meta")?;
 
 ### 3. Metric Superiority Benchmark (HIGH - Score 750)
 
-**Problem:** No empirical proof quantum fidelity beats cosine distance  
+**Problem:** No empirical proof complex projective overlap beats cosine distance  
 **Solution:** Separation margin comparison on synthetic clusters
 
 **Files Created:**
@@ -113,7 +113,7 @@ index.load_snapshot("index.hnsqr-meta")?;
 2. Fold to ℂ^768 via pairwise phase encoding
 3. Sample 1000 pairs measuring:
    - Real cosine similarity
-   - Complex quantum fidelity
+   - Complex complex projective overlap
 4. Calculate separation margins:
    - Margin = (Intra-cluster avg) - (Inter-cluster avg)
 5. Report improvement percentage
@@ -291,13 +291,13 @@ warning: unexpected `cfg` condition name: `loom`
 |---------|--------|--------|----------|---------------|
 | High-dim performance | ✅ | ✅ | ✅ | ✅ **+53x** |
 | Instant restart | ✅ | ✅ | ✅ | ✅ **NEW** |
-| Quantum metrics | ❌ | ❌ | ❌ | ✅ **UNIQUE** |
+| complex projective metrics | ❌ | ❌ | ❌ | ✅ **UNIQUE** |
 | Formal concurrency proof | ❌ | ❌ | ❌ | ✅ **UNIQUE** |
 
 ### Market Differentiation
 
 1. **Mathematical Superiority**
-   - Empirical proof of quantum fidelity advantage
+   - Empirical proof of complex projective overlap advantage
    - Addresses "why not just cosine?" objection
    - Unique selling proposition vs competitors
 
@@ -362,7 +362,7 @@ All four critical enterprise integrations have been successfully implemented, te
 
 ✅ **Joint N×D Scaling** - 50x faster compilation eliminates dimensional barriers  
 ✅ **Durable Index State** - Snapshot persistence enables instant recovery  
-✅ **Empirical Metric Superiority** - Benchmark proves quantum fidelity advantage  
+✅ **Empirical Metric Superiority** - Benchmark proves complex projective overlap advantage  
 ✅ **Formal Concurrency Safety** - Loom verification guarantees race-freedom  
 
 **Status:** Ready for production deployment and performance validation.

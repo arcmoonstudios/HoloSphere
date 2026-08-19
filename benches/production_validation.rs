@@ -7,7 +7,7 @@
 //! production-grade performance, semantic retrieval quality, resilience, and scalability.
 //!
 //! ### Core Experimental Sections:
-//!   1. **Semantic Metrics & Quantum Fidelity vs Real Cosine**:
+//!   1. **Semantic Metrics & Projective Overlap (CPO) vs Real Cosine**:
 //!      Evaluates Recall@1/10/100, MRR, NDCG@10/100 on multi-domain text retrieval embeddings.
 //!   2. **Global Phase Invariance vs Collision Attack Test**:
 //!      Unfolds rotated states $z' = e^{i\phi} z$ back to real coordinates to quantify
@@ -168,7 +168,7 @@ fn run_metric_relevance_comparison(corpus: &TextRetrievalCorpus) {
     println!(
         "════════════════════════════════════════════════════════════════════════════════════════"
     );
-    println!(" EXPERIMENT 1: RETRIEVAL METRIC COMPARISON (QUANTUM FIDELITY VS REAL COSINE)");
+    println!(" EXPERIMENT 1: RETRIEVAL METRIC COMPARISON (PROJECTIVE OVERLAP VS REAL COSINE)");
     println!(
         "════════════════════════════════════════════════════════════════════════════════════════"
     );
@@ -379,7 +379,7 @@ fn run_metric_relevance_comparison(corpus: &TextRetrievalCorpus) {
         hermitian_res.ndcg_100
     );
     println!(
-        "  │ Quantum Fidelity |⟨z│w⟩|²│ {:>8.4} │ {:>9.4} │ {:>10.4} │ {:>8.4} │ {:>9.4} │ {:>10.4} │",
+        "  │ Projective Overlap |⟨z│w⟩|²│ {:>8.4} │ {:>9.4} │ {:>10.4} │ {:>8.4} │ {:>9.4} │ {:>10.4} │",
         fidelity_res.recall_1,
         fidelity_res.recall_10,
         fidelity_res.recall_100,
@@ -404,7 +404,7 @@ fn run_metric_relevance_comparison(corpus: &TextRetrievalCorpus) {
         "  Key Finding: Folded Hermitian exactly matches Real Cosine down to machine epsilon (diff < 1e-7)."
     );
     println!(
-        "  Quantum Fidelity provides symmetric phase-invariance, proving ideal for structural candidate routing.\n"
+        "  Projective Overlap (CPO) provides symmetric phase-invariance, proving ideal for structural candidate routing.\n"
     );
 }
 
@@ -467,7 +467,7 @@ fn run_global_phase_collision_attack(corpus: &TextRetrievalCorpus) {
             // Real cosine(x, x')
             let cos_sim: f32 = x.iter().zip(x_prime.iter()).map(|(a, b)| a * b).sum();
 
-            // Quantum Fidelity(z, z')
+            // Projective Overlap CPO(z, z')
             let inner: Complex32 = z
                 .complex_data()
                 .iter()
@@ -536,7 +536,7 @@ fn run_global_phase_collision_attack(corpus: &TextRetrievalCorpus) {
 
     println!("  Empirical Architectural Conclusion:");
     println!(
-        "  1. Pure Quantum Fidelity treats rotated vectors z' as identical (F=1.0) while real Cosine drops to cos(φ)."
+        "  1. Complex Projective Overlap treats rotated vectors z' as identical (F=1.0) while real Cosine drops to cos(φ)."
     );
     println!("  2. SOLUTION IMPLEMENTED IN HNSQR:");
     println!(

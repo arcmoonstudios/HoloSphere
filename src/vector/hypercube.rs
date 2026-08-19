@@ -10,7 +10,7 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 
@@ -58,12 +58,104 @@ impl HypercubeBoundingBox {
     }
 }
 
-/// N-Dimensional Tensor Space managing dense or sparse hypercube voxels.
-#[allow(dead_code)]
+/// 64-bit Morton Z-Order Space-Filling Curve Encoder for $N$-dimensional space.
+#[derive(Clone, Debug)]
+pub struct MortonEncoderND {
+    dimensions: usize,
+    bits_per_dim: usize,
+}
+
+impl MortonEncoderND {
+    pub fn new(dimensions: usize) -> Self {
+        let bits_per_dim = if dimensions > 0 {
+            (64 / dimensions).min(21).max(1)
+        } else {
+            1
+        };
+        Self {
+            dimensions,
+            bits_per_dim,
+        }
+    }
+
+    /// Encodes an N-dimensional coordinate into a 64-bit Morton index by bit interleaving.
+    #[inline]
+    pub fn encode(&self, coords: &[usize]) -> u64 {
+        let mut morton = 0u64;
+        let bits = self.bits_per_dim;
+        for bit in 0..bits {
+            for (dim_idx, &coord) in coords.iter().enumerate().take(self.dimensions) {
+                let bit_val = ((coord >> bit) & 1) as u64;
+                morton |= bit_val << (bit * self.dimensions + dim_idx);
+            }
+        }
+        morton
+    }
+
+    /// Decodes a 64-bit Morton index back into an N-dimensional coordinate.
+    #[inline]
+    pub fn decode(&self, morton: u64, out: &mut [usize]) {
+        for val in out.iter_mut().take(self.dimensions) {
+            *val = 0;
+        }
+        let bits = self.bits_per_dim;
+        for bit in 0..bits {
+            for (dim_idx, out_val) in out.iter_mut().enumerate().take(self.dimensions) {
+                let bit_pos = bit * self.dimensions + dim_idx;
+                let bit_val = ((morton >> bit_pos) & 1) as usize;
+                *out_val |= bit_val << bit;
+            }
+        }
+    }
+}
+
+/// Fixed hyper-tile edge size for spatial chunking (16^N voxels per chunk max, dynamically packed).
+pub const TILE_EDGE: usize = 16;
+
+/// Contiguous Dense Hyper-Tile containing localized voxels in flat memory.
+#[derive(Clone, Debug)]
+struct HyperTile {
+    tile_origin: CoordinateND,
+    dense_buffer: Vec<f32>,
+    occupancy: roaring::RoaringBitmap,
+}
+
+impl HyperTile {
+    fn new(origin: CoordinateND, capacity: usize) -> Self {
+        Self {
+            tile_origin: origin,
+            dense_buffer: vec![0.0; capacity],
+            occupancy: roaring::RoaringBitmap::new(),
+        }
+    }
+
+    #[inline]
+    fn set(&mut self, local_morton: u32, value: f32) {
+        let idx = local_morton as usize;
+        if idx >= self.dense_buffer.len() {
+            self.dense_buffer.resize(idx + 1, 0.0);
+        }
+        self.dense_buffer[idx] = value;
+        self.occupancy.insert(local_morton);
+    }
+
+    #[inline]
+    fn get(&self, local_morton: u32) -> Option<f32> {
+        if self.occupancy.contains(local_morton) {
+            self.dense_buffer.get(local_morton as usize).copied()
+        } else {
+            None
+        }
+    }
+}
+
+/// N-Dimensional Tensor Space managing dense chunked hypercube tiles with Morton Z-Order indexing.
 pub struct HypercubeTensorSpace {
     shape: CoordinateND,
     strides: Vec<usize>,
-    sparse_cells: RwLock<BTreeMap<CoordinateND, f32>>,
+    encoder: MortonEncoderND,
+    tile_capacity: usize,
+    tiles: RwLock<HashMap<u64, HyperTile>>,
 }
 
 impl HypercubeTensorSpace {
@@ -74,16 +166,34 @@ impl HypercubeTensorSpace {
             strides[i] = strides[i + 1] * shape[i + 1];
         }
 
+        let encoder = MortonEncoderND::new(n);
+        let tile_capacity = TILE_EDGE.pow(n.min(5) as u32);
+
         Self {
             shape,
             strides,
-            sparse_cells: RwLock::new(BTreeMap::new()),
+            encoder,
+            tile_capacity,
+            tiles: RwLock::new(HashMap::new()),
         }
     }
 
     /// Returns the number of dimensions in this tensor space.
     pub fn dimensions(&self) -> usize {
         self.shape.len()
+    }
+
+    /// Splits an N-dimensional coordinate into (Tile Origin, Local Tile Offset).
+    #[inline]
+    fn split_tile_coord(&self, coords: &[usize]) -> (CoordinateND, u32) {
+        let mut origin = Vec::with_capacity(self.shape.len());
+        let mut local = Vec::with_capacity(self.shape.len());
+        for &c in coords {
+            origin.push((c / TILE_EDGE) * TILE_EDGE);
+            local.push(c % TILE_EDGE);
+        }
+        let local_morton = self.encoder.encode(&local) as u32;
+        (origin, local_morton)
     }
 
     /// Sets a voxel value at the given $N$-dimensional coordinate.
@@ -105,13 +215,34 @@ impl HypercubeTensorSpace {
             }
         }
 
-        self.sparse_cells.write().insert(coords, value);
+        let (tile_origin, local_offset) = self.split_tile_coord(&coords);
+        let tile_morton = self.encoder.encode(&tile_origin);
+
+        let mut tiles = self.tiles.write();
+        let tile = tiles
+            .entry(tile_morton)
+            .or_insert_with(|| HyperTile::new(tile_origin, self.tile_capacity));
+        tile.set(local_offset, value);
         Ok(())
     }
 
     /// Reads a voxel value at the given $N$-dimensional coordinate.
     pub fn get_voxel(&self, coords: &[usize]) -> Option<f32> {
-        self.sparse_cells.read().get(coords).copied()
+        if coords.len() != self.shape.len() {
+            return None;
+        }
+        for (i, &c) in coords.iter().enumerate() {
+            if c >= self.shape[i] {
+                return None;
+            }
+        }
+
+        let (tile_origin, local_offset) = self.split_tile_coord(coords);
+        let tile_morton = self.encoder.encode(&tile_origin);
+
+        let tiles = self.tiles.read();
+        let tile = tiles.get(&tile_morton)?;
+        tile.get(local_offset)
     }
 
     /// Slices a subvolume hypercube and returns all non-zero voxels inside the slice.
@@ -127,12 +258,39 @@ impl HypercubeTensorSpace {
             )));
         }
 
-        let cells = self.sparse_cells.read();
+        let tiles = self.tiles.read();
         let mut results = Vec::new();
+        let mut local_coords = vec![0usize; self.shape.len()];
 
-        for (coord, &val) in cells.iter() {
-            if bbox.contains(coord) {
-                results.push((coord.clone(), val));
+        for tile in tiles.values() {
+            // Check if this tile overlaps with the bounding box
+            let mut overlaps = true;
+            for d in 0..self.shape.len() {
+                let tile_min = tile.tile_origin[d];
+                let tile_max = tile_min + TILE_EDGE - 1;
+                if tile_max < bbox.min_coords[d] || tile_min > bbox.max_coords[d] {
+                    overlaps = false;
+                    break;
+                }
+            }
+
+            if !overlaps {
+                continue;
+            }
+
+            // Inspect occupied voxels inside the overlapping tile
+            for local_morton in tile.occupancy.iter() {
+                if let Some(val) = tile.get(local_morton) {
+                    self.encoder.decode(local_morton as u64, &mut local_coords);
+                    let mut global_coords = Vec::with_capacity(self.shape.len());
+                    for d in 0..self.shape.len() {
+                        global_coords.push(tile.tile_origin[d] + local_coords[d]);
+                    }
+
+                    if bbox.contains(&global_coords) {
+                        results.push((global_coords, val));
+                    }
+                }
             }
         }
 
@@ -146,6 +304,10 @@ impl HypercubeTensorSpace {
 
     pub fn shape(&self) -> &[usize] {
         &self.shape
+    }
+
+    pub fn strides(&self) -> &[usize] {
+        &self.strides
     }
 }
 
@@ -174,5 +336,15 @@ mod tests {
         assert_eq!(slice.len(), 1);
         assert_eq!(slice[0].0, vec![2, 1, 40, 74]);
         assert_eq!(slice[0].1, 298.15);
+    }
+
+    #[test]
+    fn test_morton_encoding_roundtrip() {
+        let encoder = MortonEncoderND::new(4);
+        let coords = [5, 12, 30, 42];
+        let morton = encoder.encode(&coords);
+        let mut decoded = [0usize; 4];
+        encoder.decode(morton, &mut decoded);
+        assert_eq!(coords, decoded);
     }
 }

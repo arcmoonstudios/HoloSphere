@@ -86,7 +86,7 @@ fn main() {
                 let herm = (q.dot_product_complex(&adv.corpus[*m as usize])).re;
                 let fid = q.dot_product_complex(&adv.corpus[*m as usize]).norm_sqr();
                 println!(
-                    "    -> Missing GT Node {:>4}: Hermitian Re = {:.6}, Quantum Fidelity = {:.6}",
+                    "    -> Missing GT Node {:>4}: Hermitian Re = {:.6}, Projective Overlap = {:.6}",
                     m, herm, fid
                 );
             }
@@ -95,7 +95,7 @@ fn main() {
                 let fid = q.dot_product_complex(&adv.corpus[*e as usize]).norm_sqr();
                 let ann_score = ann.iter().find(|s| s.0 == *e).map(|s| s.1).unwrap_or(0.0);
                 println!(
-                    "    <- Extra ANN Node  {:>4}: Hermitian Re = {:.6}, Quantum Fidelity = {:.6}, Returned ANN Score = {:.6}",
+                    "    <- Extra ANN Node  {:>4}: Hermitian Re = {:.6}, Projective Overlap = {:.6}, Returned ANN Score = {:.6}",
                     e, herm, fid, ann_score
                 );
             }

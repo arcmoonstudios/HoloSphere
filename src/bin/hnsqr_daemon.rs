@@ -5,7 +5,7 @@
 //!
 //! Exposes concurrent enterprise interfaces:
 //! 1. High-Performance Zero-Copy Async Binary TCP QIR0 Engine (Port 9090)
-//! 2. Classical-to-Quantum LLM HTTP REST Gateway & Embedded Web Console (Port 8080)
+//! 2. Pairwise Complex-Folded LLM HTTP REST Gateway & Embedded Web Console (Port 8080)
 //! 3. Native Redis Serialization Protocol (RESP) Wire Server (Port 6379)
 //!
 //! ## Key Capabilities

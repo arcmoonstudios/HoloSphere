@@ -72,6 +72,30 @@ impl ProofNode {
     }
 }
 
+/// Detailed manifold geometry profile characterizing intrinsic dimensional dispersion.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ManifoldGeometryProfile {
+    /// Intrinsic dimensionality / dispersion ratio computed via pairwise cosine variance scaling.
+    pub participation_ratio: f32,
+    /// Mean angular radius across sample pairs in radians.
+    pub mean_leaf_theta_rad: f32,
+    /// Pairwise cosine variance across sample embeddings.
+    pub pairwise_cosine_variance: f32,
+    /// Determines whether the geometry admits spatial hierarchical pruning (e.g. Clustered vs Diffuse/Isotropic).
+    pub is_spatially_prunable: bool,
+}
+
+impl Default for ManifoldGeometryProfile {
+    fn default() -> Self {
+        Self {
+            participation_ratio: 10.0,
+            mean_leaf_theta_rad: 0.5,
+            pairwise_cosine_variance: 0.05,
+            is_spatially_prunable: true,
+        }
+    }
+}
+
 /// The flattened, canonical corpus-covering semantic proof hierarchy.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SemanticProofTree {
@@ -92,6 +116,9 @@ pub struct SemanticProofTree {
 
     /// Root node index (always 0).
     pub root: u32,
+
+    /// Manifold geometry profile characterizing spatial prunability.
+    pub manifold_profile: ManifoldGeometryProfile,
 }
 
 impl SemanticProofTree {
@@ -100,6 +127,66 @@ impl SemanticProofTree {
     /// Every slot in `slots` is guaranteed to be partitioned into exactly one leaf node.
     pub fn build(vectors: &[VectorEmbedding], slots: &[NodeIndex], dimension: usize) -> Self {
         Self::build_with_leaf_target(vectors, slots, dimension, PROOF_LEAF_TARGET)
+    }
+
+    /// Computes the manifold geometry profile and anisotropy ratio from a sample of embeddings.
+    pub fn compute_manifold_profile(
+        vectors: &[VectorEmbedding],
+        slots: &[NodeIndex],
+        dimension: usize,
+    ) -> ManifoldGeometryProfile {
+        let sample_size = 256.min(slots.len());
+        if sample_size < 8 || dimension == 0 {
+            return ManifoldGeometryProfile::default();
+        }
+
+        let mut cos_sum = 0.0f32;
+        let mut cos_sq_sum = 0.0f32;
+        let mut samples = 0usize;
+
+        for i in 0..sample_size {
+            let slot_i = slots[i] as usize;
+            if slot_i >= vectors.len() {
+                continue;
+            }
+            let vi = &vectors[slot_i];
+
+            for j in (i + 1)..sample_size.min(i + 32) {
+                let slot_j = slots[j] as usize;
+                if slot_j >= vectors.len() {
+                    continue;
+                }
+                let vj = &vectors[slot_j];
+
+                let s = (vi.dot_product_complex(vj)).re;
+                cos_sum += s;
+                cos_sq_sum += s * s;
+                samples += 1;
+            }
+        }
+
+        if samples == 0 {
+            return ManifoldGeometryProfile::default();
+        }
+
+        let mean_cos = cos_sum / samples as f32;
+        let variance = (cos_sq_sum / samples as f32 - mean_cos * mean_cos).max(0.0);
+
+        // For uniform isotropic vectors in D complex dimensions (2D real dimensions),
+        // pairwise inner product variance is ~ 1 / (2D).
+        // Clustered manifolds exhibit variance >> 1 / (2D) due to inter-cluster separation.
+        let d_real = (dimension * 2) as f32;
+        let expected_isotropic_var = 1.0 / d_real.max(1.0);
+        let anisotropy_ratio = variance / expected_isotropic_var.max(1e-7);
+
+        let is_spatially_prunable = anisotropy_ratio >= 3.0;
+
+        ManifoldGeometryProfile {
+            participation_ratio: anisotropy_ratio,
+            mean_leaf_theta_rad: mean_cos.clamp(-1.0, 1.0).acos(),
+            pairwise_cosine_variance: variance,
+            is_spatially_prunable,
+        }
     }
 
     /// Builds a proof tree with a specified leaf capacity target.
@@ -114,8 +201,9 @@ impl SemanticProofTree {
         }
 
         let blocks_per_vector = dimension.div_ceil(PROOF_BLOCK_COMPLEX_DIM);
+        let profile = Self::compute_manifold_profile(vectors, slots, dimension);
         let builder = TreeBuilder::new(vectors, slots, dimension, blocks_per_vector);
-        builder.build_tree(leaf_target)
+        builder.build_tree(leaf_target, profile)
     }
 
     /// Returns an empty proof hierarchy for a segment with 0 live vectors.
@@ -130,7 +218,14 @@ impl SemanticProofTree {
             centroid_codes: Box::new([]),
             block_radii: Box::new([]),
             root: 0,
+            manifold_profile: ManifoldGeometryProfile::default(),
         }
+    }
+
+    /// Returns `true` if this segment has geometry amenable to spatial tree hierarchical pruning.
+    #[inline(always)]
+    pub fn is_spatially_prunable(&self) -> bool {
+        self.manifold_profile.is_spatially_prunable
     }
 
     /// Returns the node at index `idx`.
@@ -209,7 +304,7 @@ impl<'a> TreeBuilder<'a> {
         }
     }
 
-    fn build_tree(mut self, leaf_target: usize) -> SemanticProofTree {
+    fn build_tree(mut self, leaf_target: usize, profile: ManifoldGeometryProfile) -> SemanticProofTree {
         let total_slots = self.slots.len();
         self.nodes.push(ProofNode::default());
         self.partition_recursive(0, 0, total_slots, leaf_target);
@@ -223,6 +318,7 @@ impl<'a> TreeBuilder<'a> {
             centroid_codes: self.centroid_codes.into_boxed_slice(),
             block_radii: self.block_radii.into_boxed_slice(),
             root: 0,
+            manifold_profile: profile,
         }
     }
 

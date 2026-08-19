@@ -6,7 +6,7 @@
 //! Comprehensive retrieval evaluation comparing:
 //!   1. Real Cosine Similarity ($S_{\text{real}}(\mathbf{x}, \mathbf{y}) = \frac{\mathbf{x} \cdot \mathbf{y}}{\|\mathbf{x}\| \|\mathbf{y}\|}$)
 //!   2. Complex Cosine / Normalized Hermitian Real Part ($S_{\text{herm}}(\psi, \phi) = \frac{\text{Re}\langle\psi|\phi\rangle}{\|\psi\| \|\phi\|}$)
-//!   3. Quantum State Fidelity ($F(\psi, \phi) = \frac{|\langle\psi|\phi\rangle|^2}{\|\psi\|^2 \|\phi\|^2}$)
+//!   3. Complex Projective Overlap (CPO) / Projective Fidelity ($F(\psi, \phi) = \frac{|\langle\psi|\phi\rangle|^2}{\|\psi\|^2 \|\phi\|^2}$)
 //!   4. Phase-Sensitive Hybrid ($S_{\text{hybrid}}(\psi, \phi) = \alpha F + (1-\alpha) S_{\text{herm}}$)
 //!
 //! Evaluates retrieval fidelity across:
@@ -451,7 +451,7 @@ fn main() {
         agg_hermitian.rank_inversion_rate * 100.0
     );
     println!(
-        "│ Quantum Fidelity |<ψ|φ>|² (ℂ^{})   │ {:>8.4} │ {:>8.4} │ {:>8.4} │ {:>8.4} │ {:>10.4} │ {:>10.2}% │",
+        "│ Projective Overlap |<z|w>|² (ℂ^{})  │ {:>8.4} │ {:>8.4} │ {:>8.4} │ {:>8.4} │ {:>10.4} │ {:>10.2}% │",
         D_REAL / 2,
         agg_fidelity.recall_at_1,
         agg_fidelity.recall_at_10,
@@ -461,7 +461,7 @@ fn main() {
         agg_fidelity.rank_inversion_rate * 100.0
     );
     println!(
-        "│ Hybrid (0.8·Fidelity + 0.2·Herm)   │ {:>8.4} │ {:>8.4} │ {:>8.4} │ {:>8.4} │ {:>10.4} │ {:>10.2}% │",
+        "│ Hybrid (0.8·Overlap + 0.2·Herm)    │ {:>8.4} │ {:>8.4} │ {:>8.4} │ {:>8.4} │ {:>10.4} │ {:>10.2}% │",
         agg_hybrid_80.recall_at_1,
         agg_hybrid_80.recall_at_10,
         agg_hybrid_80.mrr,
@@ -470,7 +470,7 @@ fn main() {
         agg_hybrid_80.rank_inversion_rate * 100.0
     );
     println!(
-        "│ Hybrid (0.5·Fidelity + 0.5·Herm)   │ {:>8.4} │ {:>8.4} │ {:>8.4} │ {:>8.4} │ {:>10.4} │ {:>10.2}% │",
+        "│ Hybrid (0.5·Overlap + 0.5·Herm)    │ {:>8.4} │ {:>8.4} │ {:>8.4} │ {:>8.4} │ {:>10.4} │ {:>10.2}% │",
         agg_hybrid_50.recall_at_1,
         agg_hybrid_50.recall_at_10,
         agg_hybrid_50.mrr,
@@ -486,7 +486,7 @@ fn main() {
     let dataset = generate_dataset(SEEDS[0]);
     let (fid_drift, herm_drift, real_drift) = adversarial_phase_test(&dataset);
     println!(
-        "  - Quantum Fidelity Drift under Global Phase Rotations: {:.6} (Mathematically Invariant)",
+        "  - Projective Overlap Drift under Global Phase Rotations: {:.6} (Mathematically Invariant)",
         fid_drift
     );
     println!(

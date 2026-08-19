@@ -10,7 +10,7 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use parking_lot::RwLock;
@@ -97,10 +97,160 @@ pub struct AcidTransaction {
     pub uncommitted_writes: Vec<(String, String, Option<RelationalRow>)>, // (Table, PK, NewRow/None for delete)
 }
 
-/// Multi-Table Relational Storage & ACID Transaction Engine.
+/// Contiguous typed column vector for cache-locality and SIMD filtering.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum TypedColumnVector {
+    Integer(Vec<i64>),
+    Text(Vec<String>),
+    Float(Vec<f64>),
+    Boolean(Vec<bool>),
+}
+
+impl TypedColumnVector {
+    pub fn new(data_type: &SqlType) -> Self {
+        match data_type {
+            SqlType::Integer | SqlType::Timestamp => Self::Integer(Vec::new()),
+            SqlType::Text => Self::Text(Vec::new()),
+            SqlType::Float => Self::Float(Vec::new()),
+            SqlType::Boolean => Self::Boolean(Vec::new()),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            Self::Integer(v) => v.len(),
+            Self::Text(v) => v.len(),
+            Self::Float(v) => v.len(),
+            Self::Boolean(v) => v.len(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn push_value(&mut self, val: &SqlValue) {
+        match (self, val) {
+            (Self::Integer(v), SqlValue::Integer(i)) => v.push(*i),
+            (Self::Integer(v), _) => v.push(0),
+            (Self::Text(v), SqlValue::Text(s)) => v.push(s.clone()),
+            (Self::Text(v), _) => v.push(String::new()),
+            (Self::Float(v), SqlValue::Float(f)) => v.push(*f),
+            (Self::Float(v), _) => v.push(0.0),
+            (Self::Boolean(v), SqlValue::Boolean(b)) => v.push(*b),
+            (Self::Boolean(v), _) => v.push(false),
+        }
+    }
+
+    pub fn get_value(&self, idx: usize) -> SqlValue {
+        match self {
+            Self::Integer(v) => v.get(idx).copied().map(SqlValue::Integer).unwrap_or(SqlValue::Null),
+            Self::Text(v) => v.get(idx).cloned().map(SqlValue::Text).unwrap_or(SqlValue::Null),
+            Self::Float(v) => v.get(idx).copied().map(SqlValue::Float).unwrap_or(SqlValue::Null),
+            Self::Boolean(v) => v.get(idx).copied().map(SqlValue::Boolean).unwrap_or(SqlValue::Null),
+        }
+    }
+
+    pub fn set_value(&mut self, idx: usize, val: &SqlValue) {
+        match (self, val) {
+            (Self::Integer(v), SqlValue::Integer(i)) => {
+                if idx < v.len() { v[idx] = *i; }
+            }
+            (Self::Text(v), SqlValue::Text(s)) => {
+                if idx < v.len() { v[idx] = s.clone(); }
+            }
+            (Self::Float(v), SqlValue::Float(f)) => {
+                if idx < v.len() { v[idx] = *f; }
+            }
+            (Self::Boolean(v), SqlValue::Boolean(b)) => {
+                if idx < v.len() { v[idx] = *b; }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Contiguous Columnar Table holding parallel typed column vectors.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ColumnarTable {
+    pub schema: TableSchema,
+    pub columns: HashMap<String, TypedColumnVector>,
+    pub pk_index: HashMap<String, usize>, // PK -> Row Index
+    pub is_deleted: Vec<bool>,
+    pub row_versions: Vec<u64>,
+}
+
+impl ColumnarTable {
+    pub fn new(schema: TableSchema) -> Self {
+        let mut columns = HashMap::new();
+        for col in &schema.columns {
+            columns.insert(col.name.clone(), TypedColumnVector::new(&col.data_type));
+        }
+
+        Self {
+            schema,
+            columns,
+            pk_index: HashMap::new(),
+            is_deleted: Vec::new(),
+            row_versions: Vec::new(),
+        }
+    }
+
+    pub fn insert_or_update(&mut self, pk: String, row: RelationalRow, version: u64) {
+        if let Some(&row_idx) = self.pk_index.get(&pk) {
+            // In-place columnar update
+            for col in &self.schema.columns {
+                if let Some(col_vec) = self.columns.get_mut(&col.name) {
+                    let val = row.values.get(&col.name).unwrap_or(&SqlValue::Null);
+                    col_vec.set_value(row_idx, val);
+                }
+            }
+            self.is_deleted[row_idx] = false;
+            self.row_versions[row_idx] = version;
+        } else {
+            // Append row across all column vectors
+            let row_idx = self.is_deleted.len();
+            for col in &self.schema.columns {
+                if let Some(col_vec) = self.columns.get_mut(&col.name) {
+                    let val = row.values.get(&col.name).unwrap_or(&SqlValue::Null);
+                    col_vec.push_value(val);
+                }
+            }
+            self.is_deleted.push(false);
+            self.row_versions.push(version);
+            self.pk_index.insert(pk, row_idx);
+        }
+    }
+
+    pub fn delete(&mut self, pk: &str, _version: u64) {
+        if let Some(&row_idx) = self.pk_index.get(pk) {
+            self.is_deleted[row_idx] = true;
+        }
+    }
+
+    pub fn get_row(&self, row_idx: usize) -> Option<RelationalRow> {
+        if row_idx >= self.is_deleted.len() || self.is_deleted[row_idx] {
+            return None;
+        }
+
+        let mut values = HashMap::with_capacity(self.schema.columns.len());
+        for col in &self.schema.columns {
+            if let Some(col_vec) = self.columns.get(&col.name) {
+                values.insert(col.name.clone(), col_vec.get_value(row_idx));
+            }
+        }
+        Some(RelationalRow { values })
+    }
+
+    pub fn iter_rows(&self) -> impl Iterator<Item = RelationalRow> + '_ {
+        (0..self.is_deleted.len()).filter_map(|i| self.get_row(i))
+    }
+}
+
+/// Multi-Table Relational Storage & ACID Transaction Engine with Sharded Table Concurrency.
 pub struct RelationalSqlEngine {
     tables: RwLock<HashMap<String, TableSchema>>,
-    storage: RwLock<HashMap<String, BTreeMap<String, RelationalRow>>>, // table -> (pk -> row)
+    storage: RwLock<HashMap<String, Arc<RwLock<ColumnarTable>>>>,
     active_transactions: RwLock<HashMap<u64, AcidTransaction>>,
     next_tx_id: AtomicU64,
     current_version: AtomicU64,
@@ -129,7 +279,10 @@ impl RelationalSqlEngine {
             )));
         }
 
-        storage.insert(schema.name.clone(), BTreeMap::new());
+        storage.insert(
+            schema.name.clone(),
+            Arc::new(RwLock::new(ColumnarTable::new(schema.clone()))),
+        );
         tables.insert(schema.name.clone(), schema);
         Ok(())
     }
@@ -182,16 +335,19 @@ impl RelationalSqlEngine {
         };
 
         // 2. Validate Foreign Key constraints
-        let storage = self.storage.read();
         for col in &schema.columns {
             if let Some((target_table, target_col)) = &col.foreign_key_target {
                 if let Some(val) = row.values.get(&col.name) {
                     if *val != SqlValue::Null {
-                        let target_storage = storage.get(target_table).ok_or_else(|| {
-                            HNSQRError::InvalidRequest(format!("Target table '{target_table}' not found"))
-                        })?;
+                        let target_table_arc = {
+                            let storage = self.storage.read();
+                            storage.get(target_table).cloned().ok_or_else(|| {
+                                HNSQRError::InvalidRequest(format!("Target table '{target_table}' not found"))
+                            })?
+                        };
                         
-                        let target_exists = target_storage.values().any(|r| {
+                        let target_table_guard = target_table_arc.read();
+                        let target_exists = target_table_guard.iter_rows().any(|r| {
                             r.values.get(target_col) == Some(val)
                         });
 
@@ -217,25 +373,30 @@ impl RelationalSqlEngine {
         Ok(())
     }
 
-    /// Commits an active ACID transaction atomically.
+    /// Commits an active ACID transaction atomically with per-table sharded locking.
     pub fn commit(&self, tx_id: u64) -> HNSQRResult<()> {
         let mut active_tx = self.active_transactions.write();
         let tx = active_tx.remove(&tx_id).ok_or_else(|| {
             HNSQRError::InvalidRequest(format!("Transaction {tx_id} not active"))
         })?;
 
-        let mut storage = self.storage.write();
+        let version = self.current_version.fetch_add(1, Ordering::Relaxed) + 1;
         for (table_name, pk, maybe_row) in tx.uncommitted_writes {
-            if let Some(table_map) = storage.get_mut(&table_name) {
+            let table_arc = {
+                let storage = self.storage.read();
+                storage.get(&table_name).cloned()
+            };
+
+            if let Some(table_arc) = table_arc {
+                let mut table_storage = table_arc.write();
                 if let Some(row) = maybe_row {
-                    table_map.insert(pk, row);
+                    table_storage.insert_or_update(pk, row, version);
                 } else {
-                    table_map.remove(&pk);
+                    table_storage.delete(&pk, version);
                 }
             }
         }
 
-        self.current_version.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 
@@ -251,33 +412,36 @@ impl RelationalSqlEngine {
         }
     }
 
-    /// Executes a relational query (`SELECT ... FROM ... WHERE ...`) with optional RLS.
+    /// Executes a relational query (`SELECT ... FROM ... WHERE ...`) with per-table read locking and optional RLS.
     pub fn execute_select(
         &self,
         table: &str,
         predicate: Option<Arc<dyn Fn(&RelationalRow) -> bool + Send + Sync>>,
         rls_policy: Option<&RowLevelSecurityPolicy>,
     ) -> HNSQRResult<Vec<RelationalRow>> {
-        let storage = self.storage.read();
-        let table_map = storage.get(table).ok_or_else(|| {
-            HNSQRError::InvalidRequest(format!("Table '{table}' not found"))
-        })?;
+        let table_arc = {
+            let storage = self.storage.read();
+            storage.get(table).cloned().ok_or_else(|| {
+                HNSQRError::InvalidRequest(format!("Table '{table}' not found"))
+            })?
+        };
 
+        let table_storage = table_arc.read();
         let mut results = Vec::new();
-        for row in table_map.values() {
+        for row in table_storage.iter_rows() {
             if let Some(rls) = rls_policy {
-                if !rls.allows(row) {
+                if !rls.allows(&row) {
                     continue;
                 }
             }
 
             if let Some(pred) = &predicate {
-                if !pred(row) {
+                if !pred(&row) {
                     continue;
                 }
             }
 
-            results.push(row.clone());
+            results.push(row);
         }
 
         Ok(results)
@@ -305,13 +469,20 @@ impl RelationalSqlEngine {
             _ => return Err(HNSQRError::InvalidRequest("Primary key must be Text or Integer".into())),
         };
 
-        let mut storage = self.storage.write();
-        let table_storage = storage.entry(table.to_string()).or_insert_with(BTreeMap::new);
+        let version = self.current_version.fetch_add(1, Ordering::Relaxed) + 1;
+        let table_arc = {
+            let mut storage = self.storage.write();
+            storage
+                .entry(table.to_string())
+                .or_insert_with(|| Arc::new(RwLock::new(ColumnarTable::new(schema.clone()))))
+                .clone()
+        };
 
+        let mut table_storage = table_arc.write();
         if is_delete {
-            table_storage.remove(&pk_str);
+            table_storage.delete(&pk_str, version);
         } else {
-            table_storage.insert(pk_str, row);
+            table_storage.insert_or_update(pk_str, row, version);
         }
         Ok(())
     }

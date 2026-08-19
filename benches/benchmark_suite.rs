@@ -1,6 +1,6 @@
 /* hnsqr/benches/benchmark_suite.rs */
 //!▫~•◦-------------------------------‣
-//! # HNSQR Comprehensive Quantum Benchmark Suite
+//! # HNSQR Comprehensive Complex Vector Benchmark Suite
 //!▫~•◦-------------------------------------------------------------------‣
 //!
 //! Evaluates the full spectrum of HNSQR capabilities:
@@ -8,12 +8,12 @@
 //! 2. 8-Bit Polar Phase Quantization (PQ-C) & Asymmetric Distance Computation (ADC)
 //! 3. Zero-Copy Disk-Backed Quantized Storage (`MmapArena`) & Mapping Attach Time
 //! 4. Lock-Free Roaring Bitmap Inverted Metadata Index (Precompiled Filter Masks)
-//! 5. Classical-to-Quantum LLM Pairwise Amplitude-Phase Weaver Gateway (1536/3072/4096-dim)
+//! 5. LLM Pairwise Amplitude-Phase Weaver Gateway (1536/3072/4096-dim)
 //! 6. Zero-Copy Asynchronous Binary TCP Server & Pipelined Network Wire Protocol
 //! 7. Multi-Threaded Concurrent Graph Ingestion Scaling (1, 2, 4, 8, 16 threads)
-//! 8. Quantum Superposition Graph Traversal Recall & Latency Tradeoffs (ef_search 10..256)
+//! 8. Phase-Weighted Graph Traversal Recall & Latency Tradeoffs (ef_search 10..256)
 //! 9. Multi-Core Rayon Parallel Batch Search Throughput
-//! 10. Advanced Quantum Attention & Diverse Intent Superposition Routing
+//! 10. Complex Phase Attention & Diverse Intent Superposition Routing
 /*▫~•◦------------------------------------------------------------------------------------‣
  * © 2025 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
@@ -107,7 +107,7 @@ fn generate_clustered_dataset(
     (dataset, queries)
 }
 
-/// Brute-force exact k-nearest neighbor search using Quantum Fidelity.
+/// Brute-force exact k-nearest neighbor search using Projective Overlap (CPO).
 fn exact_knn_fidelity(
     dataset: &[(NodeId, VectorEmbedding)],
     query: &VectorEmbedding,
@@ -145,7 +145,7 @@ fn percentile(sorted_latencies: &[f64], p: f64) -> f64 {
     sorted_latencies[idx.min(sorted_latencies.len() - 1)]
 }
 
-fn run_full_quantum_benchmark(
+fn run_full_benchmark(
     title: &str,
     dataset: &[(NodeId, VectorEmbedding)],
     queries: &[VectorEmbedding],
@@ -158,7 +158,7 @@ fn run_full_quantum_benchmark(
     println!("\n╔══════════════════════════════════════════════════════════════════════════════╗");
     println!("║ {:<76} ║", title);
     println!(
-        "║ (M0={}, M={}, ef_construction={}, Metric=Quantum Fidelity)                  ║",
+        "║ (M0={}, M={}, ef_construction={}, Metric=Projective Overlap)                ║",
         m0, m, ef_c
     );
     println!("╚══════════════════════════════════════════════════════════════════════════════╝\n");
@@ -175,7 +175,7 @@ fn run_full_quantum_benchmark(
         level_multiplier: 1.0 / (m as f32).ln().max(1.0),
         superposition_beam_width: 8,
         attention_temperature: 0.15,
-        quantum_interference_weight: 0.35,
+        interference_weight: 0.35,
         oversample_factor: 3.0,
         heuristic_edge_selection: true,
         multi_root_ensemble_size: 4,
@@ -241,11 +241,11 @@ fn run_full_quantum_benchmark(
     // 2. SEARCH ACCURACY & LATENCY TRADEOFFS
     // ────────────────────────────────────────────────────────────────────────
     println!("\n┌──────────────────────────────────────────────────────────────────────────────┐");
-    println!("│ 2. SEARCH ACCURACY & LATENCY (Recall vs Exact Quantum Ground Truth)          │");
+    println!("│ 2. SEARCH ACCURACY & LATENCY (Recall vs Exact Ground Truth)                  │");
     println!("└──────────────────────────────────────────────────────────────────────────────┘");
 
     print!(
-        "Computing exact brute-force Quantum Fidelity for {} queries (sequential)... ",
+        "Computing exact brute-force Projective Overlap for {} queries (sequential)... ",
         num_queries
     );
     let start_gt = Instant::now();
@@ -261,7 +261,7 @@ fn run_full_quantum_benchmark(
 
     // Parallel brute-force baseline for comparison
     print!(
-        "Computing exact brute-force Quantum Fidelity for {} queries (parallel Rayon)... ",
+        "Computing exact brute-force Projective Overlap for {} queries (parallel Rayon)... ",
         num_queries
     );
     let start_par_gt = Instant::now();
@@ -416,10 +416,10 @@ fn run_full_quantum_benchmark(
     assert_eq!(batch_results.len(), num_queries);
 
     // ────────────────────────────────────────────────────────────────────────
-    // 4. ADVANCED QUANTUM RE-RANKING & INTENT MODES
+    // 4. ADVANCED COMPLEX PHASE RE-RANKING & INTENT MODES
     // ────────────────────────────────────────────────────────────────────────
     println!("\n┌──────────────────────────────────────────────────────────────────────────────┐");
-    println!("│ 4. ADVANCED QUANTUM RE-RANKING & INTENT MODES                                │");
+    println!("│ 4. ADVANCED COMPLEX PHASE RE-RANKING & INTENT MODES                          │");
     println!("└──────────────────────────────────────────────────────────────────────────────┘");
 
     // Diverse Intent (Superposition Maximum Marginal Relevance)
@@ -453,21 +453,20 @@ fn run_full_quantum_benchmark(
     }
     let dur_att = t_att.elapsed();
     println!(
-        " • Quantum Attention Search: {:.2?} ({:.0} QPS, avg {:.1} µs/query)",
+        " • Complex Phase Attention Search: {:.2?} ({:.0} QPS, avg {:.1} µs/query)",
         dur_att,
         num_queries as f64 / dur_att.as_secs_f64(),
         (dur_att.as_micros() as f64) / num_queries as f64
     );
 
     // ────────────────────────────────────────────────────────────────────────
-    // 5. TOPOLOGY & INDEX METRICS
+    // 5. TOPOLOGY, MEMORY FOOTPRINT & STRUCTURAL INTEGRITY
     // ────────────────────────────────────────────────────────────────────────
     println!("\n┌──────────────────────────────────────────────────────────────────────────────┐");
-    println!("│ 5. INDEX TOPOLOGY & LEVEL DISTRIBUTION                                       │");
+    println!("│ 5. TOPOLOGY, MEMORY FOOTPRINT & STRUCTURAL INTEGRITY                         │");
     println!("└──────────────────────────────────────────────────────────────────────────────┘");
 
     let level_counts = index_seq.level_distribution();
-    println!(" • Total indexed nodes: {}", index_seq.size());
     println!(" • Layer distribution:");
     for (lvl, count) in level_counts.iter().enumerate() {
         let pct = (*count as f64 / num_vectors as f64) * 100.0;
@@ -491,7 +490,7 @@ fn run_full_quantum_benchmark(
 
 fn main() {
     println!("╔══════════════════════════════════════════════════════════════════════════════╗");
-    println!("║       HNSQR QUANTUM INFORMATION RETRIEVAL (QIR) FULL BENCHMARK SUITE          ║");
+    println!("║         HNSQR COMPLEX VECTOR RETRIEVAL FULL BENCHMARK SUITE                  ║");
     println!("║     (AVX2+FMA SIMD, Zero-Allocation Scratchpads & Superposition Routing)     ║");
     println!("╚══════════════════════════════════════════════════════════════════════════════╝\n");
 
@@ -508,19 +507,19 @@ fn main() {
     println!(" • Complex dimension:  {} (128 floats)", dim);
     println!(" • Evaluation queries: {}", num_queries);
     println!(" • Neighbors (k):      {}", k);
-    println!(" • Distance metric:    Quantum State Fidelity\n");
+    println!(" • Distance metric:    Projective Overlap (CPO)\n");
 
     // ────────────────────────────────────────────────────────────────────────
     // DATASET 1: Clustered Phase-Encoded Embeddings (Production Profile)
     // ────────────────────────────────────────────────────────────────────────
     print!(
-        "Generating 5,000 clustered phase-encoded quantum embeddings (50 semantic clusters)... "
+        "Generating 5,000 clustered phase-encoded complex embeddings (50 semantic clusters)... "
     );
     let (dataset_clust, queries_clust) = generate_clustered_dataset(num_vectors, dim, 50);
     println!("Done.\n");
 
-    run_full_quantum_benchmark(
-        "DATASET: Clustered Phase-Encoded Embeddings (Production QIR Profile)",
+    run_full_benchmark(
+        "DATASET: Clustered Phase-Encoded Embeddings (Production Complex Profile)",
         &dataset_clust,
         &queries_clust,
         dim,
@@ -779,7 +778,7 @@ fn main() {
     });
 
     // ────────────────────────────────────────────────────────────────────────
-    // 10. CLASSICAL-TO-QUANTUM LLM FOLDING & REST GATEWAY ROUTER
+    // 10. PAIRWISE COMPLEX-FOLDED LLM WEAVER & REST GATEWAY ROUTER
     // ────────────────────────────────────────────────────────────────────────
     println!("\n╔══════════════════════════════════════════════════════════════════════════════╗");
     println!("║ 10. LLM PAIRWISE PHASE-ENCODING WEAVER & HTTP REST GATEWAY                   ║");

@@ -100,7 +100,7 @@ Expected result: **"HNSQR becomes competitive at N > ~X"**
 
 **Critical Research Question:**
 
-In HNSQR's quantum fidelity metric:
+In HNSQR's complex projective overlap metric:
 ```
 F(x, -x) = 1.0  (maximally similar)
 ```

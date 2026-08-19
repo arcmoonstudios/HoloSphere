@@ -465,11 +465,27 @@ impl ShardStateMachine {
         }
     }
 
-    /// Creates an atomic cross-paradigm snapshot pinned at the current applied generation.
+    /// Creates an atomic cross-paradigm snapshot metadata handle pinned at the current applied generation.
     pub fn pin_universal_snapshot(&self) -> UniversalSnapshotHandle {
         UniversalSnapshotHandle {
             generation: self.applied_generation.load(Ordering::SeqCst),
             lsn: self.last_applied_index.load(Ordering::SeqCst),
+        }
+    }
+
+    /// Retains physical backing state and memory-mapped generation handles across all 5 paradigms.
+    /// Holding this snapshot guarantees that background vacuum/compaction/GC cannot reclaim
+    /// underlying data out from under an active query session.
+    pub fn pin_physical_snapshot(&self) -> UniversalSnapshot {
+        UniversalSnapshot {
+            generation: self.applied_generation.load(Ordering::SeqCst),
+            lsn: self.last_applied_index.load(Ordering::SeqCst),
+            immutable_segments: self.engine.immutable_segments_snapshot(),
+            active_segment: self.engine.active_mutable_segment(),
+            graph_generation: self.graph.as_ref().map(|g| g.generation()),
+            sql: self.sql.clone(),
+            memory: self.memory.clone(),
+            hypercube: self.hypercube.clone(),
         }
     }
 }
@@ -479,6 +495,18 @@ impl ShardStateMachine {
 pub struct UniversalSnapshotHandle {
     pub generation: u64,
     pub lsn: u64,
+}
+
+/// Physical pinned snapshot retaining active generation and segment handles across all 5 converged paradigms.
+pub struct UniversalSnapshot {
+    pub generation: u64,
+    pub lsn: u64,
+    pub immutable_segments: Vec<Arc<crate::storage::segment::ImmutableSegment>>,
+    pub active_segment: Arc<crate::storage::segment::MutableSegment>,
+    pub graph_generation: Option<Arc<parking_lot::RwLock<crate::graph::storage::generation::GraphGeneration>>>,
+    pub sql: Option<Arc<crate::storage::relational_acid::RelationalSqlEngine>>,
+    pub memory: Option<Arc<crate::ecosystem::agent_memory::AutonomousMemoryConsolidator>>,
+    pub hypercube: Option<Arc<crate::vector::hypercube::HypercubeTensorSpace>>,
 }
 
 impl ReplicatedStateMachine for ShardStateMachine {

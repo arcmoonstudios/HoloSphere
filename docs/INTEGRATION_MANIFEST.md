@@ -36,7 +36,7 @@ This manifest documents all changes made to implement the four critical enterpri
 
 2. **benches/metric_superiority.rs** (130 lines)
    - Synthetic cluster generation
-   - Cosine vs Quantum Fidelity comparison
+   - Cosine vs complex projective overlap comparison
    - Separation margin calculation
 
 3. **tests/loom_arena.rs** (60 lines)
@@ -240,7 +240,7 @@ Fixes: #SIGNAL-TRACE-002 (Orphaned persistence)
 ### Commit 3: Metric Superiority Benchmark
 
 ```
-feat(bench): Add quantum fidelity vs cosine comparison
+feat(bench): Add complex projective overlap vs cosine comparison
 
 Validates semantic preservation of phase-encoded embeddings.
 
@@ -251,7 +251,7 @@ Validates semantic preservation of phase-encoded embeddings.
 
 Run: cargo bench --bench metric_superiority
 
-Expected: Positive margin improvement proves quantum advantage.
+Expected: Positive margin improvement proves algebraic projective advantage.
 
 BREAKING CHANGE: None. New benchmark target.
 

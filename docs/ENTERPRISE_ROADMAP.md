@@ -12,7 +12,7 @@
 
 HNSQR has successfully proven **bounded-latency-at-scale** (O(1) in corpus size) up to 65K vectors with a real methodology. This addresses the "toy-scale" objection and moves the needle from "asserted, unverified" to "asserted, verified within tested bounds."
 
-**The core differentiation claim—quantum fidelity beats cosine on real retrieval—remains unproven.** This is the gap that decides whether HNSQR is a novel retrieval system or a fast implementation of an unproven metric.
+**The core differentiation claim—complex projective overlap beats cosine on real retrieval—remains unproven.** This is the gap that decides whether HNSQR is a novel retrieval system or a fast implementation of an unproven metric.
 
 **Three critical missing pieces prevent enterprise competition:**
 
@@ -26,13 +26,13 @@ This roadmap prioritizes proving the core value proposition first, then building
 
 ## Phase 0: The Falsifiable Question (HIGHEST PRIORITY)
 
-**Goal:** Determine if quantum fidelity provides retrieval value over cosine similarity
+**Goal:** Determine if complex projective overlap provides retrieval value over cosine similarity
 
 **Why this matters:** Everything downstream depends on this answer. If fidelity doesn't beat cosine on real retrieval tasks, the entire differentiation story collapses to "fast implementation of an unproven metric."
 
 ### Critical Analysis: What Fidelity Actually Computes
 
-Given the fold operation `z_i = x_{2i} + i·x_{2i+1}`, the quantum fidelity reduces to:
+Given the fold operation `z_i = x_{2i} + i·x_{2i+1}`, the complex projective overlap reduces to:
 
 ```
 F(z,w) = cos²(x,y) + Cross²(x,y) / (||x||²·||y||²)
@@ -67,7 +67,7 @@ Adjacent-index pairing has **no principled basis**:
 - **If Cross is uncorrelated with relevance once cos is accounted for:** Fidelity-over-cosine is dead on arrival. Stop. Pivot to:
   - Option A: Try learned pairing (train a model to find optimal dimension pairings)
   - Option B: Drop the differentiation claim, sell on latency contract alone
-  - Option C: Investigate different quantum-inspired metrics with principled basis
+  - Option C: Investigate different complex projective metrics with principled basis
 - **If Cross shows significant signal:** Proceed to P0.2
 
 **Deliverable:** `notebooks/cross_term_analysis.ipynb` with statistical results and visualizations
@@ -80,7 +80,7 @@ Adjacent-index pairing has **no principled basis**:
 1. Same real embedding model and corpus from P0.1
 2. Compute rankings two ways:
    - Baseline: Standard cosine similarity (industry standard)
-   - Experimental: Quantum fidelity on folded pairs
+   - Experimental: complex projective overlap on folded pairs
 3. Score both against real relevance judgments:
    - NDCG@10 (normalized discounted cumulative gain)
    - Recall@10
@@ -652,7 +652,7 @@ Adjacent-index pairing has **no principled basis**:
 - Front-load validation (Sprint 0)
 - Prepare pivot options:
   - Learned pairing (train on relevance data)
-  - Alternative quantum metrics (principled basis)
+  - Alternative complex projective metrics (principled basis)
   - Pure latency positioning (drop metric claim)
 
 ### Risk 2: Filtered search recall collapse (P1.1)

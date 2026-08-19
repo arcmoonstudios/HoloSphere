@@ -135,11 +135,11 @@ Per-vector cost increased **4.72× over 64× corpus growth**.
 
 ---
 
-### 6. **"Quantum Metric Superiority" is False Advertising** 😂
+### 6. **"Projective Overlap Metric Superiority" Analysis**
 
 ```
 COSINE Separation Margin:          0.9785
-QUANTUM FIDELITY Separation Margin: 0.9551
+Complex Projective Overlap Separation Margin: 0.9551
 Margin Improvement:                -2.39%
 ```
 
@@ -259,7 +259,7 @@ Stripping away marketing:
 
 > **Complex-valued semantic retrieval with global-phase-invariant fidelity, aggressive polar quantization, bounded expensive scoring, deterministic structure-aware routing, witness-based recovery, excellent behavior on clustered manifolds, and noticeably degraded behavior on isotropic manifolds.**
 
-This is **more interesting** than "quantum HNSW but faster."
+This is **more interesting** than "complex-metric HNSW but faster."
 
 ---
 

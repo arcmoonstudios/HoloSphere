@@ -396,9 +396,13 @@ impl WalManager {
         Ok(target_lsn)
     }
 
-    /// Flushes and fsyncs the active WAL file up to `target_lsn`.
+    /// Flushes and fsyncs the active WAL file up to `target_lsn` with group-commit coalescing.
     pub fn sync_target_lsn(&self, target_lsn: u64) -> HNSQRResult<()> {
-        let _lock = self.sync_lock.lock();
+        if self.last_synced_lsn.load(Ordering::Acquire) >= target_lsn {
+            return Ok(());
+        }
+
+        let mut _lock = self.sync_lock.lock();
         if self.last_synced_lsn.load(Ordering::Acquire) >= target_lsn {
             return Ok(());
         }

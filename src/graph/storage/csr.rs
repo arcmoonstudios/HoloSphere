@@ -138,6 +138,109 @@ impl CsrAdjacency {
         (self.row_offsets[v + 1] - self.row_offsets[v]) as usize
     }
 
+    /// Filters outgoing neighbours of `node` matching a target relationship type.
+    /// Uses contiguous SIMD-ready chunked evaluation.
+    pub fn filter_out_neighbors_simd(&self, node: NodeIndex, target_rel_type: RelTypeId) -> Vec<NodeIndex> {
+        let v = node as usize;
+        if v >= self.node_count {
+            return Vec::new();
+        }
+        let start = self.row_offsets[v] as usize;
+        let end = self.row_offsets[v + 1] as usize;
+        let targets_slice = &self.targets[start..end];
+        let rel_slice = &self.rel_types[start..end];
+
+        let mut matching = Vec::with_capacity(targets_slice.len());
+
+        // Fast chunked 8-wide comparison loop
+        let chunks = rel_slice.chunks_exact(8);
+        let remainder = chunks.remainder();
+        let chunk_count = chunks.len();
+
+        for c_idx in 0..chunk_count {
+            let offset = c_idx * 8;
+            for i in 0..8 {
+                if rel_slice[offset + i] == target_rel_type {
+                    matching.push(targets_slice[offset + i]);
+                }
+            }
+        }
+
+        let rem_offset = chunk_count * 8;
+        for i in 0..remainder.len() {
+            if remainder[i] == target_rel_type {
+                matching.push(targets_slice[rem_offset + i]);
+            }
+        }
+
+        matching
+    }
+
+    /// Intersects two sorted node slices using galloping search (Leapfrog Triejoin kernel)
+    /// to achieve sub-linear $O(|A| \log |B|)$ time on skewed degrees and linear cache-locality on symmetric slices.
+    pub fn intersect_sorted_galloping(a: &[NodeIndex], b: &[NodeIndex]) -> usize {
+        if a.is_empty() || b.is_empty() {
+            return 0;
+        }
+
+        // Fast linear scan if slices are similarly sized
+        if a.len() <= b.len() * 4 && b.len() <= a.len() * 4 {
+            let mut count = 0;
+            let (mut i, mut j) = (0, 0);
+            while i < a.len() && j < b.len() {
+                match a[i].cmp(&b[j]) {
+                    std::cmp::Ordering::Equal => {
+                        count += 1;
+                        i += 1;
+                        j += 1;
+                    }
+                    std::cmp::Ordering::Less => i += 1,
+                    std::cmp::Ordering::Greater => j += 1,
+                }
+            }
+            return count;
+        }
+
+        // Galloping search for skewed slices
+        let (small, large) = if a.len() <= b.len() { (a, b) } else { (b, a) };
+        let mut count = 0;
+        let mut large_idx = 0;
+
+        for &val in small {
+            if large_idx >= large.len() {
+                break;
+            }
+
+            let mut step = 1;
+            let mut curr = large_idx;
+
+            while curr < large.len() && large[curr] < val {
+                curr += step;
+                step *= 2;
+            }
+
+            let start = curr.saturating_sub(step / 2).max(large_idx).min(large.len());
+            let end = curr.min(large.len());
+
+            if start < end {
+                match large[start..end].binary_search(&val) {
+                    Ok(pos) => {
+                        count += 1;
+                        large_idx = start + pos + 1;
+                    }
+                    Err(pos) => {
+                        large_idx = start + pos;
+                    }
+                }
+            } else if start < large.len() && large[start] == val {
+                count += 1;
+                large_idx = start + 1;
+            }
+        }
+
+        count
+    }
+
     /// Total live edge count.
     pub fn edge_count(&self) -> usize {
         *self.row_offsets.last().unwrap_or(&0) as usize

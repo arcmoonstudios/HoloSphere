@@ -1,7 +1,7 @@
 # HNSQR
 
 HNSQR is a Rust similarity engine for complex-valued embeddings. It combines native
-quantum-fidelity metrics with Rivero's Resolve, an optional HNSW fallback graph,
+complex projective overlap (CPO) metrics with Rivero's Resolve, an optional HNSW fallback graph,
 metadata masks, quantized mmap storage, and TCP/HTTP serving.
 
 The central performance contract is deliberately narrow and testable:
@@ -132,7 +132,7 @@ against serving by a lifecycle gate.
 
 ## Features
 
-- Complex `VectorEmbedding` values with quantum fidelity, trace distance, Bures,
+- Complex `VectorEmbedding` values with projective overlap (CPO), trace distance, Bures,
   complex cosine, and Euclidean scoring.
 - Strict fixed-budget Rivero serving plus optional HNSW fallback.
 - Global-phase-invariant, dimension-dynamic Rivero address compilation.

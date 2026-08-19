@@ -1,0 +1,37 @@
+import os
+
+def generate_aggregate():
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    output_path = os.path.join(repo_root, "holosphere.txt")
+    
+    ignore_dirs = {".git", "target", ".gemini", ".idea", ".vscode", "__pycache__", "node_modules"}
+    ignore_files = {"holosphere.txt", "Cargo.lock"}
+    
+    collected_files = []
+    for root, dirs, files in os.walk(repo_root):
+        dirs[:] = [d for d in dirs if d not in ignore_dirs]
+        for f in files:
+            if f in ignore_files:
+                continue
+            full_path = os.path.join(root, f)
+            rel_path = os.path.relpath(full_path, repo_root).replace("\\", "/")
+            collected_files.append((rel_path, full_path))
+            
+    collected_files.sort(key=lambda x: x[0])
+    
+    with open(output_path, "w", encoding="utf-8") as out:
+        for rel_path, full_path in collected_files:
+            try:
+                with open(full_path, "r", encoding="utf-8") as inf:
+                    content = inf.read()
+            except Exception:
+                continue
+            header = f"File: {rel_path}\n" + "=" * (len(rel_path) + 6) + "\n"
+            out.write(header)
+            out.write(content)
+            out.write("\n\n")
+            
+    print(f"Successfully aggregated {len(collected_files)} files into {output_path}")
+
+if __name__ == "__main__":
+    generate_aggregate()

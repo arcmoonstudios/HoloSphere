@@ -172,6 +172,113 @@ impl Default for RedisStreamEngine {
     }
 }
 
+/// Borrowed zero-allocation RESP frame view pointing directly into incoming TCP buffers.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum RespBorrowedFrame<'a> {
+    SimpleString(&'a str),
+    Error(&'a str),
+    Integer(i64),
+    BulkString(Option<&'a [u8]>),
+    Array(usize), // Element count
+    Null,
+}
+
+/// Zero-Allocation Streaming Push Parser for RESP wire streams.
+pub struct StreamingRespParser;
+
+impl StreamingRespParser {
+    /// Parses a single RESP frame from a raw byte buffer, returning `(frame, consumed_bytes)`.
+    pub fn parse_frame(buf: &[u8]) -> Option<(RespBorrowedFrame<'_>, usize)> {
+        if buf.is_empty() {
+            return None;
+        }
+
+        let prefix = buf[0];
+        let rest = &buf[1..];
+
+        match prefix {
+            b'+' => {
+                let (line, consumed) = Self::read_crlf_line(rest)?;
+                let s = std::str::from_utf8(line).ok()?;
+                Some((RespBorrowedFrame::SimpleString(s), consumed + 1))
+            }
+            b'-' => {
+                let (line, consumed) = Self::read_crlf_line(rest)?;
+                let s = std::str::from_utf8(line).ok()?;
+                Some((RespBorrowedFrame::Error(s), consumed + 1))
+            }
+            b':' => {
+                let (line, consumed) = Self::read_crlf_line(rest)?;
+                let s = std::str::from_utf8(line).ok()?;
+                let val: i64 = s.parse().ok()?;
+                Some((RespBorrowedFrame::Integer(val), consumed + 1))
+            }
+            b'$' => {
+                let (line, consumed_len) = Self::read_crlf_line(rest)?;
+                let s = std::str::from_utf8(line).ok()?;
+                let len: i64 = s.parse().ok()?;
+                if len < 0 {
+                    return Some((RespBorrowedFrame::BulkString(None), consumed_len + 1));
+                }
+
+                let payload_len = len as usize;
+                let payload_start = 1 + consumed_len;
+                if buf.len() < payload_start + payload_len + 2 {
+                    return None;
+                }
+
+                let payload = &buf[payload_start..(payload_start + payload_len)];
+                Some((
+                    RespBorrowedFrame::BulkString(Some(payload)),
+                    payload_start + payload_len + 2,
+                ))
+            }
+            b'*' => {
+                let (line, consumed) = Self::read_crlf_line(rest)?;
+                let s = std::str::from_utf8(line).ok()?;
+                let count: i64 = s.parse().ok()?;
+                if count < 0 {
+                    Some((RespBorrowedFrame::Null, consumed + 1))
+                } else {
+                    Some((RespBorrowedFrame::Array(count as usize), consumed + 1))
+                }
+            }
+            _ => None,
+        }
+    }
+
+    /// Extracts an entire RESP command array as borrowed `&[u8]` slices with zero string allocations.
+    pub fn parse_command_slices<'a>(buf: &'a [u8]) -> Option<(Vec<&'a [u8]>, usize)> {
+        let (frame, mut offset) = Self::parse_frame(buf)?;
+        match frame {
+            RespBorrowedFrame::Array(count) => {
+                let mut args = Vec::with_capacity(count);
+                for _ in 0..count {
+                    let (arg_frame, consumed) = Self::parse_frame(&buf[offset..])?;
+                    offset += consumed;
+                    match arg_frame {
+                        RespBorrowedFrame::BulkString(Some(bytes)) => args.push(bytes),
+                        RespBorrowedFrame::SimpleString(s) => args.push(s.as_bytes()),
+                        _ => return None,
+                    }
+                }
+                Some((args, offset))
+            }
+            _ => None,
+        }
+    }
+
+    #[inline(always)]
+    fn read_crlf_line(buf: &[u8]) -> Option<(&[u8], usize)> {
+        for i in 0..buf.len().saturating_sub(1) {
+            if buf[i] == b'\r' && buf[i + 1] == b'\n' {
+                return Some((&buf[..i], i + 2));
+            }
+        }
+        None
+    }
+}
+
 /// RESP Wire Command Dispatcher integrating with HoloSphere's MemoryKvStore.
 pub struct RespServer {
     kv_store: Arc<MemoryKvStore>,
@@ -188,62 +295,65 @@ impl RespServer {
         }
     }
 
-    /// Dispatches parsed RESP argument array to internal commands.
-    pub fn handle_command(&self, args: &[String]) -> RespFrame {
+    /// Dispatches raw byte slice command arguments with zero UTF-8 allocation overhead.
+    pub fn handle_raw_command(&self, args: &[&[u8]]) -> RespFrame {
         if args.is_empty() {
             return RespFrame::Error("ERR empty command".into());
         }
 
-        let cmd = args[0].to_uppercase();
-        match cmd.as_str() {
-            "PING" => {
-                if args.len() > 1 {
-                    RespFrame::BulkString(Some(args[1].as_bytes().to_vec()))
-                } else {
-                    RespFrame::SimpleString("PONG".into())
-                }
+        let cmd = args[0];
+        if cmd.eq_ignore_ascii_case(b"PING") {
+            if args.len() > 1 {
+                RespFrame::BulkString(Some(args[1].to_vec()))
+            } else {
+                RespFrame::SimpleString("PONG".into())
             }
-            "SET" => {
-                if args.len() < 3 {
-                    return RespFrame::Error("ERR wrong number of arguments for 'set' command".into());
-                }
-                self.kv_store.set(&args[1], KvValue::String(args[2].clone()), None);
-                RespFrame::SimpleString("OK".into())
+        } else if cmd.eq_ignore_ascii_case(b"SET") {
+            if args.len() < 3 {
+                return RespFrame::Error("ERR wrong number of arguments for 'set' command".into());
             }
-            "GET" => {
-                if args.len() < 2 {
-                    return RespFrame::Error("ERR wrong number of arguments for 'get' command".into());
-                }
-                match self.kv_store.get(&args[1]) {
-                    Some(KvValue::String(s)) => RespFrame::BulkString(Some(s.into_bytes())),
-                    Some(KvValue::Integer(i)) => RespFrame::BulkString(Some(i.to_string().into_bytes())),
-                    Some(_) => RespFrame::Error("WRONGTYPE Operation against a key holding the wrong kind of value".into()),
-                    None => RespFrame::Null,
-                }
+            self.kv_store.set_raw(args[1], KvValue::Bytes(args[2].to_vec()), None);
+            RespFrame::SimpleString("OK".into())
+        } else if cmd.eq_ignore_ascii_case(b"GET") {
+            if args.len() < 2 {
+                return RespFrame::Error("ERR wrong number of arguments for 'get' command".into());
             }
-            "INCR" => {
-                if args.len() < 2 {
-                    return RespFrame::Error("ERR wrong number of arguments for 'incr' command".into());
-                }
-                let val = self.kv_store.incr_by(&args[1], 1);
-                RespFrame::Integer(val)
+            match self.kv_store.get_raw(args[1]) {
+                Some(KvValue::Bytes(b)) => RespFrame::BulkString(Some(b)),
+                Some(KvValue::String(s)) => RespFrame::BulkString(Some(s.into_bytes())),
+                Some(KvValue::Integer(i)) => RespFrame::BulkString(Some(i.to_string().into_bytes())),
+                Some(_) => RespFrame::Error("WRONGTYPE Operation against a key holding the wrong kind of value".into()),
+                None => RespFrame::Null,
             }
-            "DEL" => {
-                if args.len() < 2 {
-                    return RespFrame::Error("ERR wrong number of arguments for 'del' command".into());
-                }
-                let count = self.kv_store.delete(&args[1]) as i64;
-                RespFrame::Integer(count)
+        } else if cmd.eq_ignore_ascii_case(b"INCR") {
+            if args.len() < 2 {
+                return RespFrame::Error("ERR wrong number of arguments for 'incr' command".into());
             }
-            "PUBLISH" => {
-                if args.len() < 3 {
-                    return RespFrame::Error("ERR wrong number of arguments for 'publish' command".into());
-                }
-                let recipients = self.pubsub.publish(&args[1], &args[2]);
-                RespFrame::Integer(recipients as i64)
+            let val = self.kv_store.incr_by_raw(args[1], 1);
+            RespFrame::Integer(val)
+        } else if cmd.eq_ignore_ascii_case(b"DEL") {
+            if args.len() < 2 {
+                return RespFrame::Error("ERR wrong number of arguments for 'del' command".into());
             }
-            _ => RespFrame::Error(format!("ERR unknown command '{}'", args[0])),
+            let count = self.kv_store.delete_raw(args[1]) as i64;
+            RespFrame::Integer(count)
+        } else if cmd.eq_ignore_ascii_case(b"PUBLISH") {
+            if args.len() < 3 {
+                return RespFrame::Error("ERR wrong number of arguments for 'publish' command".into());
+            }
+            let chan = String::from_utf8_lossy(args[1]);
+            let msg = String::from_utf8_lossy(args[2]);
+            let recipients = self.pubsub.publish(&chan, &msg);
+            RespFrame::Integer(recipients as i64)
+        } else {
+            RespFrame::Error(format!("ERR unknown command '{}'", String::from_utf8_lossy(args[0])))
         }
+    }
+
+    /// Dispatches parsed RESP argument array to internal commands.
+    pub fn handle_command(&self, args: &[String]) -> RespFrame {
+        let byte_slices: Vec<&[u8]> = args.iter().map(|s| s.as_bytes()).collect();
+        self.handle_raw_command(&byte_slices)
     }
 
     pub fn pubsub(&self) -> &Arc<PubSubBroker> {
@@ -287,5 +397,21 @@ mod tests {
         // INCR
         let incr_res = server.handle_command(&["INCR".into(), "counter".into()]);
         assert_eq!(incr_res, RespFrame::Integer(1));
+    }
+
+    #[test]
+    fn test_streaming_resp_parser() {
+        let raw_stream = b"*3\r\n$3\r\nSET\r\n$5\r\nmykey\r\n$5\r\nmyval\r\n";
+        let (args, consumed) = StreamingRespParser::parse_command_slices(raw_stream).unwrap();
+        assert_eq!(consumed, raw_stream.len());
+        assert_eq!(args.len(), 3);
+        assert_eq!(args[0], b"SET");
+        assert_eq!(args[1], b"mykey");
+        assert_eq!(args[2], b"myval");
+
+        let kv = Arc::new(MemoryKvStore::new());
+        let server = RespServer::new(kv);
+        let resp = server.handle_raw_command(&args);
+        assert_eq!(resp, RespFrame::SimpleString("OK".into()));
     }
 }

@@ -13,6 +13,8 @@
 
 use std::collections::HashSet;
 use num_complex::Complex32;
+use rand::rngs::StdRng;
+use rand::{RngExt, SeedableRng};
 use roaring::RoaringBitmap;
 
 use hnsqr::proof::{
@@ -494,5 +496,104 @@ fn test_multi_segment_and_mutable_coordination() {
         assert_ne!(id.as_ref(), "multi_doc_10");
         assert_ne!(id.as_ref(), "multi_doc_20");
         assert_ne!(id.as_ref(), "multi_doc_30");
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 10. ISOTROPIC MANIFOLD CLIFF ELIMINATION & FLAT LUTZ SIEVE EXACTNESS
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_isotropic_manifold_cliff_elimination_and_exactness() {
+    let dim = 32;
+    let n = 200;
+    let k = 10;
+
+    let mut rng = StdRng::seed_from_u64(0xDECA_FBAD);
+
+    // 1. Synthesize isotropic uniform dataset (high entropy, uniform spherical)
+    let isotropic_corpus: Vec<VectorEmbedding> = (0..n)
+        .map(|_| {
+            let data: Vec<Complex32> = (0..dim)
+                .map(|_| {
+                    let re: f32 = rng.random_range(-1.0..1.0);
+                    let im: f32 = rng.random_range(-1.0..1.0);
+                    Complex32::new(re, im)
+                })
+                .collect();
+            VectorEmbedding::from_complex(data).into_normalized()
+        })
+        .collect();
+
+    let slots: Vec<NodeIndex> = (0..n as NodeIndex).collect();
+    let iso_tree = SemanticProofTree::build(&isotropic_corpus, &slots, dim);
+
+    // Profile must accurately identify isotropic/diffuse geometry
+    assert!(
+        !iso_tree.is_spatially_prunable(),
+        "Isotropic corpus should be classified as diffuse/non-spatially-prunable (Anisotropy ratio: {})",
+        iso_tree.manifold_profile.participation_ratio
+    );
+
+    // 2. Synthesize clustered dataset (5 distinct semantic clusters)
+    let mut clustered_corpus = Vec::with_capacity(n);
+    for i in 0..n {
+        let cluster_id = i % 5;
+        let base_phase = cluster_id as f32 * 1.25;
+        let data: Vec<Complex32> = (0..dim)
+            .map(|d| {
+                let re = (base_phase + d as f32 * 0.05).cos() + ((i as f32 * 0.1).sin() * 0.05);
+                let im = (base_phase + d as f32 * 0.05).sin() + ((i as f32 * 0.1).cos() * 0.05);
+                Complex32::new(re, im)
+            })
+            .collect();
+        clustered_corpus.push(VectorEmbedding::from_complex(data).into_normalized());
+    }
+
+    let clust_tree = SemanticProofTree::build(&clustered_corpus, &slots, dim);
+    assert!(
+        clust_tree.is_spatially_prunable(),
+        "Clustered corpus must be classified as spatially prunable (Anisotropy ratio: {})",
+        clust_tree.manifold_profile.participation_ratio
+    );
+
+    // 3. Test exactness on isotropic search via GlobalExactProofSearch
+    let query = VectorEmbedding::from_complex(
+        (0..dim)
+            .map(|d| Complex32::new((d as f32 * 1.7).sin(), (d as f32 * 2.3).cos()))
+            .collect(),
+    )
+    .into_normalized();
+
+    let lutz_codes: Vec<hnsqr::proof::LutzCode> = isotropic_corpus
+        .iter()
+        .map(|v| hnsqr::proof::LutzCode::encode(v, true))
+        .collect();
+
+    let seg_view = SegmentProofView {
+        tree: &iso_tree,
+        vectors: &isotropic_corpus,
+        lutz_codes: Some(&lutz_codes),
+        tombstones: None,
+    };
+
+    let (proof_topk, proof) = GlobalExactProofSearch::search(
+        &query,
+        k,
+        &[seg_view],
+        &[],
+        &[],
+        None,
+    );
+
+    let brute_topk = brute_force_exact(&query, &isotropic_corpus, k, None, |_| true);
+
+    assert_eq!(proof_topk.len(), k);
+    assert_eq!(brute_topk.len(), k);
+    assert!(proof.globally_exact);
+
+    for (p, b) in proof_topk.iter().zip(brute_topk.iter()) {
+        assert_eq!(p.0, b.0, "Slot mismatch on isotropic exact search");
+        assert!((p.1 - b.1).abs() < 1e-5, "Score mismatch: {} vs {}", p.1, b.1);
     }
 }

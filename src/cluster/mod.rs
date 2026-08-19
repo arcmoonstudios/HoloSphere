@@ -11,7 +11,9 @@ pub mod coordinator;
 pub mod disaster_recovery;
 pub mod migration;
 pub mod ring;
+pub mod serverless;
 pub mod state_machine;
+pub mod stream_ingest;
 pub mod topology;
 
 pub use control_plane::{
@@ -22,10 +24,12 @@ pub use coordinator::{DistributedCoordinator, LocalShard};
 pub use disaster_recovery::{DisasterRecoveryCoordinator, DisasterRecoverySla};
 pub use migration::{MigrationPhase, MigrationTask};
 pub use ring::{ConsistentHashRing, ShardId};
+pub use serverless::{EphemeralWorker, ServerlessQueryRouter, WorkerState};
 pub use state_machine::{
     ApplyReceipt, ClientIdentity, DataMutation, DeduplicationHorizon, ReplicatedStateMachine,
     RetrySemantics, ShardStateMachine,
 };
+pub use stream_ingest::{AsyncLogStreamIngestor, StreamIngestStats};
 pub use topology::{ClusterTopology, NodeAddress, ShardReplica, ShardRole};
 
 #[cfg(test)]

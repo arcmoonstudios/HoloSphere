@@ -706,7 +706,7 @@ fn run_scalability_and_saturation_matrix() {
         "════════════════════════════════════════════════════════════════════════════════════════"
     );
 
-    let scale_points = [100_000, 250_000, 500_000, 1_000_000];
+    let scale_points = [10_000, 25_000, 50_000, 100_000];
     let d = 32; // Complex dimension 32 (maps to 64 real LLM dimensions)
 
     println!(

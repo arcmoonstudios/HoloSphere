@@ -437,6 +437,8 @@ fn test_semantic_analyzer_valid_query() {
             limit: None,
         },
         mutations: vec![],
+        unwind: None,
+        subqueries: vec![],
     };
 
     let result = SemanticAnalyzer::analyse(&ast);
@@ -466,6 +468,8 @@ fn test_semantic_analyzer_rejects_undeclared_alias() {
             limit: None,
         },
         mutations: vec![],
+        unwind: None,
+        subqueries: vec![],
     };
 
     let result = SemanticAnalyzer::analyse(&ast);

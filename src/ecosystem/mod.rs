@@ -16,8 +16,14 @@ use serde::{Deserialize, Serialize};
 use crate::metadata::index::MetadataValue;
 use crate::{HNSQRResult, SimilarityScore, VectorEmbedding};
 
+pub mod agent_memory;
+pub mod kv_cache;
 pub mod sdks;
 
+pub use agent_memory::{
+    AutonomousMemoryConsolidator, EpisodicFact, FactCategory, UserPersonaProfile,
+};
+pub use kv_cache::{KvValue, MemoryKvStore};
 pub use sdks::{ClientSearchResult, HNSQRClientConfig, HNSQRClientRouter};
 
 /// Universal document abstraction for AI frameworks.

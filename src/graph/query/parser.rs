@@ -127,6 +127,8 @@ impl<'src> Parser<'src> {
             where_clause: WhereClause::default(),
             return_clause: ReturnClause { items: Vec::new(), limit: None },
             mutations: Vec::new(),
+            unwind: None,
+            subqueries: Vec::new(),
         };
 
         loop {

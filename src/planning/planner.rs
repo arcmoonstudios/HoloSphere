@@ -24,6 +24,8 @@ pub enum RetrievalContract {
     /// Bounded candidate universe with mathematical Cauchy-Schwarz proof certificate.
     #[default]
     Certified,
+    /// (ε, δ)-PAC Progressive Relaxed Proof guarantee with bounded latency.
+    PacRelaxed { epsilon: f32, delta: f32 },
     /// Statistical target recall guarantee (e.g., 0.995).
     HighRecall(f32),
     /// Peak throughput within a strict latency ceiling.
@@ -80,13 +82,13 @@ pub struct ExecutionProof {
 pub struct UniversalPlanner;
 
 impl UniversalPlanner {
-    /// Computes the exact-scan crossover threshold:
-    /// $$N_{\text{cross}}(D_{\text{complex}}) = 850.0 + \frac{1,416,904.5}{D_{\text{complex}}^{0.860}}$$
+    /// Computes the exact-scan crossover threshold calibrated from empirical sweeps:
+    /// $$N_{\text{cross}}(D_{\text{complex}}) = 3000.0 + \frac{5,768,286.0}{D_{\text{complex}}^{1.300}}$$
     #[inline(always)]
     pub fn compute_crossover(complex_dim: usize) -> usize {
         let d = complex_dim.max(8) as f64;
-        let d_pow = d.powf(0.860);
-        let n_cross = 850.0 + (1_416_904.5 / d_pow);
+        let d_pow = d.powf(1.300);
+        let n_cross = 3000.0 + (5_768_286.0 / d_pow);
         n_cross.round().clamp(100.0, 1_000_000.0) as usize
     }
 
@@ -106,23 +108,41 @@ impl UniversalPlanner {
             return ExecutionPlan::ExactScan { effective_n };
         }
 
+        // Dimensional scaling factor for metric concentration in high dimensions (e.g. 1536D, 4096D)
+        let dim_multiplier = if complex_dim >= 768 {
+            2.5f32 // 1536D+ real
+        } else if complex_dim >= 384 {
+            1.5f32 // 768D real
+        } else {
+            1.0f32
+        };
+
         // 2. If contract is Certified -> LutzGlobalCertified
         if matches!(contract, RetrievalContract::Certified) {
             return ExecutionPlan::LutzGlobalCertified {
-                initial_seed_cap: 2048,
+                initial_seed_cap: (2048.0 * dim_multiplier).round() as usize,
+            };
+        }
+
+        if let RetrievalContract::PacRelaxed { epsilon, .. } = contract {
+            return ExecutionPlan::LutzGlobalCertified {
+                initial_seed_cap: ((2048.0 * dim_multiplier) * (1.0 - epsilon)).round() as usize,
             };
         }
 
         // 3. Select Rivero Profile based on contract
-        let (profile, candidate_cap) = match contract {
+        let (profile, base_cap) = match contract {
             RetrievalContract::Exact => (RiveroProfile::Strict, 1024),
             RetrievalContract::Certified => (RiveroProfile::Fast, 512),
+            RetrievalContract::PacRelaxed { .. } => (RiveroProfile::Fast, 512),
             RetrievalContract::HighRecall(r) if r >= 0.999 => (RiveroProfile::Strict, 1024),
             RetrievalContract::HighRecall(r) if r >= 0.99 => (RiveroProfile::Balanced, 768),
             RetrievalContract::HighRecall(_) => (RiveroProfile::Fast, 512),
             RetrievalContract::Budget(dur) if dur.as_micros() < 500 => (RiveroProfile::Fast, 256),
             RetrievalContract::Budget(_) => (RiveroProfile::Fast, 512),
         };
+
+        let candidate_cap = ((base_cap as f32) * dim_multiplier).round() as usize;
 
         // 4. Select Semantic Reranking Policy based on residency
         let rerank_plan = if is_mmap_cold {
@@ -159,7 +179,7 @@ mod tests {
         assert!(matches!(
             plan_large_certified,
             ExecutionPlan::LutzGlobalCertified {
-                initial_seed_cap: 2048
+                initial_seed_cap: 5120
             }
         ));
 

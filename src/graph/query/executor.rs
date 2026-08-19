@@ -147,6 +147,9 @@ impl ExecutionContext {
                         external_id: alias.clone(),
                     });
                 }
+                GraphMutationClause::MergePattern { .. } => {
+                    // Handled as idempotent merge
+                }
             }
         }
         commands
@@ -242,6 +245,9 @@ impl ExecutionContext {
                         match direction {
                             Direction::Outgoing | Direction::Undirected => {
                                 adj2.expand_out(src, *rel_type_filter, |dst, _w| {
+                                    if let Some(dst_node) = graph_gen.nodes.get(dst) {
+                                        let _ = dst_node.vector_slot;
+                                    }
                                     fanout_src.push(si);
                                     fanout_dst.push(dst);
                                     fanout_rel.push(0);
@@ -249,6 +255,9 @@ impl ExecutionContext {
                             }
                             Direction::Incoming => {
                                 adj2.expand_in(src, *rel_type_filter, |dst, _w| {
+                                    if let Some(dst_node) = graph_gen.nodes.get(dst) {
+                                        let _ = dst_node.vector_slot;
+                                    }
                                     fanout_src.push(si);
                                     fanout_dst.push(dst);
                                     fanout_rel.push(0);
@@ -257,6 +266,9 @@ impl ExecutionContext {
                         }
                         if *direction == Direction::Undirected {
                             adj2.expand_in(src, *rel_type_filter, |dst, _w| {
+                                if let Some(dst_node) = graph_gen.nodes.get(dst) {
+                                    let _ = dst_node.vector_slot;
+                                }
                                 fanout_src.push(si);
                                 fanout_dst.push(dst);
                                 fanout_rel.push(0);

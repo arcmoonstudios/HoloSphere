@@ -452,8 +452,23 @@ impl RaftNode {
         *self.last_heartbeat_received.lock() = Instant::now();
 
         if args.is_heartbeat && args.entries.is_empty() {
-            let cur_match = self.log.read().len() as u64 - 1;
+            let log = self.log.read();
+            let log_len = log.len() as u64;
+            let prev_matches = args.prev_log_index < log_len
+                && log[args.prev_log_index as usize].term == args.prev_log_term;
+
+            if !prev_matches {
+                return AppendEntriesReply {
+                    term: current_term,
+                    success: false,
+                    match_index: log_len.saturating_sub(1),
+                };
+            }
+
+            let cur_match = log_len.saturating_sub(1);
             let current_commit = *self.commit_index.read();
+            drop(log);
+
             if args.leader_commit > current_commit {
                 let new_commit = args.leader_commit.min(cur_match);
                 *self.commit_index.write() = new_commit;

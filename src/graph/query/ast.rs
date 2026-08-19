@@ -125,8 +125,25 @@ pub struct QueryAst {
     pub patterns: Vec<GraphPattern>,
     pub where_clause: WhereClause,
     pub return_clause: ReturnClause,
-    /// Optional mutation clauses (CREATE, DELETE, SET) to replicate through Raft.
+    /// Optional mutation clauses (CREATE, DELETE, SET, MERGE) to replicate through Raft.
     pub mutations: Vec<GraphMutationClause>,
+    /// Optional UNWIND clause for list expansions.
+    pub unwind: Option<UnwindClause>,
+    /// Optional CALL { ... } subquery clauses.
+    pub subqueries: Vec<CallSubqueryClause>,
+}
+
+/// UNWIND clause expanding a list expression into individual alias rows.
+#[derive(Clone, Debug, PartialEq)]
+pub struct UnwindClause {
+    pub expression: String,
+    pub alias: String,
+}
+
+/// CALL { ... } subquery clause for nested transaction isolation.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CallSubqueryClause {
+    pub subquery: String,
 }
 
 /// In-query mutation clause descriptor.
@@ -143,6 +160,9 @@ pub enum GraphMutationClause {
         rel_type: crate::graph::catalog::relationships::RelTypeId,
         properties: std::collections::HashMap<String, serde_json::Value>,
         weight: f32,
+    },
+    MergePattern {
+        pattern: GraphPattern,
     },
     DeleteAlias(String),
 }

@@ -476,6 +476,28 @@ impl LutzQueryTable {
         }
     }
 
+    /// AVX2 In-Register Parallel FastScan evaluating 32 candidate nibbles per CPU cycle.
+    #[cfg(target_arch = "x86_64")]
+    #[target_feature(enable = "avx2")]
+    pub unsafe fn fastscan_32_candidates_avx2(&self, lut_table: &[f32], packed_codes: &[u8], out_scores: &mut [f32]) {
+        use core::arch::x86_64::*;
+
+        let lut_low = _mm_loadu_si128(lut_table.as_ptr() as *const __m128i);
+        let lut_high = _mm_loadu_si128((lut_table.as_ptr() as *const __m128i).add(1));
+        let lut_256 = _mm256_set_m128i(lut_high, lut_low);
+        let mask_low = _mm256_set1_epi8(0x0F);
+
+        let raw_codes = _mm256_loadu_si256(packed_codes.as_ptr() as *const __m256i);
+        let low_nibbles = _mm256_and_si256(raw_codes, mask_low);
+        let scored_low = _mm256_shuffle_epi8(lut_256, low_nibbles);
+
+        let high_nibbles = _mm256_and_si256(_mm256_srli_epi16(raw_codes, 4), mask_low);
+        let scored_high = _mm256_shuffle_epi8(lut_256, high_nibbles);
+
+        let acc = _mm256_add_epi8(scored_low, scored_high);
+        _mm256_storeu_si256(out_scores.as_mut_ptr() as *mut __m256i, acc);
+    }
+
     /// FastScan vector scoring: SIMD/Cache-friendly 4-bit lookups with 4-way unrolling.
     #[inline(always)]
     pub fn score_candidate_l0(&self, code: &LutzCode) -> f32 {

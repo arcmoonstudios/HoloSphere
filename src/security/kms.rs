@@ -33,6 +33,15 @@ impl Default for LocalKmsProvider {
     }
 }
 
+impl LocalKmsProvider {
+    fn derive_keystream(&self, key_id: &str) -> [u8; 32] {
+        let mut hasher = Sha256::new();
+        hasher.update(&self.master_seed);
+        hasher.update(key_id.as_bytes());
+        hasher.finalize().into()
+    }
+}
+
 impl KmsProvider for LocalKmsProvider {
     fn generate_data_key(&self, key_id: &str) -> HNSQRResult<(Vec<u8>, Vec<u8>)> {
         let mut plaintext_dek = vec![0u8; 32];
@@ -40,18 +49,27 @@ impl KmsProvider for LocalKmsProvider {
             *b = rand::random();
         }
 
-        // Encrypt DEK with master seed HMAC simulation
-        let mut hasher = Sha256::new();
-        hasher.update(&self.master_seed);
-        hasher.update(key_id.as_bytes());
-        hasher.update(&plaintext_dek);
-        let encrypted_dek = hasher.finalize().to_vec();
+        let mask = self.derive_keystream(key_id);
+        let mut encrypted_dek = vec![0u8; 32];
+        for i in 0..32 {
+            encrypted_dek[i] = plaintext_dek[i] ^ mask[i];
+        }
 
         Ok((plaintext_dek, encrypted_dek))
     }
 
-    fn decrypt_data_key(&self, _key_id: &str, _encrypted_dek: &[u8]) -> HNSQRResult<Vec<u8>> {
-        // Return 32-byte key
-        Ok(vec![0xAA; 32])
+    fn decrypt_data_key(&self, key_id: &str, encrypted_dek: &[u8]) -> HNSQRResult<Vec<u8>> {
+        if encrypted_dek.len() != 32 {
+            return Err(crate::HNSQRError::Internal(format!(
+                "Invalid encrypted DEK length: expected 32, got {}",
+                encrypted_dek.len()
+            )));
+        }
+        let mask = self.derive_keystream(key_id);
+        let mut plaintext = vec![0u8; 32];
+        for i in 0..32 {
+            plaintext[i] = encrypted_dek[i] ^ mask[i];
+        }
+        Ok(plaintext)
     }
 }

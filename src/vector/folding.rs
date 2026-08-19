@@ -80,6 +80,21 @@ impl ComplexWeaver {
         VectorEmbedding::from_complex(complex_data).into_normalized()
     }
 
+    /// Ingests token embeddings directly from an in-process neural model with zero intermediate copies.
+    #[inline(always)]
+    pub fn fold_token_embeddings_in_place(token_floats: &[f32], target_dim: usize) -> VectorEmbedding {
+        let complex_dim = target_dim.div_ceil(2);
+        let mut complex_data = Vec::with_capacity(complex_dim);
+        let mut pairs = token_floats.chunks_exact(2);
+        for pair in &mut pairs {
+            complex_data.push(Complex32::new(pair[0], pair[1]));
+        }
+        if let [tail] = pairs.remainder() {
+            complex_data.push(Complex32::new(*tail, 0.0));
+        }
+        VectorEmbedding::from_complex(complex_data).into_normalized()
+    }
+
     /// Folds an $N$-dimensional real vector into an $N/2$-dimensional complex vector without normalizing.
     /// Consecutive pairs $(x_k, y_k)$ directly map to $z_k = x_k + i y_k$.
     ///
@@ -323,29 +338,35 @@ impl GatewayRouter {
         k: usize,
         filter: Option<FilterExpr>,
     ) -> HNSQRResult<Vec<(String, SimilarityScore)>> {
+        let (results, _, _) = self.search_llm_vector_with_contract(collection, llm_query, k, filter, false)?;
+        Ok(results)
+    }
+
+    /// Searches with contract enforcement, returning certified exact results when requested.
+    pub fn search_llm_vector_with_contract(
+        &self,
+        collection: &str,
+        llm_query: &[f32],
+        k: usize,
+        filter: Option<FilterExpr>,
+        certified_exact: bool,
+    ) -> HNSQRResult<(Vec<(String, SimilarityScore)>, bool, Option<f32>)> {
         let target_index = self.get_or_create_collection(collection, llm_query.len())?;
         let quantum_query = ComplexWeaver::fold_llm_embedding(llm_query);
+        let filter_mask = filter.and_then(|f| target_index.compile_filter_mask(&f).ok());
 
-        if let Some(expr) = filter {
-            let intent = crate::SearchIntent {
-                filter: Some(expr),
-                ..Default::default()
-            };
-            target_index
-                .search_with_intent(&quantum_query, k, &intent)
-                .map(|results| {
-                    results
-                        .into_iter()
-                        .map(|(id, score)| (id.to_string(), score))
-                        .collect()
-                })
+        if certified_exact {
+            let (results, proof) = target_index.search_indices_with_proof(&quantum_query, k, filter_mask.as_ref())?;
+            let mapped = results.into_iter().filter_map(|(idx, score)| {
+                target_index.arena.get_node(idx).map(|n| (n.external_id.to_string(), score))
+            }).collect();
+            Ok((mapped, proof.globally_exact, Some(proof.max_remaining_upper_bound as f32)))
         } else {
-            target_index.search(&quantum_query, k).map(|results| {
-                results
-                    .into_iter()
-                    .map(|(id, score)| (id.to_string(), score))
-                    .collect()
-            })
+            let results = target_index.search_indices_filtered(&quantum_query, k, filter_mask.as_ref())?;
+            let mapped = results.into_iter().filter_map(|(idx, score)| {
+                target_index.arena.get_node(idx).map(|n| (n.external_id.to_string(), score))
+            }).collect();
+            Ok((mapped, false, None))
         }
     }
 
@@ -442,6 +463,8 @@ pub fn create_http_router(router: Arc<GatewayRouter>) -> Router {
             post(batch_search_handler),
         )
         .route("/v1/collections/{name}/stats", get(stats_handler))
+        .route("/dashboard", get(crate::transport::web_console::console_handler))
+        .route("/ui", get(crate::transport::web_console::console_handler))
         .layer(CorsLayer::permissive())
         .with_state(router)
 }
@@ -506,8 +529,14 @@ async fn search_handler(
     Path(collection): Path<String>,
     Json(payload): Json<SearchRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let results = router
-        .search_llm_vector_with_filter(&collection, &payload.query, payload.k, payload.filter)
+    let (results, is_certified, upper_bound) = router
+        .search_llm_vector_with_contract(
+            &collection,
+            &payload.query,
+            payload.k,
+            payload.filter,
+            payload.certified_exact,
+        )
         .map_err(|e: HNSQRError| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let items: Vec<SearchResultItem> = results
@@ -515,8 +544,8 @@ async fn search_handler(
         .map(|(id, score)| SearchResultItem {
             id,
             score,
-            is_certified: payload.certified_exact,
-            proof_upper_bound: None,
+            is_certified,
+            proof_upper_bound: upper_bound,
             metadata: None,
         })
         .collect();

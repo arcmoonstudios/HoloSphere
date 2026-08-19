@@ -297,6 +297,10 @@ pub enum HNSQRError {
     #[error("Invalid configuration: {0}")]
     InvalidConfig(String),
 
+    /// An invalid request or query parameter was supplied.
+    #[error("Invalid request: {0}")]
+    InvalidRequest(String),
+
     /// Serialization or deserialization failure.
     #[error("Serialization error: {0}")]
     SerializationError(String),
@@ -4518,6 +4522,15 @@ impl HNSQRIndex {
             }
         }
         self.metadata_index.remove_node_index(index);
+
+        // Invalidate cached proof tree and clear quantized code slot
+        {
+            let mut lutz_guard = self.lutz_codes.write();
+            if (index as usize) < lutz_guard.len() {
+                lutz_guard[index as usize] = None;
+            }
+        }
+        *self.proof_tree.write() = None;
 
         let mut eps_write = self.entry_points.write();
         if let Some(pos) = eps_write.iter().position(|&i| i == index) {

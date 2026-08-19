@@ -7,5 +7,9 @@
  *///•------------------------------------------------------------------------------------‣
 
 pub mod qir0;
+pub mod resp;
+pub mod web_console;
 
 pub use qir0::{HNSQRClient, HNSQRServer, MessageHeader, OpCode, PROTOCOL_MAGIC};
+pub use resp::{PubSubBroker, RedisStreamEngine, RespFrame, RespServer, StreamEntry};
+pub use web_console::{CONSOLE_HTML, console_handler};

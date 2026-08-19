@@ -4,12 +4,13 @@
 //!▫~•◦-------------------------------------------------------------------‣
 //!
 //! Provides the canonical client layer supporting endpoint discovery, leader
-//! redirection, exponential jittered retries, and learner read replica selection
-//! for Python, TypeScript, and Go SDKs.
+//! redirection, exponential jittered retries, learner read replica selection,
+//! and multi-paradigm protocol payloads for Python, TypeScript, and Go SDKs.
 /*▫~•◦------------------------------------------------------------------------------------‣
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use serde::{Deserialize, Serialize};
@@ -47,6 +48,30 @@ pub struct ClientSearchResult {
     pub score: SimilarityScore,
     pub is_certified: bool,
     pub execution_time_micros: u64,
+}
+
+/// Result returned from executing a Cypher/GQL graph query.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GraphQueryResult {
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<serde_json::Value>>,
+    pub execution_time_micros: u64,
+}
+
+/// Result returned from executing a relational SQL query.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SqlExecutionResult {
+    pub columns: Vec<String>,
+    pub rows: Vec<HashMap<String, serde_json::Value>>,
+    pub affected_rows: usize,
+}
+
+/// Result returned from slicing an N-dimensional hypercube tensor.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct HypercubeSliceResult {
+    pub coordinates: Vec<Vec<usize>>,
+    pub values: Vec<f32>,
+    pub total_voxels_found: usize,
 }
 
 /// Smart client connection and retry router.

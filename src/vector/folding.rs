@@ -465,6 +465,9 @@ pub fn create_http_router(router: Arc<GatewayRouter>) -> Router {
         .route("/v1/collections/{name}/stats", get(stats_handler))
         .route("/dashboard", get(crate::transport::web_console::console_handler))
         .route("/ui", get(crate::transport::web_console::console_handler))
+        .route("/docs", get(crate::transport::swagger::swagger_handler))
+        .route("/swagger", get(crate::transport::swagger::swagger_handler))
+        .route("/openapi.json", get(crate::transport::swagger::openapi_spec_handler))
         .layer(CorsLayer::permissive())
         .with_state(router)
 }

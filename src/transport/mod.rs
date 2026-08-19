@@ -6,10 +6,17 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
+pub mod arrow_flight;
 pub mod qir0;
 pub mod resp;
+pub mod swagger;
 pub mod web_console;
 
+pub use arrow_flight::{
+    ArrowFieldDescriptor, ArrowFieldType, ArrowFlightService, ArrowRecordBatchPayload,
+    ArrowSchemaDescriptor,
+};
 pub use qir0::{HNSQRClient, HNSQRServer, MessageHeader, OpCode, PROTOCOL_MAGIC};
 pub use resp::{PubSubBroker, RedisStreamEngine, RespFrame, RespServer, StreamEntry};
+pub use swagger::{OpenApiSpecGenerator, SWAGGER_HTML, openapi_spec_handler, swagger_handler};
 pub use web_console::{CONSOLE_HTML, console_handler};

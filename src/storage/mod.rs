@@ -22,6 +22,7 @@ pub mod remote_cache;
 pub mod remote_layout;
 pub mod segment;
 pub mod segment_store;
+pub mod sharded_map;
 pub mod snapshot;
 pub mod two_tier_cache;
 pub mod wal;
@@ -49,6 +50,7 @@ pub use segment::{
 pub use segment_store::{
     ImmutableSegmentStore, LocalSegmentStore, S3SegmentStore, SegmentObjectId, SegmentObjectMetadata,
 };
+pub use sharded_map::ShardedConcurrentMap;
 pub use snapshot::{
     SectionDescriptor, SnapshotAttachBreakdown, SnapshotHeaderV2,
     SnapshotOpenOptions, SnapshotStats, VerificationMode,

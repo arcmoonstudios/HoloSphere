@@ -200,6 +200,11 @@ harness = false
 name = "phase5_reference_architecture_benchmark"
 harness = false
 
+[[bench]]
+name = "public_dataset_benchmark"
+harness = false
+test = false
+
 [profile.dev]
 incremental = false
 lto = false

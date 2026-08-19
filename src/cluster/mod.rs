@@ -9,6 +9,7 @@
 pub mod control_plane;
 pub mod coordinator;
 pub mod disaster_recovery;
+pub mod federation;
 pub mod migration;
 pub mod ring;
 pub mod serverless;
@@ -18,10 +19,14 @@ pub mod topology;
 
 pub use control_plane::{
     ClusterId, ControlPlaneReconciliationPlan, DBaaSControlPlane, DesiredClusterState,
-    ObservedClusterState, OrganizationId,
+    ObservedClusterState, OrganizationId, TenantUsageReport, UsageBillingMeter, VpcPeeringConfig,
 };
 pub use coordinator::{DistributedCoordinator, LocalShard};
 pub use disaster_recovery::{DisasterRecoveryCoordinator, DisasterRecoverySla};
+pub use federation::{
+    CrossRegionReplicator, FederatedMutationEvent, FederatedRegionManager, GeoRoutingTable,
+    RegionEndpointStatus, VectorClockTimestamp,
+};
 pub use migration::{MigrationPhase, MigrationTask};
 pub use ring::{ConsistentHashRing, ShardId};
 pub use serverless::{EphemeralWorker, ServerlessQueryRouter, WorkerState};

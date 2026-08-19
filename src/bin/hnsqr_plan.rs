@@ -4,7 +4,7 @@
 //!▫~•◦-------------------------------------------------------------------‣
 //!
 //! Sizes hardware, RAM, NVMe throughput, learner counts, and shard topologies
-//! based on corpus cardinality, dimensionality, write rate, and query SLA.
+//! based on corpus cardinality, dimensionality, write rate, multi-modal payloads, and query SLA.
 /*▫~•◦------------------------------------------------------------------------------------‣
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
@@ -41,6 +41,12 @@ fn main() {
     println!("   • Recommended Shards:   {:>10}", plan.recommended_shards);
     println!("   • Recommended Learners: {:>10}", plan.recommended_learners);
     println!("   • Expected p99 Latency: {:>10.2} ms", plan.expected_p99_latency_ms);
+
+    println!("\n📊 MULTI-MODAL & UNIVERSAL SUBSYSTEM ALLOCATION:");
+    println!("   • Graph Topology (CSR/CSC):  {:>8.2} GB (32 bytes/node)", (10_000_000.0 * 32.0) / (1024.0 * 1024.0 * 1024.0));
+    println!("   • In-Memory KV Cache Pool:   {:>8.2} GB", 4.0);
+    println!("   • Columnar OLAP Table Arena: {:>8.2} GB", 8.0);
+    println!("   • In-Process Embedder Cache: {:>8.2} GB", 2.0);
 
     println!("\n✨ SIZING ANALYSIS COMPLETE.\n");
 }

@@ -40,6 +40,24 @@ type MutationReceipt struct {
 	IsQuorumReplicated bool   `json:"is_quorum_replicated"`
 }
 
+type GraphQueryResult struct {
+	Columns              []string        `json:"columns"`
+	Rows                 [][]interface{} `json:"rows"`
+	ExecutionTimeMicros  uint64          `json:"execution_time_micros"`
+}
+
+type SqlExecutionResult struct {
+	Columns      []string                 `json:"columns"`
+	Rows         []map[string]interface{} `json:"rows"`
+	AffectedRows int                      `json:"affected_rows"`
+}
+
+type HypercubeSliceResult struct {
+	Coordinates [][]int   `json:"coordinates"`
+	Values      []float32 `json:"values"`
+	TotalVoxels int       `json:"total_voxels"`
+}
+
 type ClientConfig struct {
 	Endpoints       []string
 	APIKey          string
@@ -98,248 +116,301 @@ type Client struct {
 	config       ClientConfig
 	httpClient   *http.Client
 	mu           sync.RWMutex
-	rrIndex      uint64
 	activeLeader string
+	counter      uint64
 	breakers     map[string]*circuitBreaker
 }
 
-func NewClient(cfg ClientConfig) *Client {
-	if len(cfg.Endpoints) == 0 {
-		cfg.Endpoints = []string{"http://127.0.0.1:8080"}
+func NewClient(config ClientConfig) *Client {
+	if len(config.Endpoints) == 0 {
+		config.Endpoints = []string{"http://127.0.0.1:8080"}
 	}
-	if cfg.Timeout == 0 {
-		cfg.Timeout = 5 * time.Second
+	if config.Timeout == 0 {
+		config.Timeout = 5 * time.Second
 	}
-	if cfg.MaxRetries == 0 {
-		cfg.MaxRetries = 3
+	if config.MaxRetries == 0 {
+		config.MaxRetries = 3
 	}
-	if cfg.ReadConsistency == "" {
-		cfg.ReadConsistency = Committed
+	if config.ReadConsistency == "" {
+		config.ReadConsistency = Committed
 	}
 
 	transport := &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 50,
+		IdleConnTimeout:     90 * time.Second,
 		DialContext: (&net.Dialer{
-			Timeout:   5 * time.Second,
+			Timeout:   2 * time.Second,
 			KeepAlive: 30 * time.Second,
 		}).DialContext,
-		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          100,
-		MaxIdleConnsPerHost:   50,
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   5 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
 	}
 
-	breakers := make(map[string]*circuitBreaker)
-	for _, ep := range cfg.Endpoints {
+	breakers := make(map[string]*circuitBreaker, len(config.Endpoints))
+	for _, ep := range config.Endpoints {
 		breakers[ep] = newCircuitBreaker()
 	}
 
 	return &Client{
-		config: cfg,
+		config: config,
 		httpClient: &http.Client{
-			Timeout:   cfg.Timeout,
 			Transport: transport,
+			Timeout:   config.Timeout,
 		},
 		breakers: breakers,
 	}
 }
 
-func (c *Client) selectEndpoint(isWrite bool) string {
+func (c *Client) selectEndpoint(isWrite bool) (string, error) {
 	c.mu.RLock()
-	if isWrite && c.activeLeader != "" {
-		leader := c.activeLeader
-		c.mu.RUnlock()
-		return leader
-	}
+	leader := c.activeLeader
 	c.mu.RUnlock()
 
-	for i := 0; i < len(c.config.Endpoints); i++ {
-		idx := atomic.AddUint64(&c.rrIndex, 1) - 1
-		ep := c.config.Endpoints[idx%uint64(len(c.config.Endpoints))]
-		c.mu.RLock()
-		cb, ok := c.breakers[ep]
-		c.mu.RUnlock()
-		if !ok || cb.canExecute() {
-			return ep
+	if isWrite && leader != "" {
+		if cb, ok := c.breakers[leader]; ok && cb.canExecute() {
+			return leader, nil
 		}
 	}
-	return c.config.Endpoints[0]
-}
 
-type searchRequest struct {
-	Query          []float32       `json:"query"`
-	K              int             `json:"k"`
-	CertifiedExact bool            `json:"certified_exact"`
-	Consistency    ReadConsistency `json:"consistency"`
-}
-
-type searchResponse struct {
-	Results []SearchResult `json:"results"`
-}
-
-type upsertRequest struct {
-	ID       string                 `json:"id"`
-	Vector   []float32              `json:"vector"`
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
-}
-
-func (c *Client) Search(ctx context.Context, query []float32, k int, certifiedExact bool) ([]SearchResult, error) {
-	reqBody, err := json.Marshal(searchRequest{
-		Query:          query,
-		K:              k,
-		CertifiedExact: certifiedExact,
-		Consistency:    c.config.ReadConsistency,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal search request: %w", err)
+	var healthy []string
+	for _, ep := range c.config.Endpoints {
+		if cb, ok := c.breakers[ep]; ok && cb.canExecute() {
+			healthy = append(healthy, ep)
+		}
 	}
+
+	if len(healthy) == 0 {
+		return "", errors.New("circuit breaker open: all endpoints failing")
+	}
+
+	idx := atomic.AddUint64(&c.counter, 1) - 1
+	return healthy[idx%uint64(len(healthy))], nil
+}
+
+func (c *Client) headers(req *http.Request, idempotencyKey string) {
+	req.Header.Set("Content-Type", "application/json")
+	if c.config.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
+	}
+	if c.config.TenantID != "" {
+		req.Header.Set("X-HNSQR-Tenant-ID", c.config.TenantID)
+	}
+	if idempotencyKey != "" {
+		req.Header.Set("X-Idempotency-Key", idempotencyKey)
+	}
+}
+
+func (c *Client) Search(ctx context.Context, collection string, vector []float32, k int, certifiedExact bool) ([]SearchResult, error) {
+	payload := map[string]interface{}{
+		"vector":          vector,
+		"k":               k,
+		"certified_exact": certifiedExact,
+		"consistency":     c.config.ReadConsistency,
+	}
+	data, _ := json.Marshal(payload)
 
 	var lastErr error
 	for attempt := 0; attempt < c.config.MaxRetries; attempt++ {
-		ep := c.selectEndpoint(false)
-		url := fmt.Sprintf("%s/search", ep)
-
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(reqBody))
+		endpoint, err := c.selectEndpoint(false)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create request: %w", err)
+			return nil, err
 		}
-		req.Header.Set("Content-Type", "application/json")
-		if c.config.APIKey != "" {
-			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.config.APIKey))
+
+		cb := c.breakers[endpoint]
+		url := fmt.Sprintf("%s/v1/collections/%s/search", endpoint, collection)
+		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(data))
+		if err != nil {
+			return nil, err
 		}
-		if c.config.TenantID != "" {
-			req.Header.Set("X-Tenant-ID", c.config.TenantID)
-		}
+		c.headers(req, "")
 
 		resp, err := c.httpClient.Do(req)
-		c.mu.RLock()
-		cb := c.breakers[ep]
-		c.mu.RUnlock()
-
-		if err != nil {
-			if cb != nil {
-				cb.recordFailure()
+		if err == nil && resp.StatusCode == http.StatusOK {
+			cb.recordSuccess()
+			var wrapper struct {
+				Results []SearchResult `json:"results"`
 			}
-			lastErr = err
-			time.Sleep(time.Duration(50*(1<<attempt)+rand.Intn(30)) * time.Millisecond)
-			continue
-		}
-
-		if resp.StatusCode == http.StatusOK {
-			if cb != nil {
-				cb.recordSuccess()
-			}
-			var sResp searchResponse
-			decErr := json.NewDecoder(resp.Body).Decode(&sResp)
+			err = json.NewDecoder(resp.Body).Decode(&wrapper)
 			resp.Body.Close()
-			if decErr != nil {
-				return nil, fmt.Errorf("failed to decode search response: %w", decErr)
-			}
-			return sResp.Results, nil
+			return wrapper.Results, err
 		}
 
-		if resp.StatusCode == http.StatusTemporaryRedirect || resp.StatusCode == http.StatusPermanentRedirect {
+		if resp != nil {
 			resp.Body.Close()
-			leader := resp.Header.Get("Location")
-			if leader != "" {
-				c.mu.Lock()
-				c.activeLeader = leader
-				c.mu.Unlock()
-				continue
+			if resp.StatusCode == http.StatusTemporaryRedirect || resp.StatusCode == http.StatusPermanentRedirect {
+				loc := resp.Header.Get("Location")
+				if loc != "" {
+					c.mu.Lock()
+					c.activeLeader = loc
+					c.mu.Unlock()
+					continue
+				}
 			}
 		}
 
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if cb != nil {
-			cb.recordFailure()
-		}
-		lastErr = fmt.Errorf("search failed on %s with HTTP %d: %s", ep, resp.StatusCode, string(bodyBytes))
-		time.Sleep(time.Duration(50*(1<<attempt)+rand.Intn(30)) * time.Millisecond)
+		cb.recordFailure()
+		lastErr = err
+		time.Sleep(time.Duration(50*int(1<<attempt)+rand.Intn(30)) * time.Millisecond)
 	}
 
-	return nil, fmt.Errorf("search retries exhausted: %w", lastErr)
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, errors.New("search retries exhausted")
 }
 
-func (c *Client) Upsert(ctx context.Context, id string, vector []float32, metadata map[string]interface{}) (*MutationReceipt, error) {
-	reqBody, err := json.Marshal(upsertRequest{
-		ID:       id,
-		Vector:   vector,
-		Metadata: metadata,
-	})
+func (c *Client) EmbedAndSearch(ctx context.Context, collection string, queryText string, k int, certifiedExact bool) ([]SearchResult, error) {
+	endpoint, err := c.selectEndpoint(false)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal upsert request: %w", err)
+		return nil, err
 	}
+	payload := map[string]interface{}{
+		"query_text":      queryText,
+		"k":               k,
+		"certified_exact": certifiedExact,
+	}
+	data, _ := json.Marshal(payload)
+	url := fmt.Sprintf("%s/v1/collections/%s/search", endpoint, collection)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	c.headers(req, "")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var wrapper struct {
+		Results []SearchResult `json:"results"`
+	}
+	err = json.NewDecoder(resp.Body).Decode(&wrapper)
+	return wrapper.Results, err
+}
+
+func (c *Client) QueryGraph(ctx context.Context, cypherQuery string) (*GraphQueryResult, error) {
+	endpoint, err := c.selectEndpoint(false)
+	if err != nil {
+		return nil, err
+	}
+	payload := map[string]interface{}{"query": cypherQuery}
+	data, _ := json.Marshal(payload)
+	url := fmt.Sprintf("%s/v1/graph/query", endpoint)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	c.headers(req, "")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var result GraphQueryResult
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	return &result, err
+}
+
+func (c *Client) ExecuteSql(ctx context.Context, sqlQuery string) (*SqlExecutionResult, error) {
+	endpoint, err := c.selectEndpoint(false)
+	if err != nil {
+		return nil, err
+	}
+	payload := map[string]interface{}{"sql": sqlQuery}
+	data, _ := json.Marshal(payload)
+	url := fmt.Sprintf("%s/v1/sql/execute", endpoint)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	c.headers(req, "")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var result SqlExecutionResult
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	return &result, err
+}
+
+func (c *Client) SliceHypercube(ctx context.Context, spaceID string, minCoords []int, maxCoords []int) (*HypercubeSliceResult, error) {
+	endpoint, err := c.selectEndpoint(false)
+	if err != nil {
+		return nil, err
+	}
+	payload := map[string]interface{}{
+		"space_id":   spaceID,
+		"min_coords": minCoords,
+		"max_coords": maxCoords,
+	}
+	data, _ := json.Marshal(payload)
+	url := fmt.Sprintf("%s/v1/hypercube/slice", endpoint)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	c.headers(req, "")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var result HypercubeSliceResult
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	return &result, err
+}
+
+func (c *Client) Upsert(ctx context.Context, collection string, id string, vector []float32, metadata map[string]interface{}, idempotencyKey string) (*MutationReceipt, error) {
+	payload := map[string]interface{}{
+		"id":       id,
+		"vector":   vector,
+		"metadata": metadata,
+	}
+	data, _ := json.Marshal(payload)
 
 	var lastErr error
 	for attempt := 0; attempt < c.config.MaxRetries; attempt++ {
-		ep := c.selectEndpoint(true)
-		url := fmt.Sprintf("%s/upsert", ep)
-
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(reqBody))
+		endpoint, err := c.selectEndpoint(true)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create request: %w", err)
+			return nil, err
 		}
-		req.Header.Set("Content-Type", "application/json")
-		if c.config.APIKey != "" {
-			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.config.APIKey))
+
+		cb := c.breakers[endpoint]
+		url := fmt.Sprintf("%s/v1/collections/%s/insert", endpoint, collection)
+		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(data))
+		if err != nil {
+			return nil, err
 		}
-		if c.config.TenantID != "" {
-			req.Header.Set("X-Tenant-ID", c.config.TenantID)
-		}
+		c.headers(req, idempotencyKey)
 
 		resp, err := c.httpClient.Do(req)
-		c.mu.RLock()
-		cb := c.breakers[ep]
-		c.mu.RUnlock()
-
-		if err != nil {
-			if cb != nil {
-				cb.recordFailure()
-			}
-			lastErr = err
-			time.Sleep(time.Duration(50*(1<<attempt)+rand.Intn(30)) * time.Millisecond)
-			continue
-		}
-
-		if resp.StatusCode == http.StatusOK {
-			if cb != nil {
-				cb.recordSuccess()
-			}
+		if err == nil && resp.StatusCode == http.StatusOK {
+			cb.recordSuccess()
 			var receipt MutationReceipt
-			decErr := json.NewDecoder(resp.Body).Decode(&receipt)
+			err = json.NewDecoder(resp.Body).Decode(&receipt)
 			resp.Body.Close()
-			if decErr != nil {
-				return &MutationReceipt{
-					ID:                 id,
-					LSN:                1,
-					AppliedGeneration:  1,
-					IsQuorumReplicated: true,
-				}, nil
-			}
-			return &receipt, nil
+			return &receipt, err
 		}
 
-		if resp.StatusCode == http.StatusTemporaryRedirect || resp.StatusCode == http.StatusPermanentRedirect {
+		if resp != nil {
+			body, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
-			leader := resp.Header.Get("Location")
-			if leader != "" {
-				c.mu.Lock()
-				c.activeLeader = leader
-				c.mu.Unlock()
-				continue
+			if resp.StatusCode == http.StatusTemporaryRedirect || resp.StatusCode == http.StatusPermanentRedirect {
+				loc := resp.Header.Get("Location")
+				if loc != "" {
+					c.mu.Lock()
+					c.activeLeader = loc
+					c.mu.Unlock()
+					continue
+				}
 			}
+			lastErr = fmt.Errorf("upsert failed with code %d: %s", resp.StatusCode, string(body))
+		} else {
+			lastErr = err
 		}
 
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if cb != nil {
-			cb.recordFailure()
-		}
-		lastErr = fmt.Errorf("upsert failed on %s with HTTP %d: %s", ep, resp.StatusCode, string(bodyBytes))
-		time.Sleep(time.Duration(50*(1<<attempt)+rand.Intn(30)) * time.Millisecond)
+		cb.recordFailure()
+		time.Sleep(time.Duration(50*int(1<<attempt)+rand.Intn(30)) * time.Millisecond)
 	}
 
 	if lastErr != nil {
@@ -347,4 +418,3 @@ func (c *Client) Upsert(ctx context.Context, id string, vector []float32, metada
 	}
 	return nil, errors.New("upsert retries exhausted")
 }
-

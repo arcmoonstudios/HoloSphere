@@ -45,6 +45,24 @@ export interface MutationReceipt {
   isQuorumReplicated: boolean;
 }
 
+export interface GraphQueryResult {
+  columns: string[];
+  rows: unknown[][];
+  executionTimeMicros: number;
+}
+
+export interface SqlExecutionResult {
+  columns: string[];
+  rows: Record<string, unknown>[];
+  affectedRows: number;
+}
+
+export interface HypercubeSliceResult {
+  coordinates: number[][];
+  values: number[];
+  totalVoxels: number;
+}
+
 export interface HNSQRClientOptions {
   endpoints?: string[];
   apiKey?: string;
@@ -98,12 +116,15 @@ export class HNSQRClient {
   private roundRobinIdx = 0;
 
   constructor(options: HNSQRClientOptions = {}) {
-    this.endpoints = options.endpoints || ["http://127.0.0.1:8080"];
+    this.endpoints = options.endpoints && options.endpoints.length > 0
+      ? options.endpoints
+      : ["http://127.0.0.1:8080"];
     this.apiKey = options.apiKey;
     this.tenantId = options.tenantId;
-    this.timeoutMs = options.timeoutMs || 5000;
-    this.maxRetries = options.maxRetries || 3;
-    this.readConsistency = options.readConsistency || ReadConsistency.Committed;
+    this.timeoutMs = options.timeoutMs ?? 5000;
+    this.maxRetries = options.maxRetries ?? 3;
+    this.readConsistency = options.readConsistency ?? ReadConsistency.Committed;
+
     this.circuitBreakers = new Map();
     for (const ep of this.endpoints) {
       this.circuitBreakers.set(ep, new CircuitBreaker());
@@ -112,20 +133,26 @@ export class HNSQRClient {
 
   private selectEndpoint(isWrite = false): string {
     if (isWrite && this.activeLeader) {
-      return this.activeLeader;
-    }
-    for (let i = 0; i < this.endpoints.length; i++) {
-      const ep = this.endpoints[this.roundRobinIdx % this.endpoints.length];
-      this.roundRobinIdx++;
-      const cb = this.circuitBreakers.get(ep);
-      if (!cb || cb.canExecute()) {
-        return ep;
+      const cb = this.circuitBreakers.get(this.activeLeader);
+      if (cb && cb.canExecute()) {
+        return this.activeLeader;
       }
     }
-    return this.endpoints[0];
+
+    const healthy = this.endpoints.filter((ep) =>
+      this.circuitBreakers.get(ep)?.canExecute()
+    );
+
+    if (healthy.length === 0) {
+      throw new HNSQRCircuitOpenError("All cluster endpoints circuit breakers are OPEN");
+    }
+
+    const chosen = healthy[this.roundRobinIdx % healthy.length];
+    this.roundRobinIdx++;
+    return chosen;
   }
 
-  private headers(idempotencyKey?: string): Record<string, string> {
+  private headers(idempotencyKey?: string): HeadersInit {
     const h: Record<string, string> = {
       "Content-Type": "application/json",
     };
@@ -133,7 +160,7 @@ export class HNSQRClient {
       h["Authorization"] = `Bearer ${this.apiKey}`;
     }
     if (this.tenantId) {
-      h["X-Tenant-ID"] = this.tenantId;
+      h["X-HNSQR-Tenant-ID"] = this.tenantId;
     }
     if (idempotencyKey) {
       h["X-Idempotency-Key"] = idempotencyKey;
@@ -142,26 +169,31 @@ export class HNSQRClient {
   }
 
   public async search(
-    query: number[],
-    k = 10,
-    filter?: Record<string, unknown>,
-    certifiedExact = true
+    collection: string,
+    vector: number[],
+    options: {
+      k?: number;
+      filter?: Record<string, unknown>;
+      certifiedExact?: boolean;
+    } = {}
   ): Promise<SearchResult[]> {
+    const k = options.k ?? 10;
+    const certifiedExact = options.certifiedExact ?? true;
     let lastError: Error | undefined;
 
     for (let attempt = 0; attempt < this.maxRetries; attempt++) {
       const endpoint = this.selectEndpoint(false);
       const cb = this.circuitBreakers.get(endpoint);
-      const url = `${endpoint}/search`;
+      const url = `${endpoint}/v1/collections/${collection}/search`;
 
       try {
         const res = await fetch(url, {
           method: "POST",
           headers: this.headers(),
           body: JSON.stringify({
-            query,
+            vector,
             k,
-            filter,
+            filter: options.filter,
             certified_exact: certifiedExact,
             consistency: this.readConsistency,
           }),
@@ -170,22 +202,8 @@ export class HNSQRClient {
 
         if (res.status === 200) {
           cb?.recordSuccess();
-          const data = (await res.json()) as {
-            results?: Array<{
-              id: string;
-              score: number;
-              is_certified?: boolean;
-              proof_upper_bound?: number;
-              metadata?: Record<string, unknown>;
-            }>;
-          };
-          return (data.results || []).map((item) => ({
-            id: item.id,
-            score: item.score,
-            isCertified: item.is_certified ?? certifiedExact,
-            proofUpperBound: item.proof_upper_bound,
-            metadata: item.metadata,
-          }));
+          const data = (await res.json()) as { results: SearchResult[] };
+          return data.results || [];
         }
 
         if (res.status === 307 || res.status === 308) {
@@ -209,7 +227,82 @@ export class HNSQRClient {
     throw lastError || new HNSQRError("Search retries exhausted");
   }
 
+  public async embedAndSearch(
+    collection: string,
+    queryText: string,
+    k = 10,
+    certifiedExact = true
+  ): Promise<SearchResult[]> {
+    const endpoint = this.selectEndpoint(false);
+    const url = `${endpoint}/v1/collections/${collection}/search`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify({
+        query_text: queryText,
+        k,
+        certified_exact: certifiedExact,
+      }),
+      signal: AbortSignal.timeout(this.timeoutMs),
+    });
+    if (!res.ok) {
+      throw new HNSQRError(`Embed & Search failed: ${res.status}`);
+    }
+    const data = (await res.json()) as { results: SearchResult[] };
+    return data.results || [];
+  }
+
+  public async queryGraph(cypherQuery: string): Promise<GraphQueryResult> {
+    const endpoint = this.selectEndpoint(false);
+    const url = `${endpoint}/v1/graph/query`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify({ query: cypherQuery }),
+      signal: AbortSignal.timeout(this.timeoutMs),
+    });
+    if (!res.ok) {
+      throw new HNSQRError(`Graph query failed: ${res.status}`);
+    }
+    return (await res.json()) as GraphQueryResult;
+  }
+
+  public async executeSql(sqlQuery: string): Promise<SqlExecutionResult> {
+    const endpoint = this.selectEndpoint(false);
+    const url = `${endpoint}/v1/sql/execute`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify({ sql: sqlQuery }),
+      signal: AbortSignal.timeout(this.timeoutMs),
+    });
+    if (!res.ok) {
+      throw new HNSQRError(`SQL execute failed: ${res.status}`);
+    }
+    return (await res.json()) as SqlExecutionResult;
+  }
+
+  public async sliceHypercube(
+    spaceId: string,
+    minCoords: number[],
+    maxCoords: number[]
+  ): Promise<HypercubeSliceResult> {
+    const endpoint = this.selectEndpoint(false);
+    const url = `${endpoint}/v1/hypercube/slice`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify({ space_id: spaceId, min_coords: minCoords, max_coords: maxCoords }),
+      signal: AbortSignal.timeout(this.timeoutMs),
+    });
+    if (!res.ok) {
+      throw new HNSQRError(`Hypercube slice failed: ${res.status}`);
+    }
+    return (await res.json()) as HypercubeSliceResult;
+  }
+
   public async upsert(
+    collection: string,
     id: string,
     vector: number[],
     metadata?: Record<string, unknown>,
@@ -220,7 +313,7 @@ export class HNSQRClient {
     for (let attempt = 0; attempt < this.maxRetries; attempt++) {
       const endpoint = this.selectEndpoint(true);
       const cb = this.circuitBreakers.get(endpoint);
-      const url = `${endpoint}/upsert`;
+      const url = `${endpoint}/v1/collections/${collection}/insert`;
 
       try {
         const res = await fetch(url, {
@@ -262,4 +355,3 @@ export class HNSQRClient {
     throw lastError || new HNSQRError("Upsert retries exhausted");
   }
 }
-

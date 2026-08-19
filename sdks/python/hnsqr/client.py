@@ -1,6 +1,7 @@
 """
 HNSQR Official Python SDK Client
-Provides high-throughput async and sync vector search with Certified exactness proofs.
+Provides high-throughput async and sync vector search with Certified exactness proofs,
+native Graph-RAG queries, relational SQL ACID transactions, N-D Hypercube slicing, and in-memory KV caching.
 """
 from dataclasses import dataclass
 from enum import Enum
@@ -46,6 +47,24 @@ class MutationReceipt:
     lsn: int
     applied_generation: int
     is_quorum_replicated: bool
+
+@dataclass
+class GraphQueryResult:
+    columns: List[str]
+    rows: List[List[Any]]
+    execution_time_micros: int
+
+@dataclass
+class SqlExecutionResult:
+    columns: List[str]
+    rows: List[Dict[str, Any]]
+    affected_rows: int
+
+@dataclass
+class HypercubeSliceResult:
+    coordinates: List[List[int]]
+    values: List[float]
+    total_voxels: int
 
 class _CircuitBreaker:
     def __init__(self, failure_threshold: int = 5, recovery_timeout_s: float = 10.0):
@@ -105,34 +124,41 @@ class AsyncHNSQRClient:
 
     def _select_endpoint(self, is_write: bool = False) -> str:
         if is_write and self.active_leader:
-            return self.active_leader
-        for _ in range(len(self.endpoints)):
-            ep = self.endpoints[self._round_robin_idx % len(self.endpoints)]
-            self._round_robin_idx += 1
-            cb = self._circuit_breakers.setdefault(ep, _CircuitBreaker())
-            if cb.can_execute():
-                return ep
-        return self.endpoints[0]
+            cb = self._circuit_breakers.get(self.active_leader)
+            if cb and cb.can_execute():
+                return self.active_leader
+
+        healthy_eps = [
+            ep for ep in self.endpoints
+            if self._circuit_breakers[ep].can_execute()
+        ]
+        if not healthy_eps:
+            raise HNSQRCircuitOpenError("All endpoints in cluster are failing or open")
+        
+        ep = healthy_eps[self._round_robin_idx % len(healthy_eps)]
+        self._round_robin_idx += 1
+        return ep
 
     def _headers(self, idempotency_key: Optional[str] = None) -> Dict[str, str]:
         h = {"Content-Type": "application/json"}
         if self.api_key:
             h["Authorization"] = f"Bearer {self.api_key}"
         if self.tenant_id:
-            h["X-Tenant-ID"] = self.tenant_id
+            h["X-HNSQR-Tenant-ID"] = self.tenant_id
         if idempotency_key:
             h["X-Idempotency-Key"] = idempotency_key
         return h
 
     async def search(
         self,
-        query: List[float],
+        collection: str,
+        vector: List[float],
         k: int = 10,
         filter_expr: Optional[Dict[str, Any]] = None,
         certified_exact: bool = True,
     ) -> List[SearchResult]:
         payload = {
-            "query": query,
+            "vector": vector,
             "k": k,
             "filter": filter_expr,
             "certified_exact": certified_exact,
@@ -142,7 +168,7 @@ class AsyncHNSQRClient:
         for attempt in range(self.max_retries):
             endpoint = self._select_endpoint(is_write=False)
             cb = self._circuit_breakers[endpoint]
-            url = f"{endpoint}/search"
+            url = f"{endpoint}/v1/collections/{collection}/search"
             try:
                 resp = await self._client.post(url, json=payload, headers=self._headers())
                 if resp.status_code == 200:
@@ -172,8 +198,93 @@ class AsyncHNSQRClient:
                 await asyncio.sleep((0.05 * (2 ** attempt)) + random.uniform(0.01, 0.05))
         return []
 
+    async def embed_and_search(
+        self,
+        collection: str,
+        query_text: str,
+        k: int = 10,
+        certified_exact: bool = True,
+    ) -> List[SearchResult]:
+        """Direct text search utilizing in-database neural inference."""
+        payload = {
+            "query_text": query_text,
+            "k": k,
+            "certified_exact": certified_exact,
+        }
+        endpoint = self._select_endpoint(is_write=False)
+        url = f"{endpoint}/v1/collections/{collection}/search"
+        resp = await self._client.post(url, json=payload, headers=self._headers())
+        resp.raise_for_status()
+        return [
+            SearchResult(
+                id=item["id"],
+                score=item["score"],
+                is_certified=item.get("is_certified", certified_exact),
+                metadata=item.get("metadata"),
+            )
+            for item in resp.json().get("results", [])
+        ]
+
+    async def query_graph(
+        self,
+        cypher_query: str,
+    ) -> GraphQueryResult:
+        """Executes a Cypher/GQL query with VECTOR MATCH against the graph engine."""
+        payload = {"query": cypher_query}
+        endpoint = self._select_endpoint(is_write=False)
+        url = f"{endpoint}/v1/graph/query"
+        resp = await self._client.post(url, json=payload, headers=self._headers())
+        resp.raise_for_status()
+        data = resp.json()
+        return GraphQueryResult(
+            columns=data.get("columns", []),
+            rows=data.get("rows", []),
+            execution_time_micros=data.get("execution_time_micros", 0),
+        )
+
+    async def execute_sql(
+        self,
+        sql_query: str,
+    ) -> SqlExecutionResult:
+        """Executes a relational SQL query with ACID transaction support."""
+        payload = {"sql": sql_query}
+        endpoint = self._select_endpoint(is_write=False)
+        url = f"{endpoint}/v1/sql/execute"
+        resp = await self._client.post(url, json=payload, headers=self._headers())
+        resp.raise_for_status()
+        data = resp.json()
+        return SqlExecutionResult(
+            columns=data.get("columns", []),
+            rows=data.get("rows", []),
+            affected_rows=data.get("affected_rows", 0),
+        )
+
+    async def slice_hypercube(
+        self,
+        space_id: str,
+        min_coords: List[int],
+        max_coords: List[int],
+    ) -> HypercubeSliceResult:
+        """Slices an N-dimensional volumetric tensor space."""
+        payload = {
+            "space_id": space_id,
+            "min_coords": min_coords,
+            "max_coords": max_coords,
+        }
+        endpoint = self._select_endpoint(is_write=False)
+        url = f"{endpoint}/v1/hypercube/slice"
+        resp = await self._client.post(url, json=payload, headers=self._headers())
+        resp.raise_for_status()
+        data = resp.json()
+        return HypercubeSliceResult(
+            coordinates=data.get("coordinates", []),
+            values=data.get("values", []),
+            total_voxels=data.get("total_voxels", 0),
+        )
+
     async def upsert(
         self,
+        collection: str,
         doc_id: str,
         vector: List[float],
         metadata: Optional[Dict[str, Any]] = None,
@@ -187,7 +298,7 @@ class AsyncHNSQRClient:
         for attempt in range(self.max_retries):
             endpoint = self._select_endpoint(is_write=True)
             cb = self._circuit_breakers.setdefault(endpoint, _CircuitBreaker())
-            url = f"{endpoint}/upsert"
+            url = f"{endpoint}/v1/collections/{collection}/insert"
             try:
                 resp = await self._client.post(url, json=payload, headers=self._headers(idempotency_key))
                 if resp.status_code == 200:
@@ -248,34 +359,41 @@ class HNSQRClient:
 
     def _select_endpoint(self, is_write: bool = False) -> str:
         if is_write and self.active_leader:
-            return self.active_leader
-        for _ in range(len(self.endpoints)):
-            ep = self.endpoints[self._round_robin_idx % len(self.endpoints)]
-            self._round_robin_idx += 1
-            cb = self._circuit_breakers.setdefault(ep, _CircuitBreaker())
-            if cb.can_execute():
-                return ep
-        return self.endpoints[0]
+            cb = self._circuit_breakers.get(self.active_leader)
+            if cb and cb.can_execute():
+                return self.active_leader
+
+        healthy_eps = [
+            ep for ep in self.endpoints
+            if self._circuit_breakers[ep].can_execute()
+        ]
+        if not healthy_eps:
+            raise HNSQRCircuitOpenError("All endpoints in cluster are failing or open")
+        
+        ep = healthy_eps[self._round_robin_idx % len(healthy_eps)]
+        self._round_robin_idx += 1
+        return ep
 
     def _headers(self, idempotency_key: Optional[str] = None) -> Dict[str, str]:
         h = {"Content-Type": "application/json"}
         if self.api_key:
             h["Authorization"] = f"Bearer {self.api_key}"
         if self.tenant_id:
-            h["X-Tenant-ID"] = self.tenant_id
+            h["X-HNSQR-Tenant-ID"] = self.tenant_id
         if idempotency_key:
             h["X-Idempotency-Key"] = idempotency_key
         return h
 
     def search(
         self,
-        query: List[float],
+        collection: str,
+        vector: List[float],
         k: int = 10,
         filter_expr: Optional[Dict[str, Any]] = None,
         certified_exact: bool = True,
     ) -> List[SearchResult]:
         payload = {
-            "query": query,
+            "vector": vector,
             "k": k,
             "filter": filter_expr,
             "certified_exact": certified_exact,
@@ -285,7 +403,7 @@ class HNSQRClient:
         for attempt in range(self.max_retries):
             endpoint = self._select_endpoint(is_write=False)
             cb = self._circuit_breakers[endpoint]
-            url = f"{endpoint}/search"
+            url = f"{endpoint}/v1/collections/{collection}/search"
             try:
                 resp = self._client.post(url, json=payload, headers=self._headers())
                 if resp.status_code == 200:
@@ -314,8 +432,78 @@ class HNSQRClient:
                 time.sleep((0.05 * (2 ** attempt)) + random.uniform(0.01, 0.05))
         return []
 
+    def embed_and_search(
+        self,
+        collection: str,
+        query_text: str,
+        k: int = 10,
+        certified_exact: bool = True,
+    ) -> List[SearchResult]:
+        payload = {
+            "query_text": query_text,
+            "k": k,
+            "certified_exact": certified_exact,
+        }
+        endpoint = self._select_endpoint(is_write=False)
+        url = f"{endpoint}/v1/collections/{collection}/search"
+        resp = self._client.post(url, json=payload, headers=self._headers())
+        resp.raise_for_status()
+        return [
+            SearchResult(
+                id=item["id"],
+                score=item["score"],
+                is_certified=item.get("is_certified", certified_exact),
+                metadata=item.get("metadata"),
+            )
+            for item in resp.json().get("results", [])
+        ]
+
+    def query_graph(self, cypher_query: str) -> GraphQueryResult:
+        payload = {"query": cypher_query}
+        endpoint = self._select_endpoint(is_write=False)
+        url = f"{endpoint}/v1/graph/query"
+        resp = self._client.post(url, json=payload, headers=self._headers())
+        resp.raise_for_status()
+        data = resp.json()
+        return GraphQueryResult(
+            columns=data.get("columns", []),
+            rows=data.get("rows", []),
+            execution_time_micros=data.get("execution_time_micros", 0),
+        )
+
+    def execute_sql(self, sql_query: str) -> SqlExecutionResult:
+        payload = {"sql": sql_query}
+        endpoint = self._select_endpoint(is_write=False)
+        url = f"{endpoint}/v1/sql/execute"
+        resp = self._client.post(url, json=payload, headers=self._headers())
+        resp.raise_for_status()
+        data = resp.json()
+        return SqlExecutionResult(
+            columns=data.get("columns", []),
+            rows=data.get("rows", []),
+            affected_rows=data.get("affected_rows", 0),
+        )
+
+    def slice_hypercube(self, space_id: str, min_coords: List[int], max_coords: List[int]) -> HypercubeSliceResult:
+        payload = {
+            "space_id": space_id,
+            "min_coords": min_coords,
+            "max_coords": max_coords,
+        }
+        endpoint = self._select_endpoint(is_write=False)
+        url = f"{endpoint}/v1/hypercube/slice"
+        resp = self._client.post(url, json=payload, headers=self._headers())
+        resp.raise_for_status()
+        data = resp.json()
+        return HypercubeSliceResult(
+            coordinates=data.get("coordinates", []),
+            values=data.get("values", []),
+            total_voxels=data.get("total_voxels", 0),
+        )
+
     def upsert(
         self,
+        collection: str,
         doc_id: str,
         vector: List[float],
         metadata: Optional[Dict[str, Any]] = None,
@@ -329,7 +517,7 @@ class HNSQRClient:
         for attempt in range(self.max_retries):
             endpoint = self._select_endpoint(is_write=True)
             cb = self._circuit_breakers.setdefault(endpoint, _CircuitBreaker())
-            url = f"{endpoint}/upsert"
+            url = f"{endpoint}/v1/collections/{collection}/insert"
             try:
                 resp = self._client.post(url, json=payload, headers=self._headers(idempotency_key))
                 if resp.status_code == 200:
@@ -356,4 +544,3 @@ class HNSQRClient:
 
     def close(self):
         self._client.close()
-

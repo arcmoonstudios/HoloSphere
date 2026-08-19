@@ -123,7 +123,7 @@ impl EdgeDelta {
     }
 
     /// Appends a new edge record; returns its stable [`RelationshipId`].
-    pub(crate) fn append(&self, record: EdgeRecord) -> RelationshipId {
+    pub fn append(&self, record: EdgeRecord) -> RelationshipId {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         self.records.write().push(record);
         self.live.write().push(true);
@@ -131,7 +131,7 @@ impl EdgeDelta {
     }
 
     /// Tombstones an edge by ID (soft delete; record slot is preserved).
-    pub(crate) fn delete(&self, id: RelationshipId) -> bool {
+    pub fn delete(&self, id: RelationshipId) -> bool {
         let idx = id as usize;
         let mut live = self.live.write();
         if idx < live.len() && live[idx] {
@@ -143,7 +143,7 @@ impl EdgeDelta {
     }
 
     /// Updates an existing record in-place (e.g. to patch `next_src` / `next_dst`).
-    pub(crate) fn update(&self, id: RelationshipId, record: EdgeRecord) -> bool {
+    pub fn update(&self, id: RelationshipId, record: EdgeRecord) -> bool {
         let idx = id as usize;
         let live = self.live.read();
         if idx < live.len() {

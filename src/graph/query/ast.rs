@@ -61,7 +61,17 @@ pub enum GraphPattern {
         rel_type: Option<RelTypeId>,
         dst_alias: String,
         direction: Direction,
-        /// For v1: min_hops = max_hops = 1 (no variable-length paths yet).
+        /// Bounded variable-length path range; 1..1 for single-hop.
+        min_hops: u8,
+        max_hops: u8,
+    },
+    /// `OPTIONAL MATCH (src)-[r:TYPE]->(dst)` — left outer join expansion.
+    OptionalExpand {
+        src_alias: String,
+        rel_alias: Option<String>,
+        rel_type: Option<RelTypeId>,
+        dst_alias: String,
+        direction: Direction,
         min_hops: u8,
         max_hops: u8,
     },
@@ -115,4 +125,24 @@ pub struct QueryAst {
     pub patterns: Vec<GraphPattern>,
     pub where_clause: WhereClause,
     pub return_clause: ReturnClause,
+    /// Optional mutation clauses (CREATE, DELETE, SET) to replicate through Raft.
+    pub mutations: Vec<GraphMutationClause>,
+}
+
+/// In-query mutation clause descriptor.
+#[derive(Clone, Debug, PartialEq)]
+pub enum GraphMutationClause {
+    CreateNode {
+        alias: String,
+        labels: Vec<crate::graph::catalog::labels::LabelId>,
+        properties: std::collections::HashMap<String, serde_json::Value>,
+    },
+    CreateRelationship {
+        src_alias: String,
+        dst_alias: String,
+        rel_type: crate::graph::catalog::relationships::RelTypeId,
+        properties: std::collections::HashMap<String, serde_json::Value>,
+        weight: f32,
+    },
+    DeleteAlias(String),
 }

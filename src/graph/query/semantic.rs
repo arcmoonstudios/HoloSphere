@@ -74,11 +74,6 @@ impl SemanticAnalyzer {
                             max: *max_hops,
                         });
                     }
-                    if *max_hops > 1 {
-                        errors.push(SemanticError::UnsupportedFeature(
-                            "variable-length paths (max_hops > 1)".to_string(),
-                        ));
-                    }
                     // src must already be declared (either from NodePattern or VECTOR MATCH).
                     if symbols.get(src_alias).is_none() {
                         errors.push(SemanticError::UndeclaredAlias(src_alias.clone()));
@@ -86,6 +81,28 @@ impl SemanticAnalyzer {
                     // dst is declared here.
                     symbols.intern(dst_alias);
                     // rel alias is optional.
+                    if let Some(ra) = rel_alias {
+                        symbols.intern(ra);
+                    }
+                }
+                GraphPattern::OptionalExpand {
+                    src_alias,
+                    rel_alias,
+                    dst_alias,
+                    min_hops,
+                    max_hops,
+                    ..
+                } => {
+                    if *min_hops > *max_hops {
+                        errors.push(SemanticError::InvalidHopRange {
+                            min: *min_hops,
+                            max: *max_hops,
+                        });
+                    }
+                    if symbols.get(src_alias).is_none() {
+                        errors.push(SemanticError::UndeclaredAlias(src_alias.clone()));
+                    }
+                    symbols.intern(dst_alias);
                     if let Some(ra) = rel_alias {
                         symbols.intern(ra);
                     }

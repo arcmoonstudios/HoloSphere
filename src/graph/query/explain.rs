@@ -39,6 +39,9 @@ impl ExplainOutput {
             PhysicalOp::Filter { predicates } => format!("Filter({} predicates)", predicates.len()),
             PhysicalOp::Limit { count } => format!("Limit({count})"),
             PhysicalOp::Project { keep_cols } => format!("Project({keep_cols:?})"),
+            PhysicalOp::ShortestPath { src_col, dst_col, weighted, .. } => format!(
+                "ShortestPath(src_col={src_col}, dst_col={dst_col}, weighted={weighted})"
+            ),
         }
     }
 

@@ -43,7 +43,7 @@ impl Optimizer {
                     },
                 }
             }
-            LogicalPlan::Expand { input, src_binding, rel_binding, dst_binding, rel_type_filter, direction } => {
+            LogicalPlan::Expand { input, src_binding, rel_binding, dst_binding, rel_type_filter, direction, min_hops, max_hops } => {
                 LogicalPlan::Expand {
                     input: Box::new(Self::push_filters_down(*input)),
                     src_binding,
@@ -51,6 +51,8 @@ impl Optimizer {
                     dst_binding,
                     rel_type_filter,
                     direction,
+                    min_hops,
+                    max_hops,
                 }
             }
             LogicalPlan::Limit { input, count } => {

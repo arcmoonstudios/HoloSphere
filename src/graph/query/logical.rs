@@ -34,6 +34,19 @@ pub enum LogicalPlan {
         dst_binding: SymbolId,
         rel_type_filter: Option<RelTypeId>,
         direction: Direction,
+        min_hops: u8,
+        max_hops: u8,
+    },
+    /// Optional expand preserving rows with NULL when no edges match.
+    OptionalExpand {
+        input: Box<LogicalPlan>,
+        src_binding: SymbolId,
+        rel_binding: Option<SymbolId>,
+        dst_binding: SymbolId,
+        rel_type_filter: Option<RelTypeId>,
+        direction: Direction,
+        min_hops: u8,
+        max_hops: u8,
     },
     /// Apply scalar predicates to rows from `input`.
     Filter {
@@ -59,7 +72,8 @@ impl LogicalPlan {
             Self::NodeScan { binding, .. } | Self::VectorSeed { binding, .. } => {
                 vec![*binding]
             }
-            Self::Expand { input, dst_binding, rel_binding, .. } => {
+            Self::Expand { input, dst_binding, rel_binding, .. }
+            | Self::OptionalExpand { input, dst_binding, rel_binding, .. } => {
                 let mut b = input.output_bindings();
                 if let Some(rb) = rel_binding {
                     b.push(*rb);

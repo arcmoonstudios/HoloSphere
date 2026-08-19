@@ -39,6 +39,17 @@ pub enum PhysicalOp {
         rel_col: Option<usize>,
         rel_type_filter: Option<RelTypeId>,
         direction: Direction,
+        min_hops: u8,
+        max_hops: u8,
+        /// When `true`, rows with zero matching edges are preserved with a NULL sentinel.
+        optional: bool,
+    },
+    /// Shortest-path evaluation between `src_col` and `dst_col` bindings.
+    ShortestPath {
+        src_col: usize,
+        dst_col: usize,
+        out_cost_col: usize,
+        weighted: bool,
     },
     /// Apply scalar predicates; deactivates rows that fail.
     Filter {
@@ -115,6 +126,8 @@ impl PhysicalPlan {
                 dst_binding,
                 rel_type_filter,
                 direction,
+                min_hops,
+                max_hops,
             } => {
                 Self::lower_node(input, ops, col_of, col_counter);
 
@@ -141,6 +154,49 @@ impl PhysicalPlan {
                     rel_col,
                     rel_type_filter: *rel_type_filter,
                     direction: *direction,
+                    min_hops: *min_hops,
+                    max_hops: *max_hops,
+                    optional: false,
+                });
+            }
+            LogicalPlan::OptionalExpand {
+                input,
+                src_binding,
+                rel_binding,
+                dst_binding,
+                rel_type_filter,
+                direction,
+                min_hops,
+                max_hops,
+            } => {
+                Self::lower_node(input, ops, col_of, col_counter);
+
+                let src_col = col_of
+                    .iter()
+                    .find(|(s, _)| s == src_binding)
+                    .map(|(_, c)| *c)
+                    .unwrap_or(0);
+
+                let rel_col = rel_binding.map(|rb| {
+                    let c = *col_counter;
+                    *col_counter += 1;
+                    col_of.push((rb, c));
+                    c
+                });
+
+                let dst_col = *col_counter;
+                *col_counter += 1;
+                col_of.push((*dst_binding, dst_col));
+
+                ops.push(PhysicalOp::Expand {
+                    src_col,
+                    dst_col,
+                    rel_col,
+                    rel_type_filter: *rel_type_filter,
+                    direction: *direction,
+                    min_hops: *min_hops,
+                    max_hops: *max_hops,
+                    optional: true,
                 });
             }
             LogicalPlan::Filter { input, predicates } => {

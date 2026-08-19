@@ -54,12 +54,73 @@ pub struct LouvainResult {
 pub struct LouvainEngine;
 
 impl LouvainEngine {
+    /// Runs the full hierarchical Louvain algorithm: Phase 1 (greedy local moves)
+    /// followed by Phase 2 (graph coarsening) for up to `max_levels` levels.
+    pub fn detect(
+        projection: &dyn GraphProjection,
+        max_passes: usize,
+    ) -> LouvainResult {
+        Self::detect_hierarchical(projection, max_passes, 3)
+    }
+
+    /// Hierarchical multi-level Louvain executing Phase 1 local moves followed by
+    /// Phase 2 graph coarsening across `max_levels` recursive levels.
+    pub fn detect_hierarchical(
+        projection: &dyn GraphProjection,
+        max_passes: usize,
+        max_levels: usize,
+    ) -> LouvainResult {
+        let n = projection.node_count();
+        if n == 0 {
+            return LouvainResult::default();
+        }
+
+        let mut current_result = Self::run_phase1(projection, max_passes);
+
+        // No benefit from coarsening if already converged or trivially partitioned.
+        if max_levels <= 1
+            || current_result.num_communities == n
+            || current_result.num_communities <= 1
+        {
+            return current_result;
+        }
+
+        // Phase 2: iterative coarsening into super-vertex projections.
+        let mut level_map = current_result.community.clone();
+        let mut current_num_nodes = current_result.num_communities;
+
+        for _level in 1..max_levels {
+            let coarsen_proj =
+                CoarsenedProjection::build(projection, &level_map, current_num_nodes);
+            let next_pass = Self::run_phase1(&coarsen_proj, max_passes);
+
+            // Stop if modularity gain is negligible or no further merging occurred.
+            if next_pass.modularity <= current_result.modularity + 1e-4
+                || next_pass.num_communities == current_num_nodes
+            {
+                break;
+            }
+
+            // Map original node community IDs to the higher-level assignment.
+            for orig_c in level_map.iter_mut() {
+                *orig_c = next_pass.community[*orig_c as usize];
+            }
+
+            current_num_nodes = next_pass.num_communities;
+            current_result = LouvainResult {
+                community: level_map.clone(),
+                num_communities: current_num_nodes,
+                modularity: next_pass.modularity,
+                phase2_applied: true,
+            };
+        }
+
+        current_result
+    }
+
     /// Runs Phase 1 (greedy local moves) up to `max_passes` times or until
     /// no improvement is found.
-    ///
-    /// Returns a `LouvainResult` with `phase2_applied = false` until Phase 2
-    /// is implemented.
-    pub fn detect(
+    fn run_phase1(
         projection: &dyn GraphProjection,
         max_passes: usize,
     ) -> LouvainResult {
@@ -217,5 +278,96 @@ impl LouvainEngine {
             }
         }
         q / (2.0 * m)
+    }
+}
+
+// ── CoarsenedProjection ───────────────────────────────────────────────────
+// Phase 2: compressed super-vertex graph built from a community assignment.
+// Each community becomes a single super-node; inter-community edge weights
+// are aggregated into weighted super-edges.  Intra-community edges (self-
+// loops on the super-node) are tracked but excluded from traversal to avoid
+// feeding them back into Phase 1's ΔQ computation.
+
+struct CoarsenedProjection {
+    node_count: usize,
+    out_neighbors: Vec<Vec<NodeIndex>>,
+    out_weights: Vec<Vec<f32>>,
+    in_neighbors: Vec<Vec<NodeIndex>>,
+    in_weights: Vec<Vec<f32>>,
+    total_edges: usize,
+}
+
+impl CoarsenedProjection {
+    /// Builds the coarsened projection from a base projection and a community
+    /// assignment vector.  `num_communities` is the number of distinct IDs in
+    /// `community`.
+    fn build(
+        projection: &dyn GraphProjection,
+        community: &[u32],
+        num_communities: usize,
+    ) -> Self {
+        // Aggregate inter-community edge weights into a sparse matrix.
+        let mut matrix: Vec<std::collections::HashMap<NodeIndex, f32>> =
+            vec![std::collections::HashMap::new(); num_communities];
+
+        for u in 0..projection.node_count() as NodeIndex {
+            let cu = community[u as usize] as NodeIndex;
+            let neighbors = projection.out_neighbors(u);
+            let weights = projection.out_weights(u);
+            for (idx, &v) in neighbors.iter().enumerate() {
+                let cv = community[v as usize] as NodeIndex;
+                if cu == cv {
+                    continue; // skip intra-community (self-loop on super-node)
+                }
+                let w = if weights.is_empty() { 1.0 } else { weights[idx] };
+                *matrix[cu as usize].entry(cv).or_insert(0.0) += w;
+            }
+        }
+
+        let mut out_neighbors = vec![Vec::<NodeIndex>::new(); num_communities];
+        let mut out_weights   = vec![Vec::<f32>::new();      num_communities];
+        let mut in_neighbors  = vec![Vec::<NodeIndex>::new(); num_communities];
+        let mut in_weights    = vec![Vec::<f32>::new();      num_communities];
+        let mut total_edges   = 0usize;
+
+        for (cu, row) in matrix.iter().enumerate() {
+            for (&cv, &w) in row {
+                out_neighbors[cu].push(cv);
+                out_weights[cu].push(w);
+                in_neighbors[cv as usize].push(cu as NodeIndex);
+                in_weights[cv as usize].push(w);
+                total_edges += 1;
+            }
+        }
+
+        Self {
+            node_count: num_communities,
+            out_neighbors,
+            out_weights,
+            in_neighbors,
+            in_weights,
+            total_edges,
+        }
+    }
+}
+
+impl GraphProjection for CoarsenedProjection {
+    fn node_count(&self) -> usize {
+        self.node_count
+    }
+    fn out_neighbors(&self, node: NodeIndex) -> &[NodeIndex] {
+        &self.out_neighbors[node as usize]
+    }
+    fn in_neighbors(&self, node: NodeIndex) -> &[NodeIndex] {
+        &self.in_neighbors[node as usize]
+    }
+    fn out_weights(&self, node: NodeIndex) -> &[f32] {
+        &self.out_weights[node as usize]
+    }
+    fn in_weights(&self, node: NodeIndex) -> &[f32] {
+        &self.in_weights[node as usize]
+    }
+    fn edge_count(&self) -> usize {
+        self.total_edges
     }
 }

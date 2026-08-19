@@ -21,7 +21,7 @@ use hnsqr::{
 };
 use num_complex::Complex32;
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 use sha2::{Digest, Sha256};
 
 const D: usize = 64;
@@ -33,7 +33,7 @@ fn generate_dataset(n: usize, d: usize, seed: u64) -> Vec<VectorEmbedding> {
     let cluster_centers: Vec<Vec<Complex32>> = (0..num_clusters)
         .map(|_| {
             (0..d)
-                .map(|_| Complex32::new(rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0)))
+                .map(|_| Complex32::new(rng.random_range(-1.0..1.0), rng.random_range(-1.0..1.0)))
                 .collect()
         })
         .collect();
@@ -42,13 +42,13 @@ fn generate_dataset(n: usize, d: usize, seed: u64) -> Vec<VectorEmbedding> {
     for i in 0..n {
         let c_idx = i % num_clusters;
         let center = &cluster_centers[c_idx];
-        let noise_scale = rng.gen_range(0.04..0.15f32);
+        let noise_scale = rng.random_range(0.04..0.15f32);
         let vec: Vec<Complex32> = center
             .iter()
             .map(|&z| {
                 z + Complex32::new(
-                    rng.gen_range(-noise_scale..noise_scale),
-                    rng.gen_range(-noise_scale..noise_scale),
+                    rng.random_range(-noise_scale..noise_scale),
+                    rng.random_range(-noise_scale..noise_scale),
                 )
             })
             .collect();

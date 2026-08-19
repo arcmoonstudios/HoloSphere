@@ -419,13 +419,13 @@ struct BatchSearchResponse {
 pub fn create_http_router(router: Arc<GatewayRouter>) -> Router {
     Router::new()
         .route("/healthz", get(healthcheck_handler))
-        .route("/v1/collections/:name/insert", post(insert_handler))
-        .route("/v1/collections/:name/search", post(search_handler))
+        .route("/v1/collections/{name}/insert", post(insert_handler))
+        .route("/v1/collections/{name}/search", post(search_handler))
         .route(
-            "/v1/collections/:name/batch_search",
+            "/v1/collections/{name}/batch_search",
             post(batch_search_handler),
         )
-        .route("/v1/collections/:name/stats", get(stats_handler))
+        .route("/v1/collections/{name}/stats", get(stats_handler))
         .layer(CorsLayer::permissive())
         .with_state(router)
 }

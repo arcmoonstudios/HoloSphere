@@ -7,7 +7,7 @@ use std::time::Instant;
 use hnsqr::{HNSQRConfig, HNSQRIndex, RiveroAddress, VectorEmbedding};
 use num_complex::Complex32;
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 use rayon::prelude::*;
 
 const SEED: u64 = 0x5249_5645_524f_2026;
@@ -80,7 +80,7 @@ fn generate_master(
         .map(|_| {
             normalized(
                 (0..dimension)
-                    .map(|_| Complex32::new(rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0)))
+                    .map(|_| Complex32::new(rng.random_range(-1.0..1.0), rng.random_range(-1.0..1.0)))
                     .collect(),
             )
         })
@@ -96,8 +96,8 @@ fn generate_master(
                     .map(|value| {
                         *value
                             + Complex32::new(
-                                rng.gen_range(-0.025..0.025),
-                                rng.gen_range(-0.025..0.025),
+                                rng.random_range(-0.025..0.025),
+                                rng.random_range(-0.025..0.025),
                             )
                     })
                     .collect(),
@@ -115,8 +115,8 @@ fn generate_master(
                     .map(|value| {
                         *value
                             + Complex32::new(
-                                rng.gen_range(-0.018..0.018),
-                                rng.gen_range(-0.018..0.018),
+                                rng.random_range(-0.018..0.018),
+                                rng.random_range(-0.018..0.018),
                             )
                     })
                     .collect(),
@@ -137,7 +137,7 @@ fn generate_isotropic(
         .map(|_| {
             normalized(
                 (0..dimension)
-                    .map(|_| Complex32::new(rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0)))
+                    .map(|_| Complex32::new(rng.random_range(-1.0..1.0), rng.random_range(-1.0..1.0)))
                     .collect(),
             )
         })
@@ -152,8 +152,8 @@ fn generate_isotropic(
                     .map(|value| {
                         *value
                             + Complex32::new(
-                                rng.gen_range(-0.012..0.012),
-                                rng.gen_range(-0.012..0.012),
+                                rng.random_range(-0.012..0.012),
+                                rng.random_range(-0.012..0.012),
                             )
                     })
                     .collect(),
@@ -172,7 +172,7 @@ fn generate_independent_isotropic_queries(
         .map(|_| {
             normalized(
                 (0..dimension)
-                    .map(|_| Complex32::new(rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0)))
+                    .map(|_| Complex32::new(rng.random_range(-1.0..1.0), rng.random_range(-1.0..1.0)))
                     .collect(),
             )
         })
@@ -190,7 +190,7 @@ fn generate_boundary(
         .map(|_| {
             normalized(
                 (0..dimension)
-                    .map(|_| Complex32::new(rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0)))
+                    .map(|_| Complex32::new(rng.random_range(-1.0..1.0), rng.random_range(-1.0..1.0)))
                     .collect(),
             )
         })
@@ -204,7 +204,7 @@ fn generate_boundary(
                     .iter()
                     .map(|value| {
                         *value
-                            + Complex32::new(rng.gen_range(-0.02..0.02), rng.gen_range(-0.02..0.02))
+                            + Complex32::new(rng.random_range(-0.02..0.02), rng.random_range(-0.02..0.02))
                     })
                     .collect(),
             )
@@ -222,8 +222,8 @@ fn generate_boundary(
                         *left
                             + *right
                             + Complex32::new(
-                                rng.gen_range(-0.006..0.006),
-                                rng.gen_range(-0.006..0.006),
+                                rng.random_range(-0.006..0.006),
+                                rng.random_range(-0.006..0.006),
                             )
                     })
                     .collect(),

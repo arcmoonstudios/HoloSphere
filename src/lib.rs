@@ -50,7 +50,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use num_complex::Complex32;
 use parking_lot::RwLock;
-use rand::{Rng, thread_rng};
+use rand::{RngExt, rng as thread_rng};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use smallvec::{SmallVec, smallvec};
@@ -1921,7 +1921,7 @@ impl HNSQRIndex {
 
     fn generate_random_level(&self, config: &HNSQRConfig) -> usize {
         let mut rng = thread_rng();
-        let r: f32 = rng.r#gen::<f32>().max(1e-9);
+        let r: f32 = rng.random::<f32>().max(1e-9);
         let ml = if config.level_multiplier > 0.0 && config.level_multiplier < 10.0 {
             config.level_multiplier
         } else {

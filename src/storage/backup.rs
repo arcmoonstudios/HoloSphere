@@ -64,7 +64,7 @@ impl BackupManager {
 
         let mut hasher = Sha256::new();
         hasher.update(&mmap[..]);
-        let sha256_hex = format!("{:x}", hasher.finalize());
+        let sha256_hex = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect::<String>();
 
         let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
 
@@ -114,7 +114,7 @@ impl BackupManager {
 
         let mut hasher = Sha256::new();
         hasher.update(&total_bytes);
-        let sha256_hex = format!("{:x}", hasher.finalize());
+        let sha256_hex = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect::<String>();
 
         let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
 

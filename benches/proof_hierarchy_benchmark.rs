@@ -82,7 +82,7 @@ fn generate_semantic_manifold_corpus(
     d_real: usize,
     seed: u64,
 ) -> (Vec<VectorEmbedding>, Vec<VectorEmbedding>) {
-    use rand::Rng;
+    use rand::RngExt;
     use rand::SeedableRng;
     use rand::rngs::StdRng;
     let mut rng = StdRng::seed_from_u64(seed);
@@ -93,7 +93,7 @@ fn generate_semantic_manifold_corpus(
     for _ in 0..num_clusters {
         let mut center = vec![0.0f32; d_real];
         for val in &mut center {
-            *val = rng.gen_range(-1.0..1.0);
+            *val = rng.random_range(-1.0..1.0);
         }
         let norm: f32 = center.iter().map(|x| x * x).sum::<f32>().sqrt();
         if norm > 0.0 {
@@ -111,7 +111,7 @@ fn generate_semantic_manifold_corpus(
         let cluster = &cluster_centers[i % num_clusters];
         let mut vec = cluster.clone();
         for val in &mut vec {
-            *val += rng.gen_range(-noise_scale..noise_scale);
+            *val += rng.random_range(-noise_scale..noise_scale);
         }
         let norm: f32 = vec.iter().map(|x| x * x).sum::<f32>().sqrt();
         if norm > 0.0 {
@@ -127,7 +127,7 @@ fn generate_semantic_manifold_corpus(
         let cluster = &cluster_centers[i % num_clusters];
         let mut q_vec = cluster.clone();
         for val in &mut q_vec {
-            *val += rng.gen_range(-(0.5 * noise_scale)..(0.5 * noise_scale));
+            *val += rng.random_range(-(0.5 * noise_scale)..(0.5 * noise_scale));
         }
         let norm: f32 = q_vec.iter().map(|x| x * x).sum::<f32>().sqrt();
         if norm > 0.0 {

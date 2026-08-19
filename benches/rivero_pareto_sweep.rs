@@ -30,7 +30,7 @@ use hnsqr::{
 };
 use num_complex::Complex32;
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 use rayon::prelude::*;
 
 const SWEEP_SEED: u64 = 0x5249_5645_524f_5357;
@@ -85,7 +85,7 @@ fn generate_clustered_workload(
         .map(|_| {
             normalize_complex(
                 (0..dim)
-                    .map(|_| Complex32::new(rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0)))
+                    .map(|_| Complex32::new(rng.random_range(-1.0..1.0), rng.random_range(-1.0..1.0)))
                     .collect(),
             )
         })
@@ -99,7 +99,7 @@ fn generate_clustered_workload(
                     .complex_data()
                     .iter()
                     .map(|&z| {
-                        z + Complex32::new(rng.gen_range(-0.04..0.04), rng.gen_range(-0.04..0.04))
+                        z + Complex32::new(rng.random_range(-0.04..0.04), rng.random_range(-0.04..0.04))
                     })
                     .collect(),
             )
@@ -114,7 +114,7 @@ fn generate_clustered_workload(
                     .complex_data()
                     .iter()
                     .map(|&z| {
-                        z + Complex32::new(rng.gen_range(-0.03..0.03), rng.gen_range(-0.03..0.03))
+                        z + Complex32::new(rng.random_range(-0.03..0.03), rng.random_range(-0.03..0.03))
                     })
                     .collect(),
             )
@@ -142,7 +142,7 @@ fn generate_isotropic_workload(
         .map(|_| {
             normalize_complex(
                 (0..dim)
-                    .map(|_| Complex32::new(rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0)))
+                    .map(|_| Complex32::new(rng.random_range(-1.0..1.0), rng.random_range(-1.0..1.0)))
                     .collect(),
             )
         })
@@ -152,7 +152,7 @@ fn generate_isotropic_workload(
         .map(|_| {
             normalize_complex(
                 (0..dim)
-                    .map(|_| Complex32::new(rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0)))
+                    .map(|_| Complex32::new(rng.random_range(-1.0..1.0), rng.random_range(-1.0..1.0)))
                     .collect(),
             )
         })
@@ -180,7 +180,7 @@ fn generate_boundary_workload(
         .map(|_| {
             normalize_complex(
                 (0..dim)
-                    .map(|_| Complex32::new(rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0)))
+                    .map(|_| Complex32::new(rng.random_range(-1.0..1.0), rng.random_range(-1.0..1.0)))
                     .collect(),
             )
         })
@@ -194,7 +194,7 @@ fn generate_boundary_workload(
                     .complex_data()
                     .iter()
                     .map(|&z| {
-                        z + Complex32::new(rng.gen_range(-0.03..0.03), rng.gen_range(-0.03..0.03))
+                        z + Complex32::new(rng.random_range(-0.03..0.03), rng.random_range(-0.03..0.03))
                     })
                     .collect(),
             )
@@ -212,7 +212,7 @@ fn generate_boundary_workload(
                 .zip(c2.complex_data().iter())
                 .map(|(&z1, &z2)| {
                     (z1 + z2) * 0.5
-                        + Complex32::new(rng.gen_range(-0.01..0.01), rng.gen_range(-0.01..0.01))
+                        + Complex32::new(rng.random_range(-0.01..0.01), rng.random_range(-0.01..0.01))
                 })
                 .collect();
             normalize_complex(interp)

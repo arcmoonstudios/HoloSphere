@@ -1,19 +1,19 @@
-# HNSQR — Hierarchical Navigable Semantic Query Resolver
+# HoloSphere — Hierarchical Navigable Semantic Query Resolver
 
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
 [![Rust: 2024](https://img.shields.io/badge/Rust-2024%20Edition-orange.svg)](https://www.rust-lang.org/)
 [![Tests](https://img.shields.io/badge/Tests-147%2F147%20Passing-brightgreen.svg)]()
 [![Clippy](https://img.shields.io/badge/Clippy%20-D%20warnings-clean-brightgreen.svg)]()
 
-> **HNSQR is a classical retrieval and storage engine.**
+> **HoloSphere is a classical retrieval and storage engine.**
 > It runs on conventional CPU/GPU hardware using SIMD, complex-valued linear algebra,
 > lattice routing, admissible geometric bounds, quantized lookup tables, Raft consensus,
 > durable segmented logs, and memory-mapped storage.
 > It does **not** require quantum hardware and makes no claim of quantum computational speedup.
 
-HNSQR is a proof-carrying multimodal retrieval engine built around one unusually strict contract:
+HoloSphere is a proof-carrying multimodal retrieval engine built around one unusually strict contract:
 
-> **When `Certified` retrieval is requested, HNSQR returns the exact Top-K for the
+> **When `Certified` retrieval is requested, HoloSphere returns the exact Top-K for the
 > pinned corpus snapshot, or returns an explicit failure instead of silently degrading
 > correctness.**
 
@@ -23,20 +23,20 @@ retrieval, multi-vector late interaction, metadata filtering, segmented WAL-back
 Raft consensus mutation ordering, tenant isolation, and production-oriented operational
 tooling.
 
-The mathematical search core is optimized for the common case, but HNSQR does **not**
+The mathematical search core is optimized for the common case, but HoloSphere does **not**
 claim universal constant-time globally exact search. Certified search is data-dependent
 and can approach exhaustive work in adversarial cases.
 
 ---
 
-## Why HNSQR Exists
+## Why HoloSphere Exists
 
 Most high-throughput vector search systems are approximate: they trade recall for
 predictable latency. That trade is often reasonable. It is also unacceptable for
 workloads where a missed nearest neighbor is itself a correctness failure — legal
 document retrieval, compliance search, precision medicine, financial audit trails.
 
-HNSQR separates those concerns explicitly:
+HoloSphere separates those concerns explicitly:
 
 | Contract | Meaning |
 |---|---|
@@ -141,7 +141,7 @@ UB_cap = ⎨
          ⎩ s·cos θ + √max(0, 1 − s²)·sin θ,          s < cos θ
 ```
 
-HNSQR combines admissible geometric bounds conservatively and escalates to exact SIMD
+HoloSphere combines admissible geometric bounds conservatively and escalates to exact SIMD
 scoring whenever the proof hierarchy cannot safely eliminate a candidate.
 The proof tree covers the eligible corpus. Rivero prioritizes work; it is not trusted
 as the sole source of exactness.
@@ -166,7 +166,7 @@ into one `Complex32`.
 
 ### Projective Similarity
 
-For applications intentionally requiring global-phase invariance, HNSQR also supports
+For applications intentionally requiring global-phase invariance, HoloSphere also supports
 normalized complex projective overlap:
 
 ```
@@ -240,7 +240,7 @@ overhead.
 
 ## Read Consistency
 
-HNSQR distinguishes read semantics explicitly:
+HoloSphere distinguishes read semantics explicitly:
 
 | Mode | Contract |
 |---|---|
@@ -255,7 +255,7 @@ compaction and segment rotation cannot invalidate the proof universe during exec
 
 ## Storage
 
-HNSQR uses segmented storage rather than a monolithic mutable index:
+HoloSphere uses segmented storage rather than a monolithic mutable index:
 
 - active mutable segments
 - immutable search segments
@@ -279,7 +279,7 @@ historical log size.
 
 ## Multi-Tenancy and Metadata
 
-HNSQR includes:
+HoloSphere includes:
 
 - namespace-qualified IDs
 - RBAC-aware request contexts
@@ -467,7 +467,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 
 ## Benchmarks
 
-HNSQR benchmarks should always document:
+HoloSphere benchmarks should always document:
 
 - corpus size N
 - real / complex dimensionality
@@ -539,7 +539,7 @@ low-level mutable index primitives directly.
 
 ## Non-Goals
 
-HNSQR is not trying to be:
+HoloSphere is not trying to be:
 
 - a quantum computer
 - an eventually-consistent AP database

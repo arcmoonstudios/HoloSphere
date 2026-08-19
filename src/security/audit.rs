@@ -42,6 +42,8 @@ pub struct AuditRecord {
 pub struct AuditLogger {
     records: RwLock<Vec<AuditRecord>>,
     last_hash_hex: RwLock<String>,
+    /// Path to the append-only `audit.log` file, or `None` for volatile in-memory mode.
+    log_file: Option<std::path::PathBuf>,
 }
 
 impl Default for AuditLogger {
@@ -55,6 +57,7 @@ impl AuditLogger {
         Self {
             records: RwLock::new(Vec::new()),
             last_hash_hex: RwLock::new("0".repeat(64)),
+            log_file: None,
         }
     }
 
@@ -72,7 +75,7 @@ impl AuditLogger {
         hasher.update(now.to_le_bytes());
         hasher.update(actor_id.as_bytes());
         hasher.update(prev_hash.as_bytes());
-        let record_hash_hex = format!("{:x}", hasher.finalize());
+        let record_hash_hex = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect::<String>();
 
         let record = AuditRecord {
             sequence_num: seq,
@@ -85,6 +88,17 @@ impl AuditLogger {
 
         rec_guard.push(record.clone());
         *hash_guard = record_hash_hex;
+
+        // Persist to disk if a log file path was provided.
+        if let Some(path) = &self.log_file {
+            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+                if let Ok(json) = serde_json::to_string(&record) {
+                    use std::io::Write;
+                    let _ = writeln!(f, "{}", json);
+                    let _ = f.sync_all();
+                }
+            }
+        }
 
         Ok(record)
     }
@@ -99,9 +113,30 @@ impl AuditLogger {
         self.append(actor_id, action)
     }
 
-    /// Opens an audit logger for the given directory.
-    pub fn open(_dir: impl AsRef<std::path::Path>) -> HNSQRResult<Self> {
-        Ok(Self::new())
+    /// Opens an audit logger for the given directory, replaying any existing
+    /// `audit.log` to restore the in-memory chain and last-hash state.
+    pub fn open(dir: impl AsRef<std::path::Path>) -> HNSQRResult<Self> {
+        let log_file = dir.as_ref().join("audit.log");
+        let mut records = Vec::new();
+        let mut last_hash_hex = "0".repeat(64);
+
+        // Replay existing records so the chain is continuous across restarts.
+        if log_file.exists() {
+            if let Ok(content) = std::fs::read_to_string(&log_file) {
+                for line in content.lines() {
+                    if let Ok(rec) = serde_json::from_str::<AuditRecord>(line) {
+                        last_hash_hex = rec.record_hash_hex.clone();
+                        records.push(rec);
+                    }
+                }
+            }
+        }
+
+        Ok(Self {
+            records: RwLock::new(records),
+            last_hash_hex: RwLock::new(last_hash_hex),
+            log_file: Some(log_file),
+        })
     }
 
     /// Verifies the cryptographic integrity of the entire audit chain.
@@ -118,7 +153,7 @@ impl AuditLogger {
             hasher.update(rec.timestamp_epoch_ms.to_le_bytes());
             hasher.update(rec.actor_id.as_bytes());
             hasher.update(rec.prev_hash_hex.as_bytes());
-            let computed = format!("{:x}", hasher.finalize());
+            let computed = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect::<String>();
 
             if computed != rec.record_hash_hex {
                 return false;

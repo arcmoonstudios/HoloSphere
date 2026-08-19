@@ -31,7 +31,7 @@ use hnsqr::{
 };
 use num_complex::Complex32;
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 use rayon::prelude::*;
 
 const D: usize = 64;
@@ -57,7 +57,7 @@ fn generate_clustered_workload(n: usize, d: usize, q_count: usize, seed: u64) ->
     let cluster_centers: Vec<Vec<Complex32>> = (0..num_clusters)
         .map(|_| {
             (0..d)
-                .map(|_| Complex32::new(rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0)))
+                .map(|_| Complex32::new(rng.random_range(-1.0..1.0), rng.random_range(-1.0..1.0)))
                 .collect()
         })
         .collect();
@@ -66,13 +66,13 @@ fn generate_clustered_workload(n: usize, d: usize, q_count: usize, seed: u64) ->
     for i in 0..n {
         let c_idx = i % num_clusters;
         let center = &cluster_centers[c_idx];
-        let noise_scale = rng.gen_range(0.04..0.15f32);
+        let noise_scale = rng.random_range(0.04..0.15f32);
         let vec: Vec<Complex32> = center
             .iter()
             .map(|&z| {
                 z + Complex32::new(
-                    rng.gen_range(-noise_scale..noise_scale),
-                    rng.gen_range(-noise_scale..noise_scale),
+                    rng.random_range(-noise_scale..noise_scale),
+                    rng.random_range(-noise_scale..noise_scale),
                 )
             })
             .collect();
@@ -85,7 +85,7 @@ fn generate_clustered_workload(n: usize, d: usize, q_count: usize, seed: u64) ->
         let center = &cluster_centers[c_idx];
         let vec: Vec<Complex32> = center
             .iter()
-            .map(|&z| z + Complex32::new(rng.gen_range(-0.1..0.1), rng.gen_range(-0.1..0.1)))
+            .map(|&z| z + Complex32::new(rng.random_range(-0.1..0.1), rng.random_range(-0.1..0.1)))
             .collect();
         queries.push(normalize_complex(vec));
     }
@@ -105,7 +105,7 @@ fn generate_boundary_workload(n: usize, d: usize, q_count: usize, seed: u64) -> 
     let cluster_centers: Vec<Vec<Complex32>> = (0..num_clusters)
         .map(|_| {
             (0..d)
-                .map(|_| Complex32::new(rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0)))
+                .map(|_| Complex32::new(rng.random_range(-1.0..1.0), rng.random_range(-1.0..1.0)))
                 .collect()
         })
         .collect();
@@ -114,13 +114,13 @@ fn generate_boundary_workload(n: usize, d: usize, q_count: usize, seed: u64) -> 
     for i in 0..n {
         let c_idx = i % num_clusters;
         let center = &cluster_centers[c_idx];
-        let noise_scale = rng.gen_range(0.05..0.20f32);
+        let noise_scale = rng.random_range(0.05..0.20f32);
         let vec: Vec<Complex32> = center
             .iter()
             .map(|&z| {
                 z + Complex32::new(
-                    rng.gen_range(-noise_scale..noise_scale),
-                    rng.gen_range(-noise_scale..noise_scale),
+                    rng.random_range(-noise_scale..noise_scale),
+                    rng.random_range(-noise_scale..noise_scale),
                 )
             })
             .collect();
@@ -131,7 +131,7 @@ fn generate_boundary_workload(n: usize, d: usize, q_count: usize, seed: u64) -> 
     for q in 0..q_count {
         let c1 = q % num_clusters;
         let c2 = (q + 1) % num_clusters;
-        let alpha = rng.gen_range(0.4..0.6f32);
+        let alpha = rng.random_range(0.4..0.6f32);
         let vec: Vec<Complex32> = cluster_centers[c1]
             .iter()
             .zip(cluster_centers[c2].iter())
@@ -154,7 +154,7 @@ fn generate_isotropic_workload(n: usize, d: usize, q_count: usize, seed: u64) ->
     let mut corpus = Vec::with_capacity(n);
     for _ in 0..n {
         let vec: Vec<Complex32> = (0..d)
-            .map(|_| Complex32::new(rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0)))
+            .map(|_| Complex32::new(rng.random_range(-1.0..1.0), rng.random_range(-1.0..1.0)))
             .collect();
         corpus.push(normalize_complex(vec));
     }
@@ -162,7 +162,7 @@ fn generate_isotropic_workload(n: usize, d: usize, q_count: usize, seed: u64) ->
     let mut queries = Vec::with_capacity(q_count);
     for _ in 0..q_count {
         let vec: Vec<Complex32> = (0..d)
-            .map(|_| Complex32::new(rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0)))
+            .map(|_| Complex32::new(rng.random_range(-1.0..1.0), rng.random_range(-1.0..1.0)))
             .collect();
         queries.push(normalize_complex(vec));
     }

@@ -45,7 +45,7 @@ fn main() {
             h1.update(w.similarity.to_le_bytes());
         }
     }
-    let fp_1 = format!("{:x}", h1.finalize());
+    let fp_1 = h1.finalize().iter().map(|b| format!("{:02x}", b)).collect::<String>();
 
     let mut h4 = Sha256::new();
     for list in &state_4t.witnesses {
@@ -54,7 +54,7 @@ fn main() {
             h4.update(w.similarity.to_le_bytes());
         }
     }
-    let fp_4 = format!("{:x}", h4.finalize());
+    let fp_4 = h4.finalize().iter().map(|b| format!("{:02x}", b)).collect::<String>();
 
     let mut h16 = Sha256::new();
     for list in &state_16t.witnesses {
@@ -63,7 +63,7 @@ fn main() {
             h16.update(w.similarity.to_le_bytes());
         }
     }
-    let fp_16 = format!("{:x}", h16.finalize());
+    let fp_16 = h16.finalize().iter().map(|b| format!("{:02x}", b)).collect::<String>();
 
     assert_eq!(fp_1, fp_4, "1T and 4T build fingerprints diverged!");
     assert_eq!(fp_4, fp_16, "4T and 16T build fingerprints diverged!");

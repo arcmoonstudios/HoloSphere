@@ -69,7 +69,7 @@ impl AuthRegistry {
         let key_id = format!("key_{:08x}", crc32fast::hash(raw_token.as_bytes()));
         let mut hasher = sha2::Sha256::new();
         sha2::Digest::update(&mut hasher, raw_token.as_bytes());
-        let hashed_token = format!("{:x}", sha2::Digest::finalize(hasher));
+        let hashed_token = sha2::Digest::finalize(hasher).iter().map(|b| format!("{b:02x}")).collect::<String>();
 
         let cred = AuthCredential {
             key_id: key_id.clone(),

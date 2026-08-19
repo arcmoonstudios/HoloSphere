@@ -37,7 +37,7 @@ use hnsqr::{
 };
 use num_complex::Complex32;
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 use rayon::prelude::*;
 
 const SEED: u64 = 0x484e_5351_525f_5641; // "HNSQR_VA"
@@ -68,7 +68,7 @@ fn generate_realistic_text_corpus(
     // Topic manifolds in real semantic embedding space
     let topic_centers: Vec<Vec<f32>> = (0..n_topics)
         .map(|_| {
-            let mut v: Vec<f32> = (0..real_dim).map(|_| rng.gen_range(-1.0..1.0)).collect();
+            let mut v: Vec<f32> = (0..real_dim).map(|_| rng.random_range(-1.0..1.0)).collect();
             let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-9);
             v.iter_mut().for_each(|x| *x /= norm);
             v
@@ -81,10 +81,10 @@ fn generate_realistic_text_corpus(
     for i in 0..n_docs {
         let topic_idx = i % n_topics;
         let center = &topic_centers[topic_idx];
-        let noise_scale = rng.gen_range(0.05..0.25f32);
+        let noise_scale = rng.random_range(0.05..0.25f32);
         let mut v: Vec<f32> = center
             .iter()
-            .map(|&x| x + rng.gen_range(-noise_scale..noise_scale))
+            .map(|&x| x + rng.random_range(-noise_scale..noise_scale))
             .collect();
         let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-9);
         v.iter_mut().for_each(|x| *x /= norm);
@@ -100,7 +100,7 @@ fn generate_realistic_text_corpus(
         let center = &topic_centers[target_topic];
         let mut q_vec: Vec<f32> = center
             .iter()
-            .map(|&x| x + rng.gen_range(-0.10..0.10))
+            .map(|&x| x + rng.random_range(-0.10..0.10))
             .collect();
         let norm: f32 = q_vec.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-9);
         q_vec.iter_mut().for_each(|x| *x /= norm);
@@ -110,7 +110,7 @@ fn generate_realistic_text_corpus(
         let mut doc_scores: Vec<(usize, f32)> = raw_real_corpus
             .iter()
             .enumerate()
-            .map(|(d_idx, d_vec)| {
+            .map(|(d_idx, d_vec): (usize, &Vec<f32>)| {
                 let dot: f32 = q_vec.iter().zip(d_vec.iter()).map(|(a, b)| a * b).sum();
                 (d_idx, dot)
             })
@@ -575,7 +575,7 @@ fn run_adaptive_confidence_validation(corpus: &TextRetrievalCorpus, index: &HNSQ
         .map(|q| {
             let mut comp = q.complex_data().to_vec();
             for z in &mut comp {
-                *z += Complex32::new(rng.gen_range(-0.35..0.35), rng.gen_range(-0.35..0.35));
+                *z += Complex32::new(rng.random_range(-0.35..0.35), rng.random_range(-0.35..0.35));
             }
             VectorEmbedding::from_complex(comp).into_normalized()
         })
@@ -585,7 +585,7 @@ fn run_adaptive_confidence_validation(corpus: &TextRetrievalCorpus, index: &HNSQ
     let ood_queries: Vec<VectorEmbedding> = (0..50)
         .map(|_| {
             let comp: Vec<Complex32> = (0..corpus.complex_dim)
-                .map(|_| Complex32::new(rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0)))
+                .map(|_| Complex32::new(rng.random_range(-1.0..1.0), rng.random_range(-1.0..1.0)))
                 .collect();
             VectorEmbedding::from_complex(comp).into_normalized()
         })
@@ -596,9 +596,9 @@ fn run_adaptive_confidence_validation(corpus: &TextRetrievalCorpus, index: &HNSQ
         .map(|_| {
             let comp: Vec<Complex32> = (0..corpus.complex_dim)
                 .map(|_| {
-                    let u1: f32 = rng.gen_range(1e-6..1.0);
-                    let u2: f32 = rng.gen_range(0.0..1.0);
-                    let r = (-2.0 * u1.ln()).sqrt();
+                    let u1: f32 = rng.random_range(1e-6..1.0);
+                    let u2: f32 = rng.random_range(0.0..1.0);
+                    let r = (-2.0f32 * u1.ln()).sqrt();
                     let theta = 2.0 * std::f32::consts::PI * u2;
                     Complex32::from_polar(r, theta)
                 })

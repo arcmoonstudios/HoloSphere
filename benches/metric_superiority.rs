@@ -22,7 +22,7 @@ use hnsqr::VectorEmbedding;
 use hnsqr::vector::folding::ComplexWeaver;
 use num_complex::Complex32;
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 use rayon::prelude::*;
 
 const D_REAL: usize = 1536; // OpenAI text-embedding-3-small dimension
@@ -93,7 +93,7 @@ fn generate_dataset(seed: u64) -> Dataset {
     // Create overlapping cluster centers with correlated subspace structure
     let mut centers: Vec<Vec<f32>> = Vec::with_capacity(CLUSTERS);
     for _ in 0..CLUSTERS {
-        let center: Vec<f32> = (0..D_REAL).map(|_| rng.gen_range(-1.0..1.0)).collect();
+        let center: Vec<f32> = (0..D_REAL).map(|_| rng.random_range(-1.0..1.0)).collect();
         centers.push(center);
     }
 
@@ -103,15 +103,15 @@ fn generate_dataset(seed: u64) -> Dataset {
         let neighbor_center = &centers[(c + 1) % CLUSTERS];
 
         for _ in 0..VECTORS_PER_CLUSTER {
-            let blend = rng.gen_range(0.0..0.25f32); // overlap bleed
-            let noise_scale = rng.gen_range(0.05..0.20f32);
+            let blend = rng.random_range(0.0..0.25f32); // overlap bleed
+            let noise_scale = rng.random_range(0.05..0.20f32);
 
             let vec: Vec<f32> = base_center
                 .iter()
                 .zip(neighbor_center.iter())
                 .map(|(&x1, &x2)| {
                     let mean = x1 * (1.0 - blend) + x2 * blend;
-                    mean + rng.gen_range(-noise_scale..noise_scale)
+                    mean + rng.random_range(-noise_scale..noise_scale)
                 })
                 .collect();
 
@@ -135,7 +135,7 @@ fn generate_dataset(seed: u64) -> Dataset {
         let base_center = &centers[c];
         let vec: Vec<f32> = base_center
             .iter()
-            .map(|&x| x + rng.gen_range(-0.12..0.12))
+            .map(|&x| x + rng.random_range(-0.12..0.12))
             .collect();
         real_queries.push(vec);
         query_labels.push(c);
@@ -287,11 +287,11 @@ fn adversarial_phase_test(dataset: &Dataset) -> (f64, f64, f64) {
     let pairs = 500;
 
     for _ in 0..pairs {
-        let idx = rng.gen_range(0..dataset.complex_corpus.len());
+        let idx = rng.random_range(0..dataset.complex_corpus.len());
         let original = &dataset.complex_corpus[idx];
 
         // Apply a global complex phase rotation e^(i*phi)
-        let phi = rng.gen_range(0.1..std::f32::consts::PI * 1.9);
+        let phi = rng.random_range(0.1..std::f32::consts::PI * 1.9);
         let phase_rot = Complex32::from_polar(1.0, phi);
 
         let rotated_data: Vec<Complex32> = original
@@ -303,7 +303,7 @@ fn adversarial_phase_test(dataset: &Dataset) -> (f64, f64, f64) {
 
         // Fidelity should be exactly 1.0 (phase invariant)
         let fidelity = original.projective_overlap(&rotated);
-        fidelity_drift_sum += (1.0 - fidelity).abs() as f64;
+        fidelity_drift_sum += (1.0f32 - fidelity).abs() as f64;
 
         // Hermitian inner product is phase-dependent (Re(e^i*phi) = cos(phi))
         let herm = hermitian_similarity(original, &rotated);

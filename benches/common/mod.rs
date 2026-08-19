@@ -12,7 +12,7 @@ use hnsqr::rivero::bulk::RiveroBulkBuilder;
 use hnsqr::{HNSQRConfig, HNSQRIndex, NodeIndex, VectorEmbedding};
 use num_complex::Complex32;
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_BENCH_SEED: u64 = 0x484e_5351_525f_5632;
@@ -127,7 +127,7 @@ pub fn generate_realistic_text_corpus(
     for _ in 0..num_clusters {
         let mut center = vec![0.0f32; real_dim];
         for val in &mut center {
-            *val = rng.gen_range(-1.0..1.0);
+            *val = rng.random_range(-1.0..1.0);
         }
         let norm: f32 = center.iter().map(|x| x * x).sum::<f32>().sqrt();
         if norm > 0.0 {
@@ -145,7 +145,7 @@ pub fn generate_realistic_text_corpus(
         let cluster = &cluster_centers[i % num_clusters];
         let mut vec = cluster.clone();
         for val in &mut vec {
-            *val += rng.gen_range(-0.15..0.15);
+            *val += rng.random_range(-0.15..0.15);
         }
         let norm: f32 = vec.iter().map(|x| x * x).sum::<f32>().sqrt();
         if norm > 0.0 {
@@ -169,7 +169,7 @@ pub fn generate_realistic_text_corpus(
         let cluster = &cluster_centers[cluster_idx];
         let mut q_vec = cluster.clone();
         for val in &mut q_vec {
-            *val += rng.gen_range(-0.08..0.08);
+            *val += rng.random_range(-0.08..0.08);
         }
         let norm: f32 = q_vec.iter().map(|x| x * x).sum::<f32>().sqrt();
         if norm > 0.0 {
@@ -184,7 +184,7 @@ pub fn generate_realistic_text_corpus(
         let other_cluster = &cluster_centers[(cluster_idx + 1) % num_clusters];
         let mut hn_vec = vec![0.0f32; real_dim];
         for d in 0..real_dim {
-            hn_vec[d] = 0.5 * cluster[d] + 0.5 * other_cluster[d] + rng.gen_range(-0.05..0.05);
+            hn_vec[d] = 0.5 * cluster[d] + 0.5 * other_cluster[d] + rng.random_range(-0.05..0.05);
         }
         let norm_hn: f32 = hn_vec.iter().map(|x| x * x).sum::<f32>().sqrt();
         if norm_hn > 0.0 {
@@ -197,7 +197,7 @@ pub fn generate_realistic_text_corpus(
         // OOD query
         let mut ood_vec = vec![0.0f32; real_dim];
         for d in 0..real_dim {
-            ood_vec[d] = (d as f32).sin() + rng.gen_range(-0.2..0.2);
+            ood_vec[d] = (d as f32).sin() + rng.random_range(-0.2..0.2);
         }
         let norm_ood: f32 = ood_vec.iter().map(|x| x * x).sum::<f32>().sqrt();
         if norm_ood > 0.0 {
@@ -210,7 +210,7 @@ pub fn generate_realistic_text_corpus(
         // Random Isotropic
         let mut iso_vec = vec![0.0f32; real_dim];
         for val in &mut iso_vec {
-            *val = rng.gen_range(-1.0..1.0);
+            *val = rng.random_range(-1.0..1.0);
         }
         let norm_iso: f32 = iso_vec.iter().map(|x| x * x).sum::<f32>().sqrt();
         if norm_iso > 0.0 {
@@ -304,7 +304,7 @@ pub fn generate_adversarial_regression_corpus() -> AdversarialRegressionCorpus {
     for _ in 0..num_clusters {
         let mut c = vec![0.0f32; real_dim];
         for v in &mut c {
-            *v = rng.gen_range(-1.0..1.0);
+            *v = rng.random_range(-1.0..1.0);
         }
         let norm: f32 = c.iter().map(|x| x * x).sum::<f32>().sqrt();
         for v in &mut c {
@@ -321,7 +321,7 @@ pub fn generate_adversarial_regression_corpus() -> AdversarialRegressionCorpus {
         let c = &centers[i % num_clusters];
         let mut v = c.clone();
         for val in &mut v {
-            *val += rng.gen_range(-0.10..0.10);
+            *val += rng.random_range(-0.10..0.10);
         }
         let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
         for val in &mut v {
@@ -366,7 +366,7 @@ pub fn generate_adversarial_regression_corpus() -> AdversarialRegressionCorpus {
         let c2 = &centers[(i + 1) % num_clusters];
         let mut v = vec![0.0f32; real_dim];
         for d in 0..real_dim {
-            v[d] = 0.5 * c1[d] + 0.5 * c2[d] + rng.gen_range(-0.02..0.02);
+            v[d] = 0.5 * c1[d] + 0.5 * c2[d] + rng.random_range(-0.02..0.02);
         }
         let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
         for val in &mut v {
@@ -387,7 +387,7 @@ pub fn generate_adversarial_regression_corpus() -> AdversarialRegressionCorpus {
     for _ in 1900..2000 {
         let mut v = vec![0.0f32; real_dim];
         for val in &mut v {
-            *val = rng.gen_range(-1.0..1.0);
+            *val = rng.random_range(-1.0..1.0);
         }
         let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
         for val in &mut v {
@@ -414,7 +414,7 @@ pub fn generate_adversarial_regression_corpus() -> AdversarialRegressionCorpus {
         let c = &centers[i % num_clusters];
         let mut v = c.clone();
         for val in &mut v {
-            *val += rng.gen_range(-0.05..0.05);
+            *val += rng.random_range(-0.05..0.05);
         }
         let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
         for val in &mut v {
@@ -439,7 +439,7 @@ pub fn generate_adversarial_regression_corpus() -> AdversarialRegressionCorpus {
         let c2 = &centers[(i + 7) % num_clusters];
         let mut v = vec![0.0f32; real_dim];
         for d in 0..real_dim {
-            v[d] = 0.5 * c1[d] + 0.5 * c2[d] + rng.gen_range(-0.01..0.01);
+            v[d] = 0.5 * c1[d] + 0.5 * c2[d] + rng.random_range(-0.01..0.01);
         }
         let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
         for val in &mut v {
@@ -449,7 +449,7 @@ pub fn generate_adversarial_regression_corpus() -> AdversarialRegressionCorpus {
 
         let mut ood_v = vec![0.0f32; real_dim];
         for d in 0..real_dim {
-            ood_v[d] = (d as f32).sin() + rng.gen_range(-0.2..0.2);
+            ood_v[d] = (d as f32).sin() + rng.random_range(-0.2..0.2);
         }
         let norm_ood: f32 = ood_v.iter().map(|x| x * x).sum::<f32>().sqrt();
         for val in &mut ood_v {

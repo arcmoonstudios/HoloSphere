@@ -41,15 +41,15 @@ use hnsqr::{
     VectorEmbedding,
 };
 use num_complex::Complex32;
-use rand::{Rng, thread_rng};
+use rand::{RngExt, rng as thread_rng};
 
 /// Generates a random phase-encoded normalized complex vector.
 #[allow(dead_code)]
 fn random_phase_vector(dim: usize) -> VectorEmbedding {
     let mut rng = thread_rng();
-    let amplitudes: Vec<f32> = (0..dim).map(|_| rng.gen_range(0.1..1.0)).collect();
+    let amplitudes: Vec<f32> = (0..dim).map(|_| rng.random_range(0.1..1.0)).collect();
     let phases: Vec<f32> = (0..dim)
-        .map(|_| rng.gen_range(-std::f32::consts::PI..std::f32::consts::PI))
+        .map(|_| rng.random_range(-std::f32::consts::PI..std::f32::consts::PI))
         .collect();
     let vec = VectorEmbedding::from_amplitudes_and_phases(&amplitudes, &phases);
     vec.normalize()
@@ -63,12 +63,12 @@ fn generate_clustered_dataset(
 ) -> (Vec<(NodeId, VectorEmbedding)>, Vec<VectorEmbedding>) {
     let mut rng = thread_rng();
     let base_amps: Vec<Vec<f32>> = (0..num_clusters)
-        .map(|_| (0..dim).map(|_| rng.gen_range(0.2..1.0)).collect())
+        .map(|_| (0..dim).map(|_| rng.random_range(0.2..1.0)).collect())
         .collect();
     let base_phases: Vec<Vec<f32>> = (0..num_clusters)
         .map(|_| {
             (0..dim)
-                .map(|_| rng.gen_range(-std::f32::consts::PI..std::f32::consts::PI))
+                .map(|_| rng.random_range(-std::f32::consts::PI..std::f32::consts::PI))
                 .collect()
         })
         .collect();
@@ -78,11 +78,11 @@ fn generate_clustered_dataset(
             let c = i % num_clusters;
             let amps: Vec<f32> = base_amps[c]
                 .iter()
-                .map(|&a| (a + rng.gen_range(-0.1..0.1)).max(0.01))
+                .map(|&a| (a + rng.random_range(-0.1..0.1)).max(0.01))
                 .collect();
             let phases: Vec<f32> = base_phases[c]
                 .iter()
-                .map(|&p| p + rng.gen_range(-0.15..0.15))
+                .map(|&p| p + rng.random_range(-0.15..0.15))
                 .collect();
             let vec = VectorEmbedding::from_amplitudes_and_phases(&amps, &phases).normalize();
             (format!("doc_{:05}", i).into(), vec)
@@ -94,11 +94,11 @@ fn generate_clustered_dataset(
             let c = i % num_clusters;
             let amps: Vec<f32> = base_amps[c]
                 .iter()
-                .map(|&a| (a + rng.gen_range(-0.08..0.08)).max(0.01))
+                .map(|&a| (a + rng.random_range(-0.08..0.08)).max(0.01))
                 .collect();
             let phases: Vec<f32> = base_phases[c]
                 .iter()
-                .map(|&p| p + rng.gen_range(-0.10..0.10))
+                .map(|&p| p + rng.random_range(-0.10..0.10))
                 .collect();
             VectorEmbedding::from_amplitudes_and_phases(&amps, &phases).normalize()
         })

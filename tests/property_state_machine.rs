@@ -16,7 +16,7 @@
 
 use std::collections::HashMap;
 use num_complex::Complex32;
-use rand::{Rng, SeedableRng, rngs::StdRng};
+use rand::{RngExt, SeedableRng, rngs::StdRng};
 
 use hnsqr::cluster::DistributedCoordinator;
 use hnsqr::VectorEmbedding;
@@ -37,14 +37,14 @@ fn test_replicated_state_machine_sequential_model_equivalence() {
     let num_operations = 200;
 
     for op_idx in 0..num_operations {
-        let op_type = rng.gen_range(0..10u32);
-        let key = format!("doc_{}", rng.gen_range(0..25u32));
+        let op_type = rng.random_range(0..10u32);
+        let key = format!("doc_{}", rng.random_range(0..25u32));
 
         if op_type < 7 {
             // Upsert — replicate through Raft, await quorum commit.
             let v = VectorEmbedding::from_complex(
                 (0..dim)
-                    .map(|d| Complex32::new(rng.gen_range(0.0f32..1.0) + d as f32, rng.gen_range(0.0f32..1.0)))
+                    .map(|d| Complex32::new(rng.random_range(0.0f32..1.0) + d as f32, rng.random_range(0.0f32..1.0)))
                     .collect(),
             )
             .into_normalized();

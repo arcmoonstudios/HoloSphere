@@ -186,7 +186,7 @@ impl UnifiedSnapshotEngine {
 
                 let mut sha = Sha256::new();
                 sha.update(data);
-                let sha256_hex = format!("{:x}", sha.finalize());
+                let sha256_hex = sha.finalize().iter().map(|b| format!("{b:02x}")).collect::<String>();
 
                 file.write_all(data)?;
                 let length = data.len() as u64;

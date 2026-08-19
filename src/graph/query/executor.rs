@@ -60,6 +60,49 @@ impl ExecutionContext {
         self
     }
 
+    /// Automatically resolves any `VectorSeed` operators against the live HNSQR index
+    /// before executing the physical graph plan.
+    ///
+    /// For each `PhysicalOp::VectorSeed` in the plan whose `query_param` has not already
+    /// been seeded via `with_vector_seed`, this method runs the vector search using the
+    /// declared `VectorContract` and binds the results into `self.vector_seeds`.
+    /// The physical plan is then executed normally via `execute`.
+    pub fn execute_with_vector_engine(
+        &mut self,
+        plan: &PhysicalPlan,
+        index: &crate::HNSQRIndex,
+        query_vectors: &std::collections::HashMap<String, crate::VectorEmbedding>,
+    ) -> crate::HNSQRResult<QueryResult> {
+        for op in &plan.ops {
+            if let PhysicalOp::VectorSeed { query_param, k, contract, .. } = op {
+                if !self.vector_seeds.contains_key(query_param.as_str()) {
+                    if let Some(q_vec) = query_vectors.get(query_param.as_str()) {
+                        let retrieval_contract = match contract {
+                            crate::graph::query::ast::VectorContract::Certified => {
+                                crate::planning::planner::RetrievalContract::Certified
+                            }
+                            crate::graph::query::ast::VectorContract::HighRecall => {
+                                crate::planning::planner::RetrievalContract::HighRecall(0.99)
+                            }
+                            crate::graph::query::ast::VectorContract::Bounded => {
+                                crate::planning::planner::RetrievalContract::Budget(
+                                    std::time::Duration::from_millis(5),
+                                )
+                            }
+                        };
+                        let results =
+                            index.search_indices_with_contract(q_vec, *k, None, retrieval_contract)?;
+                        let matched_nodes: Vec<NodeIndex> =
+                            results.into_iter().map(|(idx, _)| idx).collect();
+                        self.vector_seeds
+                            .insert(query_param.clone(), VectorSeedSet { nodes: matched_nodes });
+                    }
+                }
+            }
+        }
+        self.execute(plan)
+    }
+
     /// Converts AST mutation clauses into Raft-replicated `GraphMutation` commands.
     ///
     /// The caller is responsible for proposing the returned commands through Raft

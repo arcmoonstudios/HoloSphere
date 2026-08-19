@@ -55,6 +55,15 @@ pub struct PinnedReadSnapshot {
     pub mutable_lsn: u64,
     pub immutable_segments: Arc<[Arc<crate::storage::segment::ImmutableSegment>]>,
     pub active_segment: Arc<crate::storage::segment::MutableSegment>,
+    /// Per-shard RAII pins held across all hosted shards — prevents background compaction
+    /// from reclaiming segments on shard ID ≥ 1 while a scatter-gather search is in flight.
+    pub all_shard_snapshots: HashMap<
+        crate::cluster::ring::ShardId,
+        (
+            Arc<[Arc<crate::storage::segment::ImmutableSegment>]>,
+            Arc<crate::storage::segment::MutableSegment>,
+        ),
+    >,
 }
 
 /// Context accompanying every client or internal request.
@@ -136,11 +145,18 @@ pub trait HNSQRService: MutationService + SearchService + Send + Sync {}
 
 pub struct StandaloneService {
     index: Arc<HNSQRIndex>,
+    slo_manager: Option<Arc<crate::telemetry::slo::SloManager>>,
 }
 
 impl StandaloneService {
     pub fn new(index: Arc<HNSQRIndex>) -> Self {
-        Self { index }
+        Self { index, slo_manager: None }
+    }
+
+    /// Attaches a `SloManager` for real-time error-budget burn-rate tracking.
+    pub fn with_slo(mut self, slo: Arc<crate::telemetry::slo::SloManager>) -> Self {
+        self.slo_manager = Some(slo);
+        self
     }
 
     pub fn index(&self) -> &Arc<HNSQRIndex> {
@@ -211,7 +227,11 @@ impl SearchService for StandaloneService {
         k: usize,
         _rerank_plan: SemanticRerankPlan,
     ) -> HNSQRResult<Vec<(Arc<str>, SimilarityScore)>> {
-        self.index.search(query, k)
+        let res = self.index.search(query, k);
+        if let Some(slo) = &self.slo_manager {
+            slo.record_query_event(res.is_ok());
+        }
+        res
     }
 }
 
@@ -330,7 +350,7 @@ impl SearchService for ClusterService {
         k: usize,
         rerank_plan: SemanticRerankPlan,
     ) -> HNSQRResult<Vec<(Arc<str>, SimilarityScore)>> {
-        let pinned = self.coordinator.obtain_pinned_read_snapshot(0, ReadConsistency::Linearizable)?;
+        let pinned = self.coordinator.obtain_cluster_pinned_snapshot(ReadConsistency::Linearizable)?;
         Ok(self.coordinator.search_pinned(&pinned, query, k, rerank_plan))
     }
 }

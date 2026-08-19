@@ -3238,6 +3238,49 @@ impl HNSQRIndex {
         Ok(rescored)
     }
 
+    /// Executes multimodal hybrid search combining dense vector similarity with sparse BM25
+    /// lexical rankings via Reciprocal Rank Fusion (RRF).
+    ///
+    /// Retrieves `k * 2` candidates from each modality to maximise fusion quality before
+    /// truncating the merged list to `k`.  The `rrf_k` constant (default `60.0`) controls
+    /// the smoothing of rank-based scores; higher values reduce the advantage of top ranks.
+    pub fn search_hybrid_rrf(
+        &self,
+        dense_query: &VectorEmbedding,
+        sparse_index: &crate::retrieval::sparse::SparseInvertedIndex,
+        sparse_query_terms: &[u32],
+        k: usize,
+        rrf_k: f32,
+    ) -> HNSQRResult<Vec<(Arc<str>, SimilarityScore)>> {
+        use std::sync::Arc;
+        use crate::retrieval::hybrid::{HybridFusionEngine, ModalityRankings};
+
+        let dense_results = self.search(dense_query, k * 2)?;
+
+        let sparse_raw = sparse_index.search_bm25(sparse_query_terms, k * 2);
+        let sparse_results: Vec<(Arc<str>, SimilarityScore)> = sparse_raw
+            .into_iter()
+            .map(|(idx, score)| (Arc::from(format!("node_{idx}")) as Arc<str>, score))
+            .collect();
+
+        let dense_modality = ModalityRankings {
+            name: "dense".to_string(),
+            weight: 1.0,
+            results: dense_results,
+        };
+        let sparse_modality = ModalityRankings {
+            name: "sparse".to_string(),
+            weight: 1.0,
+            results: sparse_results,
+        };
+
+        Ok(HybridFusionEngine::fuse_rrf(
+            &[dense_modality, sparse_modality],
+            rrf_k,
+            k,
+        ))
+    }
+
     /// Executes a brute-force exact scan across all live nodes with distance_function scoring.
     ///
     /// Highly optimized for small corpora (e.g. N <= 2,000) where exact vector scanning

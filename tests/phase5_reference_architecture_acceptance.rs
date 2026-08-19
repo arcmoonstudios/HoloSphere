@@ -99,7 +99,7 @@ async fn test_phase5_reference_architecture_full_acceptance() {
         current_image_tag: "v0.5.0".to_string(),
         ..Default::default()
     };
-    let (phase, actions) = KubernetesOperator::reconcile_lifecycle(&spec, &status).expect("Reconcile");
+    let (phase, actions) = KubernetesOperator::reconcile_lifecycle(&spec, &status, None).expect("Reconcile");
     assert_eq!(phase, OperatorLifecyclePhase::ProvisioningLearners);
     assert!(!actions.is_empty());
 

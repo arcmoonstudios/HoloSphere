@@ -316,6 +316,60 @@ impl DistributedCoordinator {
             mutable_lsn: snapshot.mutable_lsn,
             immutable_segments: immutables.into(),
             active_segment: active,
+            all_shard_snapshots: HashMap::new(),
+        })
+    }
+
+    /// Obtains a cluster-wide `PinnedReadSnapshot` that retains immutable and active segment
+    /// references across **all** hosted local shards, preventing compaction from reclaiming
+    /// segments on any shard while a scatter-gather search is in flight.
+    pub fn obtain_cluster_pinned_snapshot(
+        &self,
+        consistency: ReadConsistency,
+    ) -> HNSQRResult<crate::service::PinnedReadSnapshot> {
+        let snapshot = self.obtain_read_snapshot(consistency)?;
+        let shards = self.local_shards.read();
+
+        let mut all_shard_snapshots = HashMap::with_capacity(shards.len());
+        // Defaults for the legacy single-shard fields — filled from the first shard.
+        let mut first_immutables: Arc<[Arc<crate::storage::segment::ImmutableSegment>]> =
+            Arc::from(Vec::new());
+        let mut first_active: Option<Arc<crate::storage::segment::MutableSegment>> = None;
+
+        // Iterate in deterministic shard-ID order so the "first" shard is always shard 0.
+        let mut ordered: Vec<ShardId> = shards.keys().copied().collect();
+        ordered.sort_unstable();
+
+        for s_id in ordered {
+            let shard = &shards[&s_id];
+            let immutables: Arc<[Arc<crate::storage::segment::ImmutableSegment>]> =
+                Arc::from(shard.engine.immutable_segments_snapshot());
+            let active = shard.engine.active_mutable_segment();
+
+            if first_active.is_none() {
+                first_immutables = immutables.clone();
+                first_active = Some(active.clone());
+            }
+
+            all_shard_snapshots.insert(s_id, (immutables, active));
+        }
+
+        let active_segment = first_active.unwrap_or_else(|| {
+            Arc::new(crate::storage::segment::MutableSegment::new(
+                0,
+                self.dimension,
+                100,
+            ))
+        });
+
+        Ok(crate::service::PinnedReadSnapshot {
+            topology_epoch: snapshot.topology_epoch,
+            raft_read_index: snapshot.raft_read_index,
+            applied_index: snapshot.applied_index,
+            mutable_lsn: snapshot.mutable_lsn,
+            immutable_segments: first_immutables,
+            active_segment,
+            all_shard_snapshots,
         })
     }
 

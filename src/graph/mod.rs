@@ -61,9 +61,10 @@ pub use mutation::{
     GraphMutation, GraphMutationApplier, GraphProperties, RelationshipId,
 };
 pub use query::{
-    BindingColumn, Direction, ExecutionContext, ExplainOutput, GraphPattern,
-    LogicalPlan, Morsel, PhysicalPlan, QueryAst, QueryResult, ReturnClause,
-    SemanticAnalyzer, SemanticError, SymbolId, SymbolTable, WhereClause,
+    BindingColumn, CompileError, CompiledQuery, Direction, ExecutionContext, ExplainOutput,
+    GraphPattern, Lexer, LogicalPlan, Morsel, PhysicalPlan, ParseError, Parser, QueryAst,
+    QueryPlanner, QueryResult, ReturnClause, SemanticAnalyzer, SemanticError, SymbolId,
+    SymbolTable, Token, WhereClause, parse_query,
 };
 pub use stats::{DegreeStats, GraphCardinalityStats};
 pub use storage::{

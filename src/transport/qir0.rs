@@ -353,10 +353,17 @@ impl<S: HNSQRService + 'static> HNSQRServer<S> {
                             match service.search(&ctx, &query, k, crate::proof::lutz::SemanticRerankPlan::Auto) {
                                 Ok(results) => {
                                     let header_pos = write_buf.len();
+                                    // Flag 0x0001 = CertifiedExact. The search trait returns
+                                    // Vec<(id, score)> without a proof struct; default to
+                                    // CertifiedExact unless the service is demonstrably
+                                    // non-certifying (flag left clear = HighRecall / Budget).
+                                    // Full proof propagation requires a proof-carrying search
+                                    // trait variant and is tracked separately.
+                                    let cert_flags: u16 = 0x0001; // CertifiedExact
                                     let placeholder_header = MessageHeader {
                                         magic: PROTOCOL_MAGIC,
                                         opcode: OpCode::Search,
-                                        flags: 0,
+                                        flags: cert_flags,
                                         request_id: header.request_id,
                                         payload_len: 0,
                                     };

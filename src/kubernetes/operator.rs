@@ -13,6 +13,7 @@
 
 use serde::{Deserialize, Serialize};
 use crate::{HNSQRError, HNSQRResult};
+use crate::kubernetes::autoscaler::{AutoscalerMetrics, NativeAutoscaler};
 
 /// HNSQRCluster Custom Resource Spec.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -124,6 +125,7 @@ impl KubernetesOperator {
     pub fn reconcile_lifecycle(
         spec: &HNSQRClusterSpec,
         status: &HNSQRClusterStatus,
+        telemetry: Option<&AutoscalerMetrics>,
     ) -> HNSQRResult<(OperatorLifecyclePhase, Vec<String>)> {
         // 1. Check Image Upgrade
         if !status.current_image_tag.is_empty() && spec.image_tag != status.current_image_tag {
@@ -150,7 +152,20 @@ impl KubernetesOperator {
             return Ok((phase, scale_actions));
         }
 
-        // 3. Cluster is Healthy and in Desired State
+        // 3. Autonomous Metrics-Driven Learner Scaling
+        if let Some(metrics) = telemetry {
+            let autoscaler =
+                NativeAutoscaler::new(spec.memory_limit_mb as f64, 60);
+            let recommendation = autoscaler.evaluate(metrics);
+            if recommendation.desired_learners != status.ready_learners {
+                return Ok((
+                    OperatorLifecyclePhase::ProvisioningLearners,
+                    recommendation.rationale,
+                ));
+            }
+        }
+
+        // 4. Cluster is Healthy and in Desired State
         Ok((OperatorLifecyclePhase::Idle, vec!["Cluster matches desired state".to_string()]))
     }
 }

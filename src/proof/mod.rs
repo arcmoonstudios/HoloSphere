@@ -22,7 +22,7 @@ pub use lutz::{
     LutzCertifier, LutzCode, LutzGlobalCertified, LutzQueryTable, SemanticRerankPlan,
 };
 pub use search::{
-    DenseExactProof, Finalist, GlobalExactProofSearch, ProofFrontierEntry, SegmentProofView,
-    TopKAccumulator,
+    DenseExactProof, Finalist, GlobalExactProofSearch, GlobalPacProofSearch, ProofFrontierEntry,
+    SegmentProofView, TopKAccumulator,
 };
 pub use tree::{ManifoldGeometryProfile, PROOF_LEAF_TARGET, ProofNode, SemanticProofTree};

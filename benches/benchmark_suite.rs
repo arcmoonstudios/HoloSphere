@@ -39,7 +39,7 @@ use hnsqr::transport::qir0::{HNSQRClient, HNSQRServer};
 use hnsqr::vector::folding::ComplexWeaver;
 use hnsqr::vector::quantization::PolarQuantizedVector;
 use hnsqr::{
-    DistanceFunction, HNSQRConfig, HNSQRIndex, NodeId, SearchIntent, SimilarityScore,
+    DistanceFunction, HNSQRConfig, HNSQRIndex, NodeId, SearchIntent, SearchPlan, SimilarityScore,
     VectorEmbedding,
 };
 use num_complex::Complex32;
@@ -49,13 +49,13 @@ fn generate_clustered_dataset(
     num_vectors: usize,
     dim: usize,
     _num_clusters: usize,
-) -> (Vec<(NodeId, VectorEmbedding)>, Vec<VectorEmbedding>) {
-    let (base_path, query_path, _) = common::find_best_matching_dataset(dim);
+) -> (Vec<(NodeId, VectorEmbedding)>, Vec<VectorEmbedding>, usize) {
+    let (base_path, query_path, _) = common::find_best_matching_dataset(dim * 2);
     let (mut corpus_vecs, _) = common::read_fvecs(&base_path, Some(num_vectors)).unwrap_or_default();
     let (mut query_vecs, _) = common::read_fvecs(&query_path, Some(200)).unwrap_or_default();
 
     if corpus_vecs.is_empty() {
-        let text_corpus = common::generate_realistic_text_corpus(num_vectors, 200, dim, 0x1234);
+        let text_corpus = common::generate_realistic_text_corpus(num_vectors, 200, dim * 2, 0x1234);
         corpus_vecs = text_corpus.folded_corpus;
         query_vecs = text_corpus.folded_queries;
     }
@@ -70,13 +70,15 @@ fn generate_clustered_dataset(
         }
     }
 
+    let actual_dim = corpus_vecs.first().map(|v| v.dimension()).unwrap_or(dim);
+
     let dataset = corpus_vecs
         .into_iter()
         .enumerate()
         .map(|(i, v)| (format!("doc_{:05}", i).into(), v))
         .collect();
 
-    (dataset, query_vecs)
+    (dataset, query_vecs, actual_dim)
 }
 
 /// Brute-force exact k-nearest neighbor search using Projective Overlap (CPO).
@@ -143,7 +145,9 @@ fn run_full_benchmark(
         m,
         ef_construction: ef_c,
         ef_search: 64,
-        distance_function: DistanceFunction::Cosine,
+        distance_function: DistanceFunction::ProjectiveOverlap,
+        search_plan: SearchPlan::GraphOnly,
+        rivero_enabled: false,
         level_multiplier: 1.0 / (m as f32).ln().max(1.0),
         superposition_beam_width: 8,
         attention_temperature: 0.15,
@@ -487,14 +491,14 @@ fn main() {
     print!(
         "Generating 5,000 clustered phase-encoded complex embeddings (50 semantic clusters)... "
     );
-    let (dataset_clust, queries_clust) = generate_clustered_dataset(num_vectors, dim, 50);
+    let (dataset_clust, queries_clust, actual_dim) = generate_clustered_dataset(num_vectors, dim, 50);
     println!("Done.\n");
 
     run_full_benchmark(
         "DATASET: Clustered Phase-Encoded Embeddings (Production Complex Profile)",
         &dataset_clust,
         &queries_clust,
-        dim,
+        actual_dim,
         k,
         64,  // M0
         32,  // M

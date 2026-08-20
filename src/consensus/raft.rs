@@ -180,8 +180,12 @@ impl StorageHealthMetrics {
             return -1.0;
         }
         let latency_penalty = (self.fsync_latency_p99_us as f64 / 1000.0).min(50.0);
-        let stall_penalty = (self.disk_write_stall_count as f64 * 10.0).min(40.0);
+        let stall_penalty = (self.disk_write_stall_count as f64 * 5.0).min(50.0);
         (100.0 - latency_penalty - stall_penalty).max(0.0)
+    }
+
+    pub fn record_error(&mut self, _err: crate::HNSQRError) {
+        self.io_error_count += 1;
     }
 }
 
@@ -232,31 +236,32 @@ impl RaftNode {
         Self::with_storage(id, initial_voting_peers, Arc::new(MemoryRaftStorage::new()))
     }
 
-    pub fn with_storage(
+    pub fn try_with_storage(
         id: RaftNodeId,
         initial_voting_peers: Vec<RaftNodeId>,
         storage: Arc<dyn RaftStorage>,
-    ) -> Self {
+    ) -> HNSQRResult<Self> {
         let mut peers_set: HashSet<RaftNodeId> = initial_voting_peers.into_iter().collect();
         peers_set.insert(id);
 
         let initial_log = match storage.load_log_entries(0) {
             Ok(entries) if !entries.is_empty() => entries,
-            _ => {
+            Ok(_) => {
                 let default_entries = vec![RaftLogEntry {
                     term: 0,
                     index: 0,
                     command: RaftCommand::NoOp,
                 }];
-                let _ = storage.append_entries(&default_entries);
+                storage.append_entries(&default_entries)?;
                 default_entries
             }
+            Err(e) => return Err(e),
         };
 
-        let hard_state = storage.load_hard_state().unwrap_or_default();
-        let progress = storage.load_progress().unwrap_or_default();
+        let hard_state = storage.load_hard_state()?;
+        let progress = storage.load_progress()?;
 
-        Self {
+        Ok(Self {
             id,
             voting_peers: RwLock::new(peers_set),
             learners: RwLock::new(HashSet::new()),
@@ -280,12 +285,20 @@ impl RaftNode {
             pending_proposals: Arc::new(PendingProposals::default()),
             read_index_engine: Arc::new(ReadIndexEngine::default()),
             storage,
-        }
+        })
+    }
+
+    pub fn with_storage(
+        id: RaftNodeId,
+        initial_voting_peers: Vec<RaftNodeId>,
+        storage: Arc<dyn RaftStorage>,
+    ) -> Self {
+        Self::try_with_storage(id, initial_voting_peers, storage).expect("Failed to initialize RaftNode from storage")
     }
 
     /// Reconstructs volatile state machine from durable Raft log entries up to committed index ONLY.
     pub fn recover_node_state(&self, state_machine: &Arc<dyn ReplicatedStateMachine>) -> HNSQRResult<u64> {
-        let progress = self.storage.load_progress().unwrap_or_default();
+        let progress = self.storage.load_progress()?;
         let entries = self.storage.load_log_entries(progress.snapshot_index + 1)?;
         let mut applied_count = 0;
 
@@ -624,12 +637,15 @@ impl RaftNode {
 
         if let Some(n) = target_new_commit {
             *self.commit_index.write() = n;
-            let _ = self.storage.save_progress(&RaftPersistentProgress {
+            if let Err(e) = self.storage.save_progress(&RaftPersistentProgress {
                 commit_index: n,
                 last_applied: *self.last_applied.read(),
                 snapshot_index: 0,
                 snapshot_term: 0,
-            });
+            }) {
+                tracing::error!("Failed to persist Raft progress at commit index {n}: {e}");
+                self.storage_health.write().record_error(e);
+            }
             self.apply_committed_entries(&log_entries, n);
             true
         } else {
@@ -801,12 +817,15 @@ impl RaftNode {
             }
         }
 
-        let _ = self.storage.save_progress(&RaftPersistentProgress {
+        if let Err(e) = self.storage.save_progress(&RaftPersistentProgress {
             commit_index: target_commit,
             last_applied: applied,
             snapshot_index: 0,
             snapshot_term: 0,
-        });
+        }) {
+            tracing::error!("Failed to persist Raft progress after apply: {e}");
+            self.storage_health.write().record_error(e);
+        }
 
         // Complete/Fail proposals outside the lock
         for (proposal_id, term, applied_idx, ep, durability) in to_complete {

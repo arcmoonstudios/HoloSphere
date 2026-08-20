@@ -693,3 +693,247 @@ impl GlobalExactProofSearch {
         (topk.into_sorted_vec(), proof)
     }
 }
+
+/// Multi-segment (ε, δ)-PAC relaxed proof search engine.
+/// Prunes proof regions when (1 - ε) * UB < τ.
+pub struct GlobalPacProofSearch;
+
+impl GlobalPacProofSearch {
+    pub fn search(
+        query_vector: &VectorEmbedding,
+        k: usize,
+        segments: &[SegmentProofView],
+        mutable_candidates: &[(NodeIndex, SimilarityScore)],
+        rivero_seed_candidates: &[NodeIndex],
+        filter_mask: Option<&RoaringBitmap>,
+        epsilon: f32,
+        _delta: f32,
+    ) -> (Vec<(NodeIndex, SimilarityScore)>, DenseExactProof) {
+        let t_start = std::time::Instant::now();
+        let mut proof = DenseExactProof::default();
+        let total_corpus: usize = segments.iter().map(|s| s.tree.total_vectors()).sum::<usize>()
+            + mutable_candidates.len();
+        proof.corpus_size = total_corpus;
+
+        if k == 0 || total_corpus == 0 {
+            proof.elapsed_us = t_start.elapsed().as_micros() as u64;
+            return (Vec::new(), proof);
+        }
+
+        let query = ProofQuery::new(query_vector.complex_data());
+        let query_lut = LutzQueryTable::build(query_vector);
+        let mut topk = TopKAccumulator::new(k);
+        let mut evaluated_slots = RoaringBitmap::new();
+
+        // 1. Mutable scan
+        for &(slot, score) in mutable_candidates {
+            if filter_mask.is_some_and(|m| !m.contains(slot)) {
+                proof.filtered_or_tombstoned += 1;
+                evaluated_slots.insert(slot);
+                continue;
+            }
+            evaluated_slots.insert(slot);
+            topk.offer(slot, score);
+            proof.exact_evaluations += 1;
+            proof.exact_bytes_touched += query_vector.dimension() * 8;
+        }
+
+        // 2. Rivero seed candidates
+        proof.rivero_raw_candidates = rivero_seed_candidates.len();
+        let mut seen_seeds = RoaringBitmap::new();
+        for &slot in rivero_seed_candidates.iter().take(128.max(k * 2)) {
+            if filter_mask.is_some_and(|m| !m.contains(slot)) || seen_seeds.contains(slot) {
+                continue;
+            }
+            seen_seeds.insert(slot);
+            proof.rivero_seed_candidates += 1;
+
+            for seg in segments {
+                if (slot as usize) < seg.vectors.len() {
+                    if seg.tombstones.is_some_and(|t| t.contains(slot)) {
+                        proof.filtered_or_tombstoned += 1;
+                        evaluated_slots.insert(slot);
+                        break;
+                    }
+                    evaluated_slots.insert(slot);
+                    let score = (query_vector.dot_product_complex(&seg.vectors[slot as usize])).re;
+                    proof.rivero_seed_exact_evaluations += 1;
+                    proof.exact_evaluations += 1;
+                    proof.exact_bytes_touched += seg.tree.dimension * 8;
+                    topk.offer(slot, score);
+                    break;
+                }
+            }
+        }
+
+        // 3. Spatially prunable segments with (1 - ε) relaxation
+        let mut frontier: BinaryHeap<ProofFrontierEntry> = BinaryHeap::new();
+        let eps_factor = (1.0 - epsilon as f64).max(0.0);
+
+        for (seg_idx, seg) in segments.iter().enumerate() {
+            if !seg.tree.is_spatially_prunable() || seg.tree.nodes.is_empty() {
+                continue;
+            }
+            let ub = seg.tree.upper_bound(&query, seg.tree.root);
+            let tau = topk.kth_score() as f64;
+
+            if topk.is_full() && (ub * eps_factor) < tau {
+                proof.proof_regions_pruned += 1;
+                let unvisited = seg
+                    .tree
+                    .members(seg.tree.node(seg.tree.root))
+                    .iter()
+                    .filter(|&&s| !evaluated_slots.contains(s))
+                    .count();
+                proof.vectors_pruned_by_region += unvisited;
+            } else {
+                frontier.push(ProofFrontierEntry {
+                    upper_bound: ub,
+                    segment_idx: seg_idx,
+                    node_idx: seg.tree.root,
+                });
+            }
+        }
+
+        // 4. PAC branch-and-bound loop
+        while let Some(entry) = frontier.pop() {
+            proof.proof_regions_popped += 1;
+            let tau = topk.kth_score() as f64;
+            let effective_ub = entry.upper_bound * eps_factor;
+
+            if topk.is_full() && effective_ub < tau {
+                proof.proof_regions_pruned += 1;
+                let seg = &segments[entry.segment_idx];
+                let node = seg.tree.node(entry.node_idx);
+                let unvisited = seg
+                    .tree
+                    .members(node)
+                    .iter()
+                    .filter(|&&s| !evaluated_slots.contains(s))
+                    .count();
+                proof.vectors_pruned_by_region += unvisited;
+                continue;
+            }
+
+            let seg = &segments[entry.segment_idx];
+            let node = seg.tree.node(entry.node_idx);
+
+            if node.is_internal() {
+                proof.proof_regions_expanded += 1;
+                for child_idx in seg.tree.children(node) {
+                    let child_ub = seg.tree.upper_bound(&query, child_idx);
+                    let curr_tau = topk.kth_score() as f64;
+
+                    if topk.is_full() && (child_ub * eps_factor) < curr_tau {
+                        proof.proof_regions_pruned += 1;
+                        let child_node = seg.tree.node(child_idx);
+                        let unvisited = seg
+                            .tree
+                            .members(child_node)
+                            .iter()
+                            .filter(|&&s| !evaluated_slots.contains(s))
+                            .count();
+                        proof.vectors_pruned_by_region += unvisited;
+                    } else {
+                        frontier.push(ProofFrontierEntry {
+                            upper_bound: child_ub,
+                            segment_idx: entry.segment_idx,
+                            node_idx: child_idx,
+                        });
+                    }
+                }
+            } else {
+                let mut candidate_slots = Vec::with_capacity(node.member_len as usize);
+                for &slot in seg.tree.members(node) {
+                    if evaluated_slots.contains(slot) {
+                        continue;
+                    }
+                    if seg.tombstones.is_some_and(|t| t.contains(slot))
+                        || filter_mask.is_some_and(|m| !m.contains(slot))
+                    {
+                        evaluated_slots.insert(slot);
+                        proof.filtered_or_tombstoned += 1;
+                        continue;
+                    }
+                    candidate_slots.push(slot);
+                }
+
+                if candidate_slots.is_empty() {
+                    continue;
+                }
+
+                if let Some(lutz_codes) = seg.lutz_codes {
+                    let mut scored_cands: Vec<(NodeIndex, f32)> = candidate_slots
+                        .into_iter()
+                        .map(|s| {
+                            let code = &lutz_codes[s as usize];
+                            let approx = query_lut.score_candidate_l0(code);
+                            (s, approx)
+                        })
+                        .collect();
+                    scored_cands.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
+
+                    for (slot, approx) in scored_cands {
+                        proof.leaf_vectors_considered += 1;
+                        let curr_tau = topk.kth_score() as f64;
+                        let code = &lutz_codes[slot as usize];
+
+                        let res0 = query_lut.blockwise_residual_l0(code) as f64;
+                        let ub0 = (approx as f64) + res0 + 1e-7;
+                        proof.lutz_l0_evaluations += 1;
+                        proof.l0_bytes_touched += code.codes_l0.len() + code.scales_l0.len();
+
+                        if topk.is_full() && (ub0 * eps_factor) < curr_tau {
+                            proof.lutz_l0_pruned += 1;
+                            evaluated_slots.insert(slot);
+                            continue;
+                        }
+
+                        if code.codes_l1.is_some() {
+                            let res1 = query_lut.blockwise_residual_l1(code) as f64;
+                            let ub1 = (approx as f64) + res1 + 1e-7;
+                            proof.lutz_l1_evaluations += 1;
+                            proof.l1_bytes_touched +=
+                                code.codes_l1.as_deref().map_or(0, |c| c.len() * 2);
+
+                            if topk.is_full() && (ub1 * eps_factor) < curr_tau {
+                                proof.lutz_l1_pruned += 1;
+                                evaluated_slots.insert(slot);
+                                continue;
+                            }
+                        }
+
+                        let v = &seg.vectors[slot as usize];
+                        let score = (query_vector.dot_product_complex(v)).re;
+                        topk.offer(slot, score);
+                        proof.exact_evaluations += 1;
+                        proof.exact_bytes_touched += seg.tree.dimension * 8;
+                        evaluated_slots.insert(slot);
+                    }
+                } else {
+                    for slot in candidate_slots {
+                        proof.leaf_vectors_considered += 1;
+                        let v = &seg.vectors[slot as usize];
+                        let score = (query_vector.dot_product_complex(v)).re;
+                        topk.offer(slot, score);
+                        proof.exact_evaluations += 1;
+                        proof.exact_bytes_touched += seg.tree.dimension * 8;
+                        evaluated_slots.insert(slot);
+                    }
+                }
+            }
+        }
+
+        proof.kth_score = topk.kth_score();
+        proof.globally_exact = false;
+        proof.elapsed_us = t_start.elapsed().as_micros() as u64;
+        let total_regions = proof.proof_regions_pruned + proof.proof_regions_expanded;
+        proof.region_prune_ratio = if total_regions > 0 {
+            proof.proof_regions_pruned as f64 / total_regions as f64
+        } else {
+            0.0
+        };
+
+        (topk.into_sorted_vec(), proof)
+    }
+}

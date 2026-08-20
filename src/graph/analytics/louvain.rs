@@ -7,9 +7,9 @@
 //! iterate over all nodes and greedily move each node to the neighbouring
 //! community that maximises the modularity gain `ΔQ`.
 //!
-//! This is the standard greedy local-move phase.  Phase 2 (community
-//! coarsening and recursive application) is marked TODO and will be added
-//! in a follow-on commit once Phase 1 is verified by the unit tests.
+//! This is the standard greedy local-move phase. Phase 2 community coarsening
+//! is implemented by `detect_hierarchical`, which iteratively projects communities
+//! into super-vertices and re-applies Phase 1 until convergence or `max_levels`.
 //!
 //! ## Modularity gain formula
 //!

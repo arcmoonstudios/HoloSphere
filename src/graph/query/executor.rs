@@ -105,6 +105,44 @@ impl ExecutionContext {
         self.execute(plan)
     }
 
+    /// Automatically resolves any `VectorSeed` operators against a `SegmentedEngine`
+    /// before executing the physical graph plan.
+    pub fn execute_with_segmented_engine(
+        &mut self,
+        plan: &PhysicalPlan,
+        engine: &crate::storage::segment::SegmentedEngine,
+        query_vectors: &std::collections::HashMap<String, crate::VectorEmbedding>,
+    ) -> crate::HNSQRResult<QueryResult> {
+        for op in &plan.ops {
+            if let PhysicalOp::VectorSeed { query_param, k, contract, .. } = op {
+                if !self.vector_seeds.contains_key(query_param.as_str()) {
+                    if let Some(q_vec) = query_vectors.get(query_param.as_str()) {
+                        let retrieval_contract = match contract {
+                            crate::graph::query::ast::VectorContract::Certified => {
+                                crate::planning::planner::RetrievalContract::Certified
+                            }
+                            crate::graph::query::ast::VectorContract::HighRecall => {
+                                crate::planning::planner::RetrievalContract::HighRecall(0.99)
+                            }
+                            crate::graph::query::ast::VectorContract::Bounded => {
+                                crate::planning::planner::RetrievalContract::Budget(
+                                    std::time::Duration::from_millis(5),
+                                )
+                            }
+                        };
+                        let results =
+                            engine.search_with_contract(q_vec, *k, retrieval_contract);
+                        let matched_nodes: Vec<NodeIndex> =
+                            results.into_iter().filter_map(|(id, _)| id.parse::<u32>().ok()).collect();
+                        self.vector_seeds
+                            .insert(query_param.clone(), VectorSeedSet { nodes: matched_nodes });
+                    }
+                }
+            }
+        }
+        self.execute(plan)
+    }
+
     /// Converts AST mutation clauses into Raft-replicated `GraphMutation` commands.
     ///
     /// The caller is responsible for proposing the returned commands through Raft

@@ -32,4 +32,4 @@ pub use edge_delta::{EdgeDelta, EdgeDeltaStats};
 pub use generation::{GraphGeneration, GraphReadGeneration};
 pub use node_arena::{GraphNodeRecord, NodeArena, NULL_OVERFLOW_REF};
 pub use properties::{GraphPropertyStore, GraphPropertyValue};
-pub use snapshot::GraphSnapshot;
+pub use snapshot::{GraphSnapshot, ImmutableGraphSnapshot};

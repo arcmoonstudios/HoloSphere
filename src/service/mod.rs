@@ -478,16 +478,16 @@ impl SearchService for ClusterService {
         let read_gen = Arc::new(crate::graph::storage::generation::GraphReadGeneration::new(
             gen_lock, gen_id,
         ));
-        let exec_ctx = crate::graph::query::executor::ExecutionContext::new(read_gen);
+        let mut exec_ctx = crate::graph::query::executor::ExecutionContext::new(read_gen);
 
         if !compiled.ast.mutations.is_empty() {
             let mutations = crate::graph::query::executor::ExecutionContext::compile_mutations(&compiled.ast.mutations);
             for m in mutations {
-                let _ = self.coordinator.raft_cluster.propose_data_mutation(crate::cluster::state_machine::DataMutation::new_graph(m));
+                let _rx = self.coordinator.raft_cluster.propose_data_mutation(crate::cluster::state_machine::DataMutation::new_graph(m))?;
             }
         }
 
-        let mut result = exec_ctx.execute(&compiled.plan)?;
+        let mut result = exec_ctx.execute_with_segmented_engine(&compiled.plan, &shard.state_machine.engine, &std::collections::HashMap::new())?;
         result.column_names = compiled.column_names;
         Ok(result)
     }

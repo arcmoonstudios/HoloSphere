@@ -70,5 +70,5 @@ pub use stats::{DegreeStats, GraphCardinalityStats};
 pub use storage::{
     AdjacencyBlock, CscAdjacency, CsrAdjacency, EdgeDelta, EdgeDeltaStats,
     GraphGeneration, GraphNodeRecord, GraphPropertyStore, GraphPropertyValue,
-    GraphReadGeneration, GraphSnapshot, NeighborSlice, NodeArena, NULL_OVERFLOW_REF,
+    GraphReadGeneration, GraphSnapshot, ImmutableGraphSnapshot, NeighborSlice, NodeArena, NULL_OVERFLOW_REF,
 };

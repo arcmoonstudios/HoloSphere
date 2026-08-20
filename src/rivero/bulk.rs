@@ -77,6 +77,27 @@ pub struct BulkBuildTelemetry {
     pub stage_b_expanded_pct: f64,
 }
 
+/// Canonical build descriptor identifying schema, dimension, geometry, and witness parameters.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RiveroBuildDescriptor {
+    /// Rivero address compiler schema version.
+    pub schema_version: u16,
+    /// Complex vector dimensionality D.
+    pub dimension: usize,
+    /// Address configuration (foundations, projection mode, and vector geometry).
+    pub address_config: RiveroAddressConfig,
+    /// Rivero operational configuration.
+    pub rivero_config: RiveroConfig,
+    /// Semantic distance metric.
+    pub distance_function: DistanceFunction,
+    /// Maximum witness connections per node.
+    pub witness_degree: usize,
+    /// Maximum witness seeds expanded.
+    pub witness_seeds: usize,
+    /// Maximum second-hop witness seeds expanded.
+    pub witness_second_seeds: usize,
+}
+
 /// Transactional immutable result of bulk Rivero index construction.
 pub struct BuiltRiveroState {
     /// Fully populated, frozen territory index.
@@ -85,6 +106,8 @@ pub struct BuiltRiveroState {
     pub witnesses: Vec<SmallVec<[ScoredWitness; RIVERO_WITNESS_INLINE_DEGREE]>>,
     /// Precompiled Rivero routing addresses for each node.
     pub addresses: Vec<RiveroAddress>,
+    /// Build descriptor capturing full routing schema and geometry invariants.
+    pub descriptor: RiveroBuildDescriptor,
     /// Construction telemetry breakdown.
     pub telemetry: BulkBuildTelemetry,
 }
@@ -425,7 +448,23 @@ impl RiveroBulkBuilder {
                             let denom = (vec.norm_squared() * cand_vec.norm_squared()).max(1e-12);
                             (dot.re / denom.sqrt()).clamp(-1.0, 1.0)
                         }
-                        _ => complex_projective_overlap_fast(query_complex, cand_vec.complex_data()),
+                        DistanceFunction::ProjectiveOverlap => {
+                            complex_projective_overlap_fast(query_complex, cand_vec.complex_data())
+                        }
+                        DistanceFunction::ProjectiveSineDistance => {
+                            let p = complex_projective_overlap_fast(query_complex, cand_vec.complex_data());
+                            1.0 - (1.0 - p).max(0.0).sqrt()
+                        }
+                        DistanceFunction::PhaseAlignedChordalDistance => {
+                            let p = complex_projective_overlap_fast(query_complex, cand_vec.complex_data());
+                            2.0 - (2.0 * (1.0 - p.sqrt())).max(0.0).sqrt()
+                        }
+                        DistanceFunction::Euclidean => {
+                            let dot =
+                                dot_product_complex_simd(query_complex, cand_vec.complex_data());
+                            let dist_sq = (vec.norm_squared() + cand_vec.norm_squared() - 2.0 * dot.re).max(0.0);
+                            -dist_sq.sqrt()
+                        }
                     };
                     scored.push(ScoredWitness {
                         index: cand,
@@ -506,7 +545,23 @@ impl RiveroBulkBuilder {
                             let denom = (vec.norm_squared() * cand_vec.norm_squared()).max(1e-12);
                             (dot.re / denom.sqrt()).clamp(-1.0, 1.0)
                         }
-                        _ => complex_projective_overlap_fast(query_complex, cand_vec.complex_data()),
+                        DistanceFunction::ProjectiveOverlap => {
+                            complex_projective_overlap_fast(query_complex, cand_vec.complex_data())
+                        }
+                        DistanceFunction::ProjectiveSineDistance => {
+                            let p = complex_projective_overlap_fast(query_complex, cand_vec.complex_data());
+                            1.0 - (1.0 - p).max(0.0).sqrt()
+                        }
+                        DistanceFunction::PhaseAlignedChordalDistance => {
+                            let p = complex_projective_overlap_fast(query_complex, cand_vec.complex_data());
+                            2.0 - (2.0 * (1.0 - p.sqrt())).max(0.0).sqrt()
+                        }
+                        DistanceFunction::Euclidean => {
+                            let dot =
+                                dot_product_complex_simd(query_complex, cand_vec.complex_data());
+                            let dist_sq = (vec.norm_squared() + cand_vec.norm_squared() - 2.0 * dot.re).max(0.0);
+                            -dist_sq.sqrt()
+                        }
                     };
                     scored.push(ScoredWitness {
                         index: cand,
@@ -597,10 +652,22 @@ impl RiveroBulkBuilder {
             },
         };
 
+        let descriptor = RiveroBuildDescriptor {
+            schema_version: super::RIVERO_SCHEMA_VERSION,
+            dimension: dim,
+            address_config: self.address_config,
+            rivero_config: self.config,
+            distance_function: self.distance_function,
+            witness_degree: self.witness_degree,
+            witness_seeds: self.witness_seeds,
+            witness_second_seeds: self.witness_second_seeds,
+        };
+
         Ok(BuiltRiveroState {
             territory: frozen_territory,
             witnesses: final_witnesses,
             addresses,
+            descriptor,
             telemetry,
         })
     }

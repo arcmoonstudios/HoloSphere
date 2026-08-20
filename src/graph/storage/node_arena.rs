@@ -96,6 +96,11 @@ impl NodeArena {
         }
     }
 
+    /// Captures an immutable snapshot of node records and liveness flags.
+    pub fn snapshot(&self) -> (Vec<GraphNodeRecord>, Vec<bool>) {
+        (self.records.read().clone(), self.live.read().clone())
+    }
+
     /// Allocates a new node record and returns its `NodeIndex`.
     pub fn alloc(&self, record: GraphNodeRecord) -> NodeIndex {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);

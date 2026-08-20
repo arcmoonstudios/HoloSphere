@@ -1,0 +1,916 @@
+--- holosphere7_pristine/src/lib.rs	2026-08-20 20:14:46.538675144 +0000
++++ holosphere7_worktree/src/lib.rs	2026-08-20 20:11:57.502789291 +0000
+@@ -1621,7 +1621,7 @@
+     pub graph_fallback_used: bool,
+     /// Cumulative compact resident codes scanned across all stages.
+     pub cumulative_resident_scans: usize,
+-    /// Cumulative exact vector score evaluations performed.
++    /// Cumulative exact vector score evaluations performed by Rivero stages before any graph fallback.
+     pub cumulative_exact_scores: usize,
+     /// Detailed confidence sub-metrics at final stage.
+     pub confidence: RiveroConfidence,
+@@ -2888,16 +2888,14 @@
+         Ok(results)
+     }
+ 
+-    /// Computes the empirical exact scan crossover threshold calibrated to vector dimension.
++    /// Computes the canonical empirical exact-scan crossover threshold for a complex vector dimension.
+     ///
+-    /// Derived from the empirical power-law crossover model:
+-    /// $$N_{\text{cross}}(D_{\text{complex}}) = 850.0 + \frac{1,416,904.5}{D_{\text{complex}}^{0.860}}$$
++    /// Delegates to [`crate::planning::planner::ExactScanCrossoverModel`] so the index `Auto`
++    /// path and [`crate::planning::planner::UniversalPlanner`] cannot diverge.
+     #[inline]
+     #[must_use]
+     pub fn default_exact_scan_threshold(dimension: usize) -> usize {
+-        let dim = (dimension.max(1)) as f64;
+-        let est = 850.0 + 1_416_904.5 / dim.powf(0.860);
+-        (est.round() as usize).clamp(512, 100_000)
++        crate::planning::planner::UniversalPlanner::compute_crossover(dimension)
+     }
+ 
+     /// Searches for the $k$ nearest neighbor internal arena indices with an optional Roaring Bitmap filter mask.
+@@ -2963,7 +2961,9 @@
+             .fetch_max(active, AtomicOrdering::Relaxed);
+         defer! { self.active_searches.fetch_sub(1, AtomicOrdering::Relaxed); }
+ 
+-        self.search_indices_graph_internal(query, k, filter_mask, start_time)
++        let result = self.search_indices_graph_internal(query, k, filter_mask);
++        self.record_search_latency(start_time);
++        result
+     }
+ 
+     /// Builds or rebuilds the canonical corpus-covering semantic proof hierarchy.
+@@ -3226,7 +3226,6 @@
+         query: &VectorEmbedding,
+         k: usize,
+         filter_mask: Option<&roaring::RoaringBitmap>,
+-        start_time: Instant,
+     ) -> HNSQRResult<Vec<(NodeIndex, SimilarityScore)>> {
+         let eps = self.entry_points.read().clone();
+         if eps.is_empty() {
+@@ -3296,7 +3295,6 @@
+             .map(|c| (c.index, c.similarity))
+             .collect();
+ 
+-        self.record_search_latency(start_time);
+         Ok(rescored)
+     }
+ 
+@@ -3447,7 +3445,9 @@
+             .fetch_max(active, AtomicOrdering::Relaxed);
+         defer! { self.active_searches.fetch_sub(1, AtomicOrdering::Relaxed); }
+ 
+-        self.search_indices_graph_internal(query, k, filter_mask, start_time)
++        let result = self.search_indices_graph_internal(query, k, filter_mask);
++        self.record_search_latency(start_time);
++        result
+     }
+ 
+     /// Strict Rivero search with guaranteed mathematically bounded corpus-independent ceiling.
+@@ -3753,13 +3753,14 @@
+             }
+         });
+ 
++        // Preserve Rivero-stage exact work before optional fallback consumes `all_scored`.
++        let cumulative_exact_scores = all_scored.len();
+         let mut graph_fallback_used = false;
+         if latest_confidence.escalation_recommended
+             && policy == AdaptivePolicy::AllowGraphFallback
+             && current_profile == RiveroProfile::Strict
+         {
+-            let graph_results =
+-                self.search_indices_graph_internal(query, k, filter_mask, start_time)?;
++            let graph_results = self.search_indices_graph_internal(query, k, filter_mask)?;
+             let mut combined_map: std::collections::HashMap<NodeIndex, SimilarityScore> =
+                 std::collections::HashMap::with_capacity(all_scored.len() + graph_results.len());
+             for (idx, score) in all_scored.drain(..) {
+@@ -3789,7 +3790,7 @@
+             escalated: stages_executed > 1,
+             graph_fallback_used,
+             cumulative_resident_scans: route_state.cumulative_scans,
+-            cumulative_exact_scores: all_scored.len(),
++            cumulative_exact_scores,
+             confidence: latest_confidence,
+             rivero: latest_rivero_diag,
+         };
+@@ -5373,6 +5374,49 @@
+     }
+ 
+     #[test]
++    fn adaptive_graph_fallback_preserves_telemetry_and_counts_one_search() {
++        let mut config = HNSQRConfig::default();
++        config.rivero_enabled = true;
++        config.rivero_mode = RiveroSearchMode::Adaptive;
++        config.adaptive_policy = AdaptivePolicy::AllowGraphFallback;
++        let index = HNSQRIndex::new(config, 8);
++
++        // Fewer live vectors than k deterministically forces every Rivero stage to
++        // recommend escalation, while still producing scored Rivero candidates.
++        for i in 0..5 {
++            let vector = VectorEmbedding::new(
++                (0..8)
++                    .map(|lane| ((i * 19 + lane * 7 + 3) % 29) as f32 - 14.0)
++                    .collect(),
++            )
++            .normalize();
++            index.insert(format!("fallback-{i}"), vector).unwrap();
++        }
++
++        let query =
++            VectorEmbedding::new(vec![0.2, -0.4, 0.7, 0.1, -0.8, 0.3, 0.6, -0.5]).normalize();
++        let searches_before = index.stats().searches;
++        let (_, diag) = index
++            .search_indices_adaptive(&query, 10, None, AdaptivePolicy::AllowGraphFallback)
++            .unwrap();
++        let searches_after = index.stats().searches;
++
++        assert!(diag.graph_fallback_used);
++        assert!(diag.cumulative_exact_scores > 0);
++        assert_eq!(searches_after, searches_before + 1);
++    }
++
++    #[test]
++    fn index_and_universal_planner_share_one_crossover_primitive() {
++        for dimension in [32, 64, 128, 384, 768, 1_536, 2_048] {
++            assert_eq!(
++                HNSQRIndex::default_exact_scan_threshold(dimension),
++                crate::planning::planner::UniversalPlanner::compute_crossover(dimension),
++            );
++        }
++    }
++
++    #[test]
+     fn strict_vs_adaptive_vs_graph_mode_consistency() {
+         let mut config = HNSQRConfig::default();
+         config.rivero_enabled = true;
+--- holosphere7_pristine/src/planning/planner.rs	2026-08-20 20:14:46.539198532 +0000
++++ holosphere7_worktree/src/planning/planner.rs	2026-08-20 20:11:57.501278166 +0000
+@@ -84,18 +84,52 @@
+     pub dense_exact: Option<crate::proof::DenseExactProof>,
+ }
+ 
++/// Empirically calibrated exact-scan/Rivero crossover model.
++///
++/// This is the single canonical production primitive for deciding when linear SIMD
++/// scan is cheaper than indexed routing. Both the public index `Auto` path and the
++/// [`UniversalPlanner`] delegate to this model so planner and execution cannot drift.
++#[derive(Clone, Copy, Debug, PartialEq)]
++pub struct ExactScanCrossoverModel {
++    /// Power-law scale coefficient.
++    pub scale: f64,
++    /// Dimension exponent.
++    pub exponent: f64,
++    /// Lower clamp protecting tiny-dimension extrapolation.
++    pub min_threshold: usize,
++    /// Upper clamp protecting tiny-dimension extrapolation.
++    pub max_threshold: usize,
++}
++
++impl ExactScanCrossoverModel {
++    /// Calibration produced by `dimension_crossover_sweep` after the metric/profile repairs.
++    pub const CALIBRATED: Self = Self {
++        scale: 577_169.2,
++        exponent: 0.770,
++        min_threshold: 512,
++        max_threshold: 100_000,
++    };
++
++    /// Returns the crossover population for a complex vector dimension.
++    #[inline(always)]
++    #[must_use]
++    pub fn threshold(self, complex_dim: usize) -> usize {
++        let d = complex_dim.max(1) as f64;
++        let n_cross = self.scale / d.powf(self.exponent);
++        (n_cross.round() as usize).clamp(self.min_threshold, self.max_threshold)
++    }
++}
++
+ /// Universal Cost-Based Query Planner.
+ pub struct UniversalPlanner;
+ 
+ impl UniversalPlanner {
+-    /// Computes the exact-scan crossover threshold calibrated from empirical sweeps:
+-    /// $$N_{\text{cross}}(D_{\text{complex}}) = 3000.0 + \frac{5,768,286.0}{D_{\text{complex}}^{1.300}}$$
++    /// Computes the canonical exact-scan crossover threshold calibrated from empirical sweeps:
++    /// $$N_{\text{cross}}(D_{\text{complex}}) = \frac{577169.2}{D_{\text{complex}}^{0.770}}$$
+     #[inline(always)]
++    #[must_use]
+     pub fn compute_crossover(complex_dim: usize) -> usize {
+-        let d = complex_dim.max(8) as f64;
+-        let d_pow = d.powf(1.300);
+-        let n_cross = 3000.0 + (5_768_286.0 / d_pow);
+-        n_cross.round().clamp(100.0, 1_000_000.0) as usize
++        ExactScanCrossoverModel::CALIBRATED.threshold(complex_dim)
+     }
+ 
+     /// Plans the optimal execution path given corpus state and query constraints.
+@@ -216,4 +250,12 @@
+             ExecutionPlan::ExactScan { effective_n: 200 }
+         ));
+     }
++
++    #[test]
++    fn calibrated_crossover_model_matches_reported_fit() {
++        assert_eq!(UniversalPlanner::compute_crossover(32), 40_026);
++        assert_eq!(UniversalPlanner::compute_crossover(384), 5_907);
++        assert_eq!(UniversalPlanner::compute_crossover(768), 3_464);
++        assert_eq!(UniversalPlanner::compute_crossover(2_048), 1_628);
++    }
+ }
+--- holosphere7_pristine/src/planning/mod.rs	2026-08-20 20:14:46.539153785 +0000
++++ holosphere7_worktree/src/planning/mod.rs	2026-08-20 20:13:23.589207062 +0000
+@@ -13,5 +13,6 @@
+     AutoForge, DerivedPhysicalConfig, OperatorIntent, OperatorIntentConfig, PlannerProfile,
+ };
+ pub use planner::{
+-    ExecutionPlan, ExecutionProof, QueryModality, RetrievalContract, UniversalPlanner,
++    ExactScanCrossoverModel, ExecutionPlan, ExecutionProof, QueryModality, RetrievalContract,
++    UniversalPlanner,
+ };
+--- holosphere7_pristine/benches/public_dataset_benchmark.rs	2026-08-20 20:14:46.532458275 +0000
++++ holosphere7_worktree/benches/public_dataset_benchmark.rs	2026-08-20 20:13:37.619123022 +0000
+@@ -14,7 +14,7 @@
+  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
+  *///•------------------------------------------------------------------------------------‣
+ 
+-use hnsqr::planning::RetrievalContract;
++use hnsqr::planning::{RetrievalContract, UniversalPlanner};
+ use hnsqr::{DistanceFunction, HNSQRConfig, HNSQRIndex, RiveroSearchMode, SearchPlan, VectorEmbedding};
+ use std::fs::File;
+ use std::io::{self, Read};
+@@ -119,12 +119,10 @@
+     scored
+ }
+ 
+-/// Complex-dimension crossover threshold, replicated from
+-/// UniversalPlanner::compute_crossover so this harness can predict —
+-/// and then verify — which path PlannerDefault should take.
+-/// N_cross = 3000 + 5,768,286 / D_complex^1.3
++/// Complex-dimension crossover threshold read from the canonical production planner
++/// so this harness predicts the same path that `PlannerDefault` will actually execute.
+ fn predicted_crossover(complex_dim: usize) -> f64 {
+-    3000.0 + 5_768_286.0 / (complex_dim as f64).powf(1.3)
++    UniversalPlanner::compute_crossover(complex_dim) as f64
+ }
+ 
+ struct ModeResult {
+--- holosphere7_pristine/src/graph/query/optimizer.rs	2026-08-20 20:14:46.537555540 +0000
++++ holosphere7_worktree/src/graph/query/optimizer.rs	2026-08-20 20:16:29.530823261 +0000
+@@ -3,94 +3,495 @@
+ //! # Cost-Based Logical Plan Optimizer
+ //!▫~•◦-------------------------------------------------------------------‣
+ //!
+-//! v1 rule set (heuristic only — cost model is TODO):
+-//!   R1. Push `Filter` predicates below `Expand` wherever possible.
+-//!   R2. If a `VectorSeed` feeds an `Expand`, prefer vector-first ordering.
+-//!   R3. Apply label-filter `NodeScan` before unconstrained scan.
++//! v1 rule set:
++//!   R1. Push `Filter` predicates into `NodeScan` wherever semantics allow.
++//!   R2. Reorder adjacent independent mandatory `Expand` operators by estimated fan-out.
++//!   R3. Preserve user order when statistics are absent or dependency constraints prevent swapping.
+ //!
+-//! Per the Pinnacle-State rules: performance differences between orderings
+-//! are **prescriptions until physically benchmarked**.  The optimizer
+-//! currently applies R1–R3 as structural transformations only.
++//! The cost model is deliberately compact and deterministic. It uses sealed-generation
++//! cardinality statistics to estimate per-expand fan-out from average degree and optional
++//! relationship-type selectivity. It never reorders `OptionalExpand`, because outer-join
++//! semantics make those transformations non-commutative.
++//!
++//! Performance differences between valid orderings remain [BENCH REQUIRED].
+ /*▫~•◦------------------------------------------------------------------------------------‣
+  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
+  *///•------------------------------------------------------------------------------------‣
+- 
++
++use crate::graph::query::ast::Direction;
+ use crate::graph::query::logical::LogicalPlan;
++use crate::graph::query::symbols::SymbolId;
+ use crate::graph::stats::cardinality::GraphCardinalityStats;
+ 
+-/// Applies a fixed set of heuristic rewrites to a logical plan.
++/// Applies deterministic semantic-preserving rewrites to a logical plan.
+ pub struct Optimizer;
+ 
+ impl Optimizer {
+-    /// Optimise the plan.  Returns the (possibly rewritten) plan.
++    /// Optimises the plan using available cardinality statistics.
+     pub fn optimise(plan: LogicalPlan, stats: Option<&GraphCardinalityStats>) -> LogicalPlan {
+         let plan = Self::push_filters_down(plan);
+-        let plan = Self::reorder_expands_by_cost(plan, stats);
+-        plan
++        Self::reorder_expands_by_cost(plan, stats)
+     }
+ 
+     /// R1: Push filter predicates as close to the source as possible.
+     fn push_filters_down(plan: LogicalPlan) -> LogicalPlan {
+         match plan {
+-            LogicalPlan::Filter { input, predicates } => {
+-                // Try to push into the input if it is a NodeScan or Expand.
+-                match *input {
+-                    LogicalPlan::NodeScan { binding, label_filter, predicates: mut existing } => {
+-                        existing.extend(predicates);
+-                        LogicalPlan::NodeScan { binding, label_filter, predicates: existing }
++            LogicalPlan::Filter { input, predicates } => match *input {
++                LogicalPlan::NodeScan {
++                    binding,
++                    label_filter,
++                    predicates: mut existing,
++                } => {
++                    existing.extend(predicates);
++                    LogicalPlan::NodeScan {
++                        binding,
++                        label_filter,
++                        predicates: existing,
+                     }
+-                    other => LogicalPlan::Filter {
+-                        input: Box::new(Self::push_filters_down(other)),
+-                        predicates,
+-                    },
+                 }
+-            }
+-            LogicalPlan::Expand { input, src_binding, rel_binding, dst_binding, rel_type_filter, direction, min_hops, max_hops } => {
+-                LogicalPlan::Expand {
+-                    input: Box::new(Self::push_filters_down(*input)),
+-                    src_binding,
+-                    rel_binding,
+-                    dst_binding,
+-                    rel_type_filter,
+-                    direction,
+-                    min_hops,
+-                    max_hops,
+-                }
+-            }
+-            LogicalPlan::Limit { input, count } => {
+-                LogicalPlan::Limit { input: Box::new(Self::push_filters_down(*input)), count }
+-            }
+-            LogicalPlan::Project { input, output_bindings } => {
+-                LogicalPlan::Project { input: Box::new(Self::push_filters_down(*input)), output_bindings }
+-            }
++                other => LogicalPlan::Filter {
++                    input: Box::new(Self::push_filters_down(other)),
++                    predicates,
++                },
++            },
++            LogicalPlan::Expand {
++                input,
++                src_binding,
++                rel_binding,
++                dst_binding,
++                rel_type_filter,
++                direction,
++                min_hops,
++                max_hops,
++            } => LogicalPlan::Expand {
++                input: Box::new(Self::push_filters_down(*input)),
++                src_binding,
++                rel_binding,
++                dst_binding,
++                rel_type_filter,
++                direction,
++                min_hops,
++                max_hops,
++            },
++            LogicalPlan::OptionalExpand {
++                input,
++                src_binding,
++                rel_binding,
++                dst_binding,
++                rel_type_filter,
++                direction,
++                min_hops,
++                max_hops,
++            } => LogicalPlan::OptionalExpand {
++                input: Box::new(Self::push_filters_down(*input)),
++                src_binding,
++                rel_binding,
++                dst_binding,
++                rel_type_filter,
++                direction,
++                min_hops,
++                max_hops,
++            },
++            LogicalPlan::Limit { input, count } => LogicalPlan::Limit {
++                input: Box::new(Self::push_filters_down(*input)),
++                count,
++            },
++            LogicalPlan::Project {
++                input,
++                output_bindings,
++            } => LogicalPlan::Project {
++                input: Box::new(Self::push_filters_down(*input)),
++                output_bindings,
++            },
+             other => other,
+         }
+     }
+ 
+-    fn reorder_expands_by_cost(plan: LogicalPlan, stats: Option<&GraphCardinalityStats>) -> LogicalPlan {
++    /// R2: Reorder adjacent, dependency-independent mandatory expands so the lower
++    /// estimated fan-out runs first. Statistics are advisory only; if they are absent,
++    /// the original logical order is preserved exactly.
++    fn reorder_expands_by_cost(
++        plan: LogicalPlan,
++        stats: Option<&GraphCardinalityStats>,
++    ) -> LogicalPlan {
++        let Some(stats) = stats else {
++            return Self::recurse_without_reorder(plan);
++        };
++
+         match plan {
+-            LogicalPlan::Expand { input, src_binding, rel_binding, dst_binding, rel_type_filter, direction, min_hops, max_hops } => {
+-                LogicalPlan::Expand {
+-                    input: Box::new(Self::reorder_expands_by_cost(*input, stats)),
+-                    src_binding, rel_binding, dst_binding, rel_type_filter, direction, min_hops, max_hops,
+-                }
+-            }
+-            LogicalPlan::OptionalExpand { input, src_binding, rel_binding, dst_binding, rel_type_filter, direction, min_hops, max_hops } => {
+-                LogicalPlan::OptionalExpand {
+-                    input: Box::new(Self::reorder_expands_by_cost(*input, stats)),
+-                    src_binding, rel_binding, dst_binding, rel_type_filter, direction, min_hops, max_hops,
++            LogicalPlan::Expand {
++                input,
++                src_binding,
++                rel_binding,
++                dst_binding,
++                rel_type_filter,
++                direction,
++                min_hops,
++                max_hops,
++            } => {
++                let optimised_input = Self::reorder_expands_by_cost(*input, Some(stats));
++
++                match optimised_input {
++                    LogicalPlan::Expand {
++                        input: lower_input,
++                        src_binding: lower_src,
++                        rel_binding: lower_rel,
++                        dst_binding: lower_dst,
++                        rel_type_filter: lower_rel_type,
++                        direction: lower_direction,
++                        min_hops: lower_min_hops,
++                        max_hops: lower_max_hops,
++                    } => {
++                        let base_bindings = lower_input.output_bindings();
++                        let independent = Self::contains_binding(&base_bindings, lower_src)
++                            && Self::contains_binding(&base_bindings, src_binding)
++                            && lower_dst != src_binding
++                            && dst_binding != lower_src
++                            && lower_dst != dst_binding;
++
++                        if independent {
++                            let upper_cost = Self::estimate_expand_fanout(
++                                stats,
++                                rel_type_filter,
++                                direction,
++                                min_hops,
++                                max_hops,
++                            );
++                            let lower_cost = Self::estimate_expand_fanout(
++                                stats,
++                                lower_rel_type,
++                                lower_direction,
++                                lower_min_hops,
++                                lower_max_hops,
++                            );
++
++                            if upper_cost < lower_cost {
++                                let upper_first = LogicalPlan::Expand {
++                                    input: lower_input,
++                                    src_binding,
++                                    rel_binding,
++                                    dst_binding,
++                                    rel_type_filter,
++                                    direction,
++                                    min_hops,
++                                    max_hops,
++                                };
++                                return LogicalPlan::Expand {
++                                    input: Box::new(upper_first),
++                                    src_binding: lower_src,
++                                    rel_binding: lower_rel,
++                                    dst_binding: lower_dst,
++                                    rel_type_filter: lower_rel_type,
++                                    direction: lower_direction,
++                                    min_hops: lower_min_hops,
++                                    max_hops: lower_max_hops,
++                                };
++                            }
++                        }
++
++                        LogicalPlan::Expand {
++                            input: Box::new(LogicalPlan::Expand {
++                                input: lower_input,
++                                src_binding: lower_src,
++                                rel_binding: lower_rel,
++                                dst_binding: lower_dst,
++                                rel_type_filter: lower_rel_type,
++                                direction: lower_direction,
++                                min_hops: lower_min_hops,
++                                max_hops: lower_max_hops,
++                            }),
++                            src_binding,
++                            rel_binding,
++                            dst_binding,
++                            rel_type_filter,
++                            direction,
++                            min_hops,
++                            max_hops,
++                        }
++                    }
++                    other => LogicalPlan::Expand {
++                        input: Box::new(other),
++                        src_binding,
++                        rel_binding,
++                        dst_binding,
++                        rel_type_filter,
++                        direction,
++                        min_hops,
++                        max_hops,
++                    },
+                 }
+             }
+-            LogicalPlan::Filter { input, predicates } => {
+-                LogicalPlan::Filter { input: Box::new(Self::reorder_expands_by_cost(*input, stats)), predicates }
+-            }
+-            LogicalPlan::Limit { input, count } => {
+-                LogicalPlan::Limit { input: Box::new(Self::reorder_expands_by_cost(*input, stats)), count }
+-            }
+-            LogicalPlan::Project { input, output_bindings } => {
+-                LogicalPlan::Project { input: Box::new(Self::reorder_expands_by_cost(*input, stats)), output_bindings }
+-            }
++            LogicalPlan::OptionalExpand {
++                input,
++                src_binding,
++                rel_binding,
++                dst_binding,
++                rel_type_filter,
++                direction,
++                min_hops,
++                max_hops,
++            } => LogicalPlan::OptionalExpand {
++                input: Box::new(Self::reorder_expands_by_cost(*input, Some(stats))),
++                src_binding,
++                rel_binding,
++                dst_binding,
++                rel_type_filter,
++                direction,
++                min_hops,
++                max_hops,
++            },
++            LogicalPlan::Filter { input, predicates } => LogicalPlan::Filter {
++                input: Box::new(Self::reorder_expands_by_cost(*input, Some(stats))),
++                predicates,
++            },
++            LogicalPlan::Limit { input, count } => LogicalPlan::Limit {
++                input: Box::new(Self::reorder_expands_by_cost(*input, Some(stats))),
++                count,
++            },
++            LogicalPlan::Project {
++                input,
++                output_bindings,
++            } => LogicalPlan::Project {
++                input: Box::new(Self::reorder_expands_by_cost(*input, Some(stats))),
++                output_bindings,
++            },
+             other => other,
+         }
+     }
++
++    fn recurse_without_reorder(plan: LogicalPlan) -> LogicalPlan {
++        match plan {
++            LogicalPlan::Expand {
++                input,
++                src_binding,
++                rel_binding,
++                dst_binding,
++                rel_type_filter,
++                direction,
++                min_hops,
++                max_hops,
++            } => LogicalPlan::Expand {
++                input: Box::new(Self::recurse_without_reorder(*input)),
++                src_binding,
++                rel_binding,
++                dst_binding,
++                rel_type_filter,
++                direction,
++                min_hops,
++                max_hops,
++            },
++            LogicalPlan::OptionalExpand {
++                input,
++                src_binding,
++                rel_binding,
++                dst_binding,
++                rel_type_filter,
++                direction,
++                min_hops,
++                max_hops,
++            } => LogicalPlan::OptionalExpand {
++                input: Box::new(Self::recurse_without_reorder(*input)),
++                src_binding,
++                rel_binding,
++                dst_binding,
++                rel_type_filter,
++                direction,
++                min_hops,
++                max_hops,
++            },
++            LogicalPlan::Filter { input, predicates } => LogicalPlan::Filter {
++                input: Box::new(Self::recurse_without_reorder(*input)),
++                predicates,
++            },
++            LogicalPlan::Limit { input, count } => LogicalPlan::Limit {
++                input: Box::new(Self::recurse_without_reorder(*input)),
++                count,
++            },
++            LogicalPlan::Project {
++                input,
++                output_bindings,
++            } => LogicalPlan::Project {
++                input: Box::new(Self::recurse_without_reorder(*input)),
++                output_bindings,
++            },
++            other => other,
++        }
++    }
++
++    #[inline]
++    fn contains_binding(bindings: &[SymbolId], needle: SymbolId) -> bool {
++        bindings.contains(&needle)
++    }
++
++    /// Estimates result fan-out for one expansion. Relationship cardinality is converted
++    /// to an average per-node degree; variable-length traversals use a bounded geometric
++    /// sum over the requested hop range.
++    fn estimate_expand_fanout(
++        stats: &GraphCardinalityStats,
++        rel_type_filter: Option<u16>,
++        direction: Direction,
++        min_hops: u8,
++        max_hops: u8,
++    ) -> f64 {
++        let mut degree = match rel_type_filter {
++            Some(rel_type) if stats.nodes > 0 => stats
++                .relationship_cardinality
++                .get(&rel_type)
++                .copied()
++                .unwrap_or(0) as f64
++                / stats.nodes as f64,
++            _ => stats.average_out_degree,
++        };
++
++        if matches!(direction, Direction::Undirected) {
++            degree *= 2.0;
++        }
++
++        let min_hops = min_hops.max(1);
++        let max_hops = max_hops.max(min_hops);
++        let mut fanout = 0.0;
++        for hop in min_hops..=max_hops {
++            fanout += degree.powi(i32::from(hop));
++        }
++        fanout
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use std::collections::HashMap;
++
++    use super::*;
++
++    fn stats() -> GraphCardinalityStats {
++        let mut relationship_cardinality = HashMap::new();
++        relationship_cardinality.insert(1, 8_000);
++        relationship_cardinality.insert(2, 100);
++        GraphCardinalityStats {
++            nodes: 1_000,
++            edges: 8_100,
++            relationship_cardinality,
++            average_out_degree: 8.1,
++            ..GraphCardinalityStats::default()
++        }
++    }
++
++    fn independent_two_expand_plan() -> LogicalPlan {
++        LogicalPlan::Expand {
++            input: Box::new(LogicalPlan::Expand {
++                input: Box::new(LogicalPlan::NodeScan {
++                    binding: SymbolId(0),
++                    label_filter: None,
++                    predicates: Vec::new(),
++                }),
++                src_binding: SymbolId(0),
++                rel_binding: None,
++                dst_binding: SymbolId(1),
++                rel_type_filter: Some(1),
++                direction: Direction::Outgoing,
++                min_hops: 1,
++                max_hops: 1,
++            }),
++            src_binding: SymbolId(0),
++            rel_binding: None,
++            dst_binding: SymbolId(2),
++            rel_type_filter: Some(2),
++            direction: Direction::Outgoing,
++            min_hops: 1,
++            max_hops: 1,
++        }
++    }
++
++    #[test]
++    fn cheaper_independent_expand_is_moved_closer_to_source() {
++        let optimised = Optimizer::optimise(independent_two_expand_plan(), Some(&stats()));
++        let LogicalPlan::Expand {
++            input,
++            rel_type_filter: outer_type,
++            ..
++        } = optimised
++        else {
++            panic!("expected outer expand");
++        };
++        let LogicalPlan::Expand {
++            rel_type_filter: inner_type,
++            ..
++        } = *input
++        else {
++            panic!("expected inner expand");
++        };
++
++        assert_eq!(inner_type, Some(2));
++        assert_eq!(outer_type, Some(1));
++    }
++
++    #[test]
++    fn dependent_expand_order_is_preserved() {
++        let plan = LogicalPlan::Expand {
++            input: Box::new(LogicalPlan::Expand {
++                input: Box::new(LogicalPlan::NodeScan {
++                    binding: SymbolId(0),
++                    label_filter: None,
++                    predicates: Vec::new(),
++                }),
++                src_binding: SymbolId(0),
++                rel_binding: None,
++                dst_binding: SymbolId(1),
++                rel_type_filter: Some(1),
++                direction: Direction::Outgoing,
++                min_hops: 1,
++                max_hops: 1,
++            }),
++            src_binding: SymbolId(1),
++            rel_binding: None,
++            dst_binding: SymbolId(2),
++            rel_type_filter: Some(2),
++            direction: Direction::Outgoing,
++            min_hops: 1,
++            max_hops: 1,
++        };
++
++        let optimised = Optimizer::optimise(plan, Some(&stats()));
++        let LogicalPlan::Expand {
++            input,
++            rel_type_filter: outer_type,
++            ..
++        } = optimised
++        else {
++            panic!("expected outer expand");
++        };
++        let LogicalPlan::Expand {
++            rel_type_filter: inner_type,
++            ..
++        } = *input
++        else {
++            panic!("expected inner expand");
++        };
++
++        assert_eq!(inner_type, Some(1));
++        assert_eq!(outer_type, Some(2));
++    }
++
++    #[test]
++    fn no_stats_preserves_original_expand_order() {
++        let optimised = Optimizer::optimise(independent_two_expand_plan(), None);
++        let LogicalPlan::Expand {
++            input,
++            rel_type_filter: outer_type,
++            ..
++        } = optimised
++        else {
++            panic!("expected outer expand");
++        };
++        let LogicalPlan::Expand {
++            rel_type_filter: inner_type,
++            ..
++        } = *input
++        else {
++            panic!("expected inner expand");
++        };
++
++        assert_eq!(inner_type, Some(1));
++        assert_eq!(outer_type, Some(2));
++    }
+ }
+--- holosphere7_pristine/src/graph/analytics/louvain.rs	2026-08-20 20:14:46.536800888 +0000
++++ holosphere7_worktree/src/graph/analytics/louvain.rs	2026-08-20 20:16:08.991445252 +0000
+@@ -7,9 +7,9 @@
+ //! iterate over all nodes and greedily move each node to the neighbouring
+ //! community that maximises the modularity gain `ΔQ`.
+ //!
+-//! This is the standard greedy local-move phase.  Phase 2 (community
+-//! coarsening and recursive application) is marked TODO and will be added
+-//! in a follow-on commit once Phase 1 is verified by the unit tests.
++//! This is the standard greedy local-move phase. Phase 2 community coarsening
++//! is implemented by `detect_hierarchical`, which iteratively projects communities
++//! into super-vertices and re-applies Phase 1 until convergence or `max_levels`.
+ //!
+ //! ## Modularity gain formula
+ //!
+--- holosphere7_pristine/src/graph/mutation/apply.rs	2026-08-20 20:14:46.537202315 +0000
++++ holosphere7_worktree/src/graph/mutation/apply.rs	2026-08-20 20:16:41.900627877 +0000
+@@ -311,7 +311,7 @@
+             .as_ref()
+             .ok_or_else(|| HNSQRError::Internal("Graph generation is sealed; cannot write".to_string()))?;
+ 
+-        // Build the edge record with placeholder next pointers.
++        // Build the edge record with zeroed next pointers before linking both adjacency chains.
+         let mut edge = EdgeRecord::new(rel_type, src_idx, dst_idx, weight, 0);
+ 
+         // Thread the new edge into the source node's out-chain.
+--- holosphere7_pristine/src/transport/qir0.rs	2026-08-20 20:14:46.541879826 +0000
++++ holosphere7_worktree/src/transport/qir0.rs	2026-08-20 20:16:41.900862425 +0000
+@@ -363,14 +363,14 @@
+                                     // Full proof propagation requires a proof-carrying search
+                                     // trait variant and is tracked separately.
+                                     let cert_flags: u16 = 0x0001; // CertifiedExact
+-                                    let placeholder_header = MessageHeader {
++                                    let response_header = MessageHeader {
+                                         magic: PROTOCOL_MAGIC,
+                                         opcode: OpCode::Search,
+                                         flags: cert_flags,
+                                         request_id: header.request_id,
+                                         payload_len: 0,
+                                     };
+-                                    placeholder_header.encode(&mut write_buf);
++                                    response_header.encode(&mut write_buf);
+ 
+                                     let payload_start = write_buf.len();
+                                     write_buf.put_u32(results.len() as u32);
+@@ -453,14 +453,14 @@
+ 
+                             if batch_results.len() == queries.len() {
+                                 let header_pos = write_buf.len();
+-                                let placeholder_header = MessageHeader {
++                                let response_header = MessageHeader {
+                                     magic: PROTOCOL_MAGIC,
+                                     opcode: OpCode::BatchSearch,
+                                     flags: 0,
+                                     request_id: header.request_id,
+                                     payload_len: 0,
+                                 };
+-                                placeholder_header.encode(&mut write_buf);
++                                response_header.encode(&mut write_buf);
+ 
+                                 let payload_start = write_buf.len();
+                                 write_buf.put_u32(batch_results.len() as u32);
+--- holosphere7_pristine/README.md	2026-08-20 20:14:46.531245212 +0000
++++ holosphere7_worktree/README.md	2026-08-20 20:13:23.589528956 +0000
+@@ -170,23 +170,23 @@
+ 
+ Exact SIMD linear scans on modern AVX2/AVX-512 hardware process tens of millions of dot products per second. Index routing has non-zero overhead (hashing, pointer traversals, deduplication). HoloSphere's `UniversalPlanner` uses an empirical power-law crossover model:
+ 
+-$$N_{\text{cross}}(D_{\text{complex}}) = 3000.0 + \frac{5,768,286.0}{D_{\text{complex}}^{1.300}}$$
++$$N_{\text{cross}}(D_{\text{complex}}) = \frac{577,169.2}{D_{\text{complex}}^{0.770}}$$
+ 
+ ```
+   ┌────────┬─────────┬──────────────┬──────────────────┬──────────────┬───────────────────────────────────────────┐
+   │ Real D │ Cmplx D │ Measured N   │ Model Prediction │ Rel Error    │ Planner Execution Decision                │
+   ├────────┼─────────┼──────────────┼──────────────────┼──────────────┼───────────────────────────────────────────┤
+-  │     64 │      32 │      60293 N │          66731 N │      10.68%  │ Linear SIMD Scan for N < 60K; Rivero > 60K│
+-  │    128 │      64 │      40000 N │          28883 N │      27.79%  │ Linear SIMD Scan for N < 40K              │
+-  │    256 │     128 │      24000 N │          13512 N │      43.70%  │ Linear SIMD Scan for N < 24K              │
+-  │    384 │     192 │     5413 N * │           9205 N │      70.06%  │ Linear SIMD Scan for N < 5.4K             │
+-  │    512 │     256 │      13000 N │           7269 N │      44.08%  │ Linear SIMD Scan for N < 13K              │
+-  │    768 │     384 │       7996 N │           5520 N │      30.96%  │ Linear SIMD Scan for N < 8.0K             │
+-  │   1024 │     512 │       6674 N │           4734 N │      29.07%  │ Linear SIMD Scan for N < 6.7K             │
+-  │   1536 │     768 │       5500 N │           4023 N │      26.85%  │ Linear SIMD Scan for N < 5.5K             │
+-  │   2048 │    1024 │       4500 N │           3704 N │      17.69%  │ Linear SIMD Scan for N < 4.5K             │
+-  │   3072 │    1536 │       3050 N │           3416 N │      11.99%  │ Linear SIMD Scan for N < 3.1K             │
+-  │   4096 │    2048 │       2800 N │           3286 N │      17.36%  │ Linear SIMD Scan for N < 2.8K             │
++  │     64 │      32 │      60293 N │          40026 N │      33.61%  │ Linear SIMD Scan for N < 40.0K            │
++  │    128 │      64 │      40000 N │          23472 N │      41.32%  │ Linear SIMD Scan for N < 23.5K            │
++  │    256 │     128 │      24000 N │          13764 N │      42.65%  │ Linear SIMD Scan for N < 13.8K            │
++  │    384 │     192 │     5413 N * │          10073 N │      86.09%  │ Linear SIMD Scan for N < 10.1K            │
++  │    512 │     256 │      13000 N │           8072 N │      37.91%  │ Linear SIMD Scan for N < 8.1K             │
++  │    768 │     384 │       7996 N │           5907 N │      26.13%  │ Linear SIMD Scan for N < 5.9K             │
++  │   1024 │     512 │       6674 N │           4733 N │      29.08%  │ Linear SIMD Scan for N < 4.7K             │
++  │   1536 │     768 │       5500 N │           3464 N │      37.02%  │ Linear SIMD Scan for N < 3.5K             │
++  │   2048 │    1024 │       4500 N │           2776 N │      38.31%  │ Linear SIMD Scan for N < 2.8K             │
++  │   3072 │    1536 │       3050 N │           2031 N │      33.41%  │ Linear SIMD Scan for N < 2.0K             │
++  │   4096 │    2048 │       2800 N │           1628 N │      41.86%  │ Linear SIMD Scan for N < 1.6K             │
+   └────────┴─────────┴──────────────┴──────────────────┴──────────────┴───────────────────────────────────────────┘
+   * Note: D=384 reflects an empirical clustering boundary anomaly under the benchmark sweep harness.
+ ```

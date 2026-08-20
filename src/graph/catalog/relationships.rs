@@ -81,6 +81,11 @@ impl RelTypeCatalog {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// Captures a frozen point-in-time snapshot of the relationship type catalog.
+    pub fn snapshot(&self) -> RelTypeCatalogSnapshot {
+        RelTypeCatalogSnapshot::from(self)
+    }
 }
 
 /// Compact serializable snapshot for Raft-replication.

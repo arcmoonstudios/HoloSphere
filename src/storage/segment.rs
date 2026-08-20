@@ -646,35 +646,6 @@ impl SegmentedEngine {
         self.delete_internal(id)
     }
 
-    /// Snapshot of current immutable segments for RAII read pinning.
-    pub fn immutable_segments_snapshot(&self) -> Vec<Arc<ImmutableSegment>> {
-        self.immutable_segments.read().unwrap().clone()
-    }
-
-    /// Active mutable segment reference for RAII read pinning.
-    pub fn active_mutable_segment(&self) -> Arc<MutableSegment> {
-        self.active_mutable.read().unwrap().clone()
-    }
-
-    /// Performs search pinned to a specific snapshot of immutables and active segment view.
-    pub fn search_pinned(
-        &self,
-        immutables: &[Arc<ImmutableSegment>],
-        active: &MutableSegment,
-        query: &VectorEmbedding,
-        k: usize,
-        rerank_plan: SemanticRerankPlan,
-    ) -> Vec<(Arc<str>, SimilarityScore)> {
-        let mut all_results = Vec::new();
-        for imm in immutables {
-            all_results.extend(imm.search(query, k, rerank_plan));
-        }
-        all_results.extend(active.search(query, k, rerank_plan));
-        all_results.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        all_results.truncate(k);
-        all_results
-    }
-
     /// Inserts a vector. Durably logs to WAL first if configured, then updates in-memory segments.
     pub fn insert(&self, id: impl Into<NodeId>, vector: VectorEmbedding) -> HNSQRResult<()> {
         let node_id: Arc<str> = id.into();
@@ -955,6 +926,116 @@ impl SegmentedEngine {
             list.push(seg.stats());
         }
         list
+    }
+
+    /// Captures a fully frozen point-in-time snapshot of all vector storage at LSN k.
+    pub fn snapshot(&self) -> ImmutableVectorSnapshot {
+        let immutables = self.immutable_segments.read().unwrap().clone();
+        let active_guard = self.active_mutable.read().unwrap();
+        let active_snapshot = Arc::new(ImmutableSegment::freeze(&active_guard));
+        ImmutableVectorSnapshot {
+            dimension: self.dimension,
+            immutable_segments: immutables,
+            active_snapshot,
+        }
+    }
+
+    /// Snapshot of current immutable segments for RAII read pinning.
+    pub fn immutable_segments_snapshot(&self) -> Vec<Arc<ImmutableSegment>> {
+        self.immutable_segments.read().unwrap().clone()
+    }
+
+    /// Active mutable segment reference for RAII read pinning.
+    pub fn active_mutable_segment(&self) -> Arc<MutableSegment> {
+        self.active_mutable.read().unwrap().clone()
+    }
+
+    /// Performs search pinned to a specific snapshot of immutables and active segment view.
+    pub fn search_pinned(
+        &self,
+        immutables: &[Arc<ImmutableSegment>],
+        active: &MutableSegment,
+        query: &VectorEmbedding,
+        k: usize,
+        rerank_plan: SemanticRerankPlan,
+    ) -> Vec<(Arc<str>, SimilarityScore)> {
+        let mut all_results = Vec::new();
+        for imm in immutables {
+            all_results.extend(imm.search(query, k, rerank_plan));
+        }
+        all_results.extend(active.search(query, k, rerank_plan));
+        all_results.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        all_results.truncate(k);
+        all_results
+    }
+}
+
+/// Sealed point-in-time snapshot of the entire vector storage engine at LSN k.
+/// Contains frozen active and immutable segments; completely isolated from future writes.
+#[derive(Clone)]
+pub struct ImmutableVectorSnapshot {
+    pub dimension: usize,
+    pub immutable_segments: Vec<Arc<ImmutableSegment>>,
+    pub active_snapshot: Arc<ImmutableSegment>,
+}
+
+impl ImmutableVectorSnapshot {
+    pub fn search(
+        &self,
+        query: &VectorEmbedding,
+        k: usize,
+        rerank_plan: SemanticRerankPlan,
+    ) -> Vec<(Arc<str>, SimilarityScore)> {
+        if k == 0 {
+            return Vec::new();
+        }
+        let mut all_results = Vec::new();
+        for seg in &self.immutable_segments {
+            all_results.extend(seg.search(query, k, rerank_plan));
+        }
+        all_results.extend(self.active_snapshot.search(query, k, rerank_plan));
+
+        all_results.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        let mut unique_results = Vec::with_capacity(k);
+        let mut seen = std::collections::HashSet::with_capacity(k * 2);
+        for (id, score) in all_results {
+            if seen.insert(id.clone()) {
+                unique_results.push((id, score));
+                if unique_results.len() >= k {
+                    break;
+                }
+            }
+        }
+        unique_results
+    }
+
+    pub fn search_with_contract(
+        &self,
+        query: &VectorEmbedding,
+        k: usize,
+        contract: RetrievalContract,
+    ) -> Vec<(Arc<str>, SimilarityScore)> {
+        if k == 0 {
+            return Vec::new();
+        }
+        let mut all_results = Vec::new();
+        for seg in &self.immutable_segments {
+            all_results.extend(seg.search_with_contract(query, k, contract));
+        }
+        all_results.extend(self.active_snapshot.search_with_contract(query, k, contract));
+
+        all_results.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        let mut unique_results = Vec::with_capacity(k);
+        let mut seen = std::collections::HashSet::with_capacity(k * 2);
+        for (id, score) in all_results {
+            if seen.insert(id.clone()) {
+                unique_results.push((id, score));
+                if unique_results.len() >= k {
+                    break;
+                }
+            }
+        }
+        unique_results
     }
 }
 

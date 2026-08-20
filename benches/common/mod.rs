@@ -16,7 +16,7 @@ use rand::{RngExt, SeedableRng};
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_BENCH_SEED: u64 = 0x484e_5351_525f_5632;
-const CACHE_VERSION: u32 = 4;
+const CACHE_VERSION: u32 = 6;
 
 /// Multi-tier benchmarking scale configuration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -93,11 +93,24 @@ pub struct TextRetrievalCorpus {
     pub relevance_ground_truth: Vec<Vec<(usize, u32)>>,
 }
 
-/// Directory path for cached benchmark datasets and snapshot indices.
+/// Directory containing durable, prebuilt benchmark databases.
+///
+/// This deliberately lives outside `target/`: `target` is disposable and caused
+/// benchmarks to quietly include index construction after a clean build.  Override
+/// the location with `HNSQR_BENCH_DATABASE_DIR` for a shared benchmark volume.
 pub fn bench_cache_dir() -> PathBuf {
-    let dir = Path::new("target").join("hnsqr-bench-data");
-    let _ = fs::create_dir_all(&dir);
-    dir
+    std::env::var_os("HNSQR_BENCH_DATABASE_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| Path::new("benchmark_databases").to_path_buf())
+}
+
+fn require_prebuilt_snapshot(path: &Path) {
+    assert!(path.is_file(),
+        "prebuilt benchmark database is missing: {}\n\
+         Build it once from the checked-in datasets with:\n\
+           cargo run --release --bin hnsqr_build_bench_db -- --help\n\
+         Benchmark processes never build or overwrite database artifacts.",
+        path.display());
 }
 
 /// High-performance binary `.fvecs` parser.
@@ -303,8 +316,11 @@ pub fn generate_realistic_text_corpus(
     }
 }
 
-/// Retrieves or builds a canonical cached Snapshot V2 index for lightning-fast test execution.
-pub fn get_or_build_snapshot_v2(
+/// Locates a canonical prebuilt Snapshot V2 index.
+///
+/// `seed` remains part of the API for call-site compatibility.  Dataset-backed
+/// artifacts are deterministic, so it does not participate in the filename.
+pub fn open_prebuilt_snapshot_v2(
     scale: BenchScale,
     profile: RiveroProfile,
     seed: u64,
@@ -318,76 +334,25 @@ pub fn get_or_build_snapshot_v2(
         profile, corpus.real_dim
     ));
 
-    if snap_path.exists() {
-        return (snap_path, corpus);
-    }
-
-    // Build index and export canonical snapshot
-    let mut index_config = HNSQRConfig::strict_rivero_for_dim(corpus.real_dim);
-    index_config.max_elements = n.max(1000) + 1000;
-    index_config.rivero_enabled = true;
-    index_config.rivero_witness_degree = 32;
-
-    let mut addr_cfg = index_config.rivero_address_config;
-    addr_cfg.geometry = hnsqr::rivero::VectorGeometry::Real;
-    let builder = RiveroBulkBuilder::with_profile(profile)
-        .with_address_config(addr_cfg)
-        .with_witness_params(32, 16, 8);
-    let built = builder.build(&corpus.folded_corpus).unwrap();
-
-    let index = HNSQRIndex::new(index_config, corpus.real_dim);
-    for (i, v) in corpus.folded_corpus.iter().enumerate() {
-        index.insert(format!("doc-{i}").as_str(), v.clone()).unwrap();
-    }
-    index.install_rivero_state(built).unwrap();
-    index.freeze_rivero_routing();
-
-    index.save_snapshot_v2(&snap_path).unwrap();
+    let _ = seed;
+    require_prebuilt_snapshot(&snap_path);
     (snap_path, corpus)
 }
 
-/// Zero-copy attaches or builds a snapshot-backed HNSQRIndex for any dataset.
-pub fn get_or_build_cached_index(
+/// Zero-copy attaches a prebuilt snapshot-backed HNSQRIndex for any dataset.
+pub fn open_prebuilt_index(
     dataset_tag: &str,
     corpus: &[VectorEmbedding],
     dim: usize,
     profile: RiveroProfile,
 ) -> HNSQRIndex {
-    let snap_path = bench_cache_dir().join(format!("{dataset_tag}_p{:?}_d{dim}_n{}.snapshot", profile, corpus.len()));
-    if snap_path.exists() {
-        if let Ok(index) = HNSQRIndex::open_snapshot_v2(&snap_path, hnsqr::storage::snapshot::SnapshotOpenOptions::default()) {
-            index.freeze_rivero_routing();
-            return index;
-        }
-    }
-
-    let mut config = HNSQRConfig::strict_rivero_for_dim(dim);
-    config.distance_function = hnsqr::DistanceFunction::Cosine;
-    config.max_elements = corpus.len() + 10_000;
-    config.rivero_enabled = false;
-    config.rivero_fallback_on_underfill = false;
-    config.rivero_witness_degree = 32;
-    config.ef_construction = 8;
-    config.m = 8;
-    config.m0 = 8;
-    let index = HNSQRIndex::new(config, dim);
-
-    for (i, v) in corpus.iter().enumerate() {
-        let doc_id = format!("doc_{i}");
-        let _ = index.insert(doc_id.as_str(), v.clone());
-    }
-
-    let mut addr_cfg = index.config().rivero_address_config;
-    addr_cfg.geometry = hnsqr::rivero::VectorGeometry::Real;
-    let builder = RiveroBulkBuilder::with_profile(profile)
-        .with_address_config(addr_cfg)
-        .with_witness_params(32, 16, 8);
-    if let Ok(built_state) = builder.build(corpus) {
-        let _ = index.install_rivero_state(built_state);
-        index.freeze_rivero_routing();
-    }
-
-    let _ = index.save_snapshot_v2(&snap_path);
+    let snap_path = bench_cache_dir().join(format!("{dataset_tag}_v{CACHE_VERSION}_p{:?}_d{dim}_n{}.snapshot", profile, corpus.len()));
+    require_prebuilt_snapshot(&snap_path);
+    let index = HNSQRIndex::open_snapshot_v2(
+        &snap_path,
+        hnsqr::storage::snapshot::SnapshotOpenOptions::default(),
+    ).unwrap_or_else(|error| panic!("invalid prebuilt benchmark database {}: {error}", snap_path.display()));
+    index.freeze_rivero_routing();
     index
 }
 

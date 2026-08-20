@@ -122,6 +122,11 @@ impl EdgeDelta {
         }
     }
 
+    /// Captures an immutable snapshot of edge records and liveness flags.
+    pub fn snapshot(&self) -> (Vec<EdgeRecord>, Vec<bool>) {
+        (self.records.read().clone(), self.live.read().clone())
+    }
+
     /// Appends a new edge record; returns its stable [`RelationshipId`].
     pub fn append(&self, record: EdgeRecord) -> RelationshipId {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);

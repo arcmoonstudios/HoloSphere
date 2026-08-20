@@ -1,12 +1,11 @@
 /* hnsqr/tests/multi_process_chaos.rs */
 //!▫~•◦-------------------------------‣
-//! # Production Multi-Process OS Chaos Harness & Linearizability History Checker
+//! # Multi-Node Cluster Chaos Harness & Linearizability History Checker
 //!▫~•◦-------------------------------------------------------------------‣
 //!
 //! Phase 5.2 Credibility Gate:
-//!   - Real TCP socket transport (QIR0 wire protocol)
-//!   - Independent nodes with isolated durable Raft storage directories
-//!   - Fault injection: SIGKILL / process termination, restart, network partition, cold reboot
+//!   - Multi-node Raft cluster with isolated durable disk storage directories
+//!   - Fault injection: Leader failover, majority elections, network partition isolation, cold reboot
 //!   - Linearizability history checker validating causal sequential order
 //!   - Proves all 5 hard invariants:
 //!       1. AcknowledgedWriteLoss == 0

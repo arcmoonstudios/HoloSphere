@@ -37,8 +37,7 @@ fn main() {
         auth_elapsed_us, if auth_elapsed_us < 5.0 { "✅ PASS" } else { "❌ FAIL" });
 
     // 2. Audit Trail Signing & Checkpoint Overhead
-    let audit_dir = tempfile::tempdir().expect("Create temp dir");
-    let logger = AuditLogger::open(audit_dir.path()).expect("Open audit logger");
+    let logger = AuditLogger::new();
     let action = AuditAction::ApiKeyRevocation { key_id: "key_123".to_string() };
 
     let t1 = Instant::now();
@@ -66,5 +65,10 @@ fn main() {
     println!("   • Tenant Quota Accounting:  {:>8.3} µs / op (Budget: < 2.0 µs) -> {}",
         tenant_elapsed_us, if tenant_elapsed_us < 2.0 { "✅ PASS" } else { "❌ FAIL" });
 
-    println!("\n✨ ALL INFRASTRUCTURE PERFORMANCE BUDGETS SATISFIED.\n");
+    let all_passed = auth_elapsed_us < 5.0 && audit_elapsed_us < 10.0 && tenant_elapsed_us < 2.0;
+    if all_passed {
+        println!("\n✨ ALL INFRASTRUCTURE PERFORMANCE BUDGETS SATISFIED.\n");
+    } else {
+        panic!("\n❌ ONE OR MORE INFRASTRUCTURE PERFORMANCE BUDGETS EXCEEDED.\n");
+    }
 }

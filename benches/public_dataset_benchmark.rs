@@ -14,7 +14,7 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use hnsqr::planning::RetrievalContract;
+use hnsqr::planning::{RetrievalContract, UniversalPlanner};
 use hnsqr::{DistanceFunction, HNSQRConfig, HNSQRIndex, RiveroSearchMode, SearchPlan, VectorEmbedding};
 use std::fs::File;
 use std::io::{self, Read};
@@ -119,12 +119,10 @@ fn compute_brute_force_ground_truth(
     scored
 }
 
-/// Complex-dimension crossover threshold, replicated from
-/// UniversalPlanner::compute_crossover so this harness can predict —
-/// and then verify — which path PlannerDefault should take.
-/// N_cross = 3000 + 5,768,286 / D_complex^1.3
+/// Complex-dimension crossover threshold read from the canonical production planner
+/// so this harness predicts the same path that `PlannerDefault` will actually execute.
 fn predicted_crossover(complex_dim: usize) -> f64 {
-    3000.0 + 5_768_286.0 / (complex_dim as f64).powf(1.3)
+    UniversalPlanner::compute_crossover(complex_dim) as f64
 }
 
 struct ModeResult {

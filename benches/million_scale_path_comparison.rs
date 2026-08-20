@@ -123,6 +123,7 @@ fn benchmark_million_dataset(name: &str, base_path: &Path, query_path: &Path, di
         config.max_elements = corpus.len() + 10_000;
         config.rivero_fallback_on_underfill = false;
         config.rivero_witness_degree = 32;
+        config.rivero_address_config.geometry = hnsqr::rivero::VectorGeometry::Real;
         let index = HNSQRIndex::new(config, dim);
 
         println!("  1/3: Populating Arena with {} vectors in deterministic slot order...", corpus.len());
@@ -135,10 +136,10 @@ fn benchmark_million_dataset(name: &str, base_path: &Path, query_path: &Path, di
 
         println!("  2/3: Building Parallel Rivero E8 State across all CPU threads via Rayon...");
         let t_bulk = Instant::now();
-        let mut addr_cfg = index.config().rivero_address_config;
-        addr_cfg.geometry = hnsqr::rivero::VectorGeometry::Real;
+        let addr_cfg = index.config().rivero_address_config;
         let builder = RiveroBulkBuilder::with_profile(RiveroProfile::Strict)
             .with_address_config(addr_cfg)
+            .with_distance_function(DistanceFunction::Cosine)
             .with_witness_params(32, 16, 8);
         let built_state = builder.build(&corpus).expect("Bulk build failed");
         println!("  Rivero Bulk State computed in {:.2?}", t_bulk.elapsed());

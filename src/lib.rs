@@ -1621,7 +1621,7 @@ pub struct AdaptiveSearchDiagnostics {
     pub graph_fallback_used: bool,
     /// Cumulative compact resident codes scanned across all stages.
     pub cumulative_resident_scans: usize,
-    /// Cumulative exact vector score evaluations performed.
+    /// Cumulative exact vector score evaluations performed by Rivero stages before any graph fallback.
     pub cumulative_exact_scores: usize,
     /// Detailed confidence sub-metrics at final stage.
     pub confidence: RiveroConfidence,
@@ -1641,7 +1641,7 @@ pub struct HNSQRIndex {
     mmap_arena: Option<Arc<MmapArena>>,
     metadata_index: MetadataInvertedIndex,
     rivero_index: RiveroTerritoryIndex,
-    rivero_compiler: rivero::RiveroCompiler,
+    rivero_compiler: RwLock<rivero::RiveroCompiler>,
     /// String-to-index lookup. Key is `Arc<str>` shared with `Node::external_id`:
     /// `HashMap<Arc<str>, NodeIndex>` supports zero-copy `&str` lookups via `Borrow<str>`.
     id_to_index: RwLock<HashMap<Arc<str>, NodeIndex>>,
@@ -1668,19 +1668,8 @@ impl HNSQRIndex {
             layers.push(RwLock::new(Vec::new()));
         }
 
-        let mut rivero_address_config = config.rivero_address_config;
-        if matches!(
-            config.distance_function,
-            DistanceFunction::ProjectiveOverlap
-                | DistanceFunction::ProjectiveSineDistance
-                | DistanceFunction::PhaseAlignedChordalDistance
-        ) {
-            rivero_address_config.geometry = rivero::VectorGeometry::ComplexPhaseInvariant;
-        } else {
-            rivero_address_config.geometry = rivero::VectorGeometry::Real;
-        }
         let rivero_compiler =
-            rivero::RiveroCompiler::with_config(dimension, rivero_address_config);
+            rivero::RiveroCompiler::with_config(dimension, config.rivero_address_config);
 
         Self {
             config: RwLock::new(config),
@@ -1689,7 +1678,7 @@ impl HNSQRIndex {
             mmap_arena: None,
             metadata_index: MetadataInvertedIndex::new(),
             rivero_index: RiveroTerritoryIndex::new(),
-            rivero_compiler,
+            rivero_compiler: RwLock::new(rivero_compiler),
             id_to_index: RwLock::new(HashMap::new()),
             layers: layers.into_boxed_slice(),
             entry_points: RwLock::new(SmallVec::new()),
@@ -1765,19 +1754,8 @@ impl HNSQRIndex {
             layers.push(RwLock::new(Vec::new()));
         }
 
-        let mut rivero_address_config = config.rivero_address_config;
-        if matches!(
-            config.distance_function,
-            DistanceFunction::ProjectiveOverlap
-                | DistanceFunction::ProjectiveSineDistance
-                | DistanceFunction::PhaseAlignedChordalDistance
-        ) {
-            rivero_address_config.geometry = rivero::VectorGeometry::ComplexPhaseInvariant;
-        } else {
-            rivero_address_config.geometry = rivero::VectorGeometry::Real;
-        }
         let rivero_compiler =
-            rivero::RiveroCompiler::with_config(dimension, rivero_address_config);
+            rivero::RiveroCompiler::with_config(dimension, config.rivero_address_config);
 
         Ok(Self {
             config: RwLock::new(config),
@@ -1786,7 +1764,7 @@ impl HNSQRIndex {
             mmap_arena: Some(Arc::new(mmap)),
             metadata_index: MetadataInvertedIndex::new(),
             rivero_index: RiveroTerritoryIndex::new(),
-            rivero_compiler,
+            rivero_compiler: RwLock::new(rivero_compiler),
             id_to_index: RwLock::new(HashMap::new()),
             layers: layers.into_boxed_slice(),
             entry_points: RwLock::new(SmallVec::new()),
@@ -1821,18 +1799,7 @@ impl HNSQRIndex {
             layers.push(RwLock::new(Vec::new()));
         }
 
-        let mut rivero_address_config = config.rivero_address_config;
-        if matches!(
-            config.distance_function,
-            DistanceFunction::ProjectiveOverlap
-                | DistanceFunction::ProjectiveSineDistance
-                | DistanceFunction::PhaseAlignedChordalDistance
-        ) {
-            rivero_address_config.geometry = rivero::VectorGeometry::ComplexPhaseInvariant;
-        } else {
-            rivero_address_config.geometry = rivero::VectorGeometry::Real;
-        }
-        let rivero_compiler = rivero::RiveroCompiler::with_config(dim, rivero_address_config);
+        let rivero_compiler = rivero::RiveroCompiler::with_config(dim, config.rivero_address_config);
 
         Ok(Self {
             config: RwLock::new(config),
@@ -1841,7 +1808,7 @@ impl HNSQRIndex {
             mmap_arena: Some(Arc::new(mmap)),
             metadata_index: MetadataInvertedIndex::new(),
             rivero_index: RiveroTerritoryIndex::new(),
-            rivero_compiler,
+            rivero_compiler: RwLock::new(rivero_compiler),
             id_to_index: RwLock::new(HashMap::new()),
             layers: layers.into_boxed_slice(),
             entry_points: RwLock::new(SmallVec::new()),
@@ -1937,7 +1904,19 @@ impl HNSQRIndex {
         let denom = (q_norm_sq * v_norm_sq).max(1e-12);
         match dist_fn {
             DistanceFunction::Cosine => (ip.re / denom.sqrt()).clamp(-1.0, 1.0),
-            _ => (ip.norm_sqr() / denom).clamp(0.0, 1.0),
+            DistanceFunction::ProjectiveOverlap => (ip.norm_sqr() / denom).clamp(0.0, 1.0),
+            DistanceFunction::ProjectiveSineDistance => {
+                let p = (ip.norm_sqr() / denom).clamp(0.0, 1.0);
+                1.0 - (1.0 - p).max(0.0).sqrt()
+            }
+            DistanceFunction::PhaseAlignedChordalDistance => {
+                let p = (ip.norm_sqr() / denom).clamp(0.0, 1.0);
+                2.0 - (2.0 * (1.0 - p.sqrt())).max(0.0).sqrt()
+            }
+            DistanceFunction::Euclidean => {
+                let dist_sq = (q_norm_sq + v_norm_sq - 2.0 * ip.re).max(0.0);
+                -dist_sq.sqrt()
+            }
         }
     }
 
@@ -2362,7 +2341,7 @@ impl HNSQRIndex {
         }
 
         let build_graph = !rivero_enabled || rivero_graph_fallback;
-        let rivero_address = rivero_enabled.then(|| self.rivero_compiler.compile(data));
+        let rivero_address = rivero_enabled.then(|| self.rivero_compiler.read().compile(data));
         let witnesses = if rivero_enabled && rivero_witness_degree > 0 {
             self.select_rivero_witnesses(
                 data,
@@ -2909,16 +2888,14 @@ impl HNSQRIndex {
         Ok(results)
     }
 
-    /// Computes the empirical exact scan crossover threshold calibrated to vector dimension.
+    /// Computes the canonical empirical exact-scan crossover threshold for a complex vector dimension.
     ///
-    /// Derived from the empirical power-law crossover model:
-    /// $$N_{\text{cross}}(D_{\text{complex}}) = 850.0 + \frac{1,416,904.5}{D_{\text{complex}}^{0.860}}$$
+    /// Delegates to [`crate::planning::planner::ExactScanCrossoverModel`] so the index `Auto`
+    /// path and [`crate::planning::planner::UniversalPlanner`] cannot diverge.
     #[inline]
     #[must_use]
     pub fn default_exact_scan_threshold(dimension: usize) -> usize {
-        let dim = (dimension.max(1)) as f64;
-        let est = 850.0 + 1_416_904.5 / dim.powf(0.860);
-        (est.round() as usize).clamp(512, 100_000)
+        crate::planning::planner::UniversalPlanner::compute_crossover(dimension)
     }
 
     /// Searches for the $k$ nearest neighbor internal arena indices with an optional Roaring Bitmap filter mask.
@@ -2984,7 +2961,9 @@ impl HNSQRIndex {
             .fetch_max(active, AtomicOrdering::Relaxed);
         defer! { self.active_searches.fetch_sub(1, AtomicOrdering::Relaxed); }
 
-        self.search_indices_graph_internal(query, k, filter_mask, start_time)
+        let result = self.search_indices_graph_internal(query, k, filter_mask);
+        self.record_search_latency(start_time);
+        result
     }
 
     /// Builds or rebuilds the canonical corpus-covering semantic proof hierarchy.
@@ -3066,7 +3045,7 @@ impl HNSQRIndex {
         let tree = self.get_or_build_proof_tree();
 
         let rivero_cfg = RiveroProfile::Strict.config();
-        let addr = self.rivero_compiler.compile(q_norm.complex_data());
+        let addr = self.rivero_compiler.read().compile(q_norm.complex_data());
         let mut seed_slots = Vec::new();
         self.rivero_index.with_candidates_config(&addr, &rivero_cfg, |cands, _| {
             seed_slots.extend_from_slice(cands);
@@ -3199,6 +3178,34 @@ impl HNSQRIndex {
                     }
                 }
             }
+            crate::planning::planner::ExecutionPlan::LutzPacRelaxed { epsilon, delta, initial_seed_cap: _ } => {
+                let q_norm = query.clone().into_normalized();
+                let tree = self.build_proof_tree();
+                let seed_slots: Vec<NodeIndex> = (0..self.arena.live_len() as NodeIndex).take(256).collect();
+                let normalized_vectors: Vec<VectorEmbedding> = (0..self.arena.len())
+                    .map(|i| {
+                        let slice = self.arena.get_vector_slice(i as NodeIndex);
+                        VectorEmbedding::from_complex(slice.to_vec()).into_normalized()
+                    })
+                    .collect();
+                let seg_view = crate::proof::SegmentProofView {
+                    tree: &tree,
+                    vectors: &normalized_vectors,
+                    lutz_codes: None,
+                    tombstones: None,
+                };
+                let (results, _) = crate::proof::GlobalPacProofSearch::search(
+                    &q_norm,
+                    k,
+                    &[seg_view],
+                    &[],
+                    &seed_slots,
+                    filter_mask,
+                    epsilon,
+                    delta,
+                );
+                Ok(results)
+            }
             crate::planning::planner::ExecutionPlan::RiveroRetrieval {
                 profile,
                 candidate_cap,
@@ -3219,7 +3226,6 @@ impl HNSQRIndex {
         query: &VectorEmbedding,
         k: usize,
         filter_mask: Option<&roaring::RoaringBitmap>,
-        start_time: Instant,
     ) -> HNSQRResult<Vec<(NodeIndex, SimilarityScore)>> {
         let eps = self.entry_points.read().clone();
         if eps.is_empty() {
@@ -3289,7 +3295,6 @@ impl HNSQRIndex {
             .map(|c| (c.index, c.similarity))
             .collect();
 
-        self.record_search_latency(start_time);
         Ok(rescored)
     }
 
@@ -3440,7 +3445,9 @@ impl HNSQRIndex {
             .fetch_max(active, AtomicOrdering::Relaxed);
         defer! { self.active_searches.fetch_sub(1, AtomicOrdering::Relaxed); }
 
-        self.search_indices_graph_internal(query, k, filter_mask, start_time)
+        let result = self.search_indices_graph_internal(query, k, filter_mask);
+        self.record_search_latency(start_time);
+        result
     }
 
     /// Strict Rivero search with guaranteed mathematically bounded corpus-independent ceiling.
@@ -3573,16 +3580,15 @@ impl HNSQRIndex {
                         witness_degree.min(32),
                     ),
                     RiveroProfile::Strict => (
-                        witness_seed_limit.min(32),
-                        witness_second_seed_limit.min(6),
-                        witness_degree.min(48),
+                        witness_seed_limit,
+                        witness_second_seed_limit,
+                        witness_degree,
                     ),
                 };
 
                 all_scored.sort_unstable_by(|lhs, rhs| {
                     rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
                 });
-                let mut kth_best = all_scored.get(k.saturating_sub(1)).map_or(f32::NEG_INFINITY, |s| s.1);
                 let mut seeds: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_SEEDS]> = SmallVec::new();
                 seeds.extend(all_scored.iter().take(stage_seeds).map(|c| c.0));
 
@@ -3622,12 +3628,7 @@ impl HNSQRIndex {
                         );
                         let candidate = (index, score);
                         all_scored.push(candidate);
-                        if score >= kth_best - 0.05 {
-                            first_hop_scored.push(candidate);
-                            if score > kth_best {
-                                kth_best = score;
-                            }
-                        }
+                        first_hop_scored.push(candidate);
                     }
                 }
 
@@ -3752,14 +3753,28 @@ impl HNSQRIndex {
             }
         });
 
+        // Preserve Rivero-stage exact work before optional fallback consumes `all_scored`.
+        let cumulative_exact_scores = all_scored.len();
         let mut graph_fallback_used = false;
         if latest_confidence.escalation_recommended
             && policy == AdaptivePolicy::AllowGraphFallback
             && current_profile == RiveroProfile::Strict
         {
-            let graph_results =
-                self.search_indices_graph_internal(query, k, filter_mask, start_time)?;
-            latest_results = graph_results;
+            let graph_results = self.search_indices_graph_internal(query, k, filter_mask)?;
+            let mut combined_map: std::collections::HashMap<NodeIndex, SimilarityScore> =
+                std::collections::HashMap::with_capacity(all_scored.len() + graph_results.len());
+            for (idx, score) in all_scored.drain(..) {
+                combined_map.insert(idx, score);
+            }
+            for (idx, score) in graph_results {
+                combined_map.entry(idx).or_insert(score);
+            }
+            let mut combined: Vec<(NodeIndex, SimilarityScore)> = combined_map.into_iter().collect();
+            combined.sort_unstable_by(|lhs, rhs| {
+                rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
+            });
+            combined.truncate(k);
+            latest_results = combined;
             graph_fallback_used = true;
             latest_rivero_diag.fallback_used = true;
         }
@@ -3775,7 +3790,7 @@ impl HNSQRIndex {
             escalated: stages_executed > 1,
             graph_fallback_used,
             cumulative_resident_scans: route_state.cumulative_scans,
-            cumulative_exact_scores: all_scored.len(),
+            cumulative_exact_scores,
             confidence: latest_confidence,
             rivero: latest_rivero_diag,
         };
@@ -3877,6 +3892,27 @@ impl HNSQRIndex {
         Ok((resolved, diagnostics))
     }
 
+    /// Rivero search executed strictly under a specific profile's budget and witness parameters.
+    pub fn search_indices_profile(
+        &self,
+        query: &VectorEmbedding,
+        k: usize,
+        filter_mask: Option<&roaring::RoaringBitmap>,
+        profile: RiveroProfile,
+    ) -> HNSQRResult<(Vec<(NodeIndex, SimilarityScore)>, RiveroSearchDiagnostics)> {
+        let address = self.compile_rivero_address(query)?;
+        let start_time = Instant::now();
+        let active = self.active_searches.fetch_add(1, AtomicOrdering::Relaxed) + 1;
+        self.peak_active_searches
+            .fetch_max(active, AtomicOrdering::Relaxed);
+        defer! { self.active_searches.fetch_sub(1, AtomicOrdering::Relaxed); }
+
+        let (resolved, diagnostics) =
+            self.resolve_rivero_candidates_profile(query, &address, k, filter_mask, profile)?;
+        self.record_rivero_search(start_time, diagnostics, false);
+        Ok((resolved, diagnostics))
+    }
+
     /// Compiles an embedding into its fixed-size Rivero routing address.
     pub fn compile_rivero_address(&self, query: &VectorEmbedding) -> HNSQRResult<RiveroAddress> {
         if query.dimension() != self.dimension {
@@ -3885,7 +3921,7 @@ impl HNSQRIndex {
                 actual: query.dimension(),
             });
         }
-        Ok(self.rivero_compiler.compile(query.complex_data()))
+        Ok(self.rivero_compiler.read().compile(query.complex_data()))
     }
 
     /// Evaluates a structured boolean metadata filter expression into a Roaring Bitmap mask.
@@ -4068,20 +4104,21 @@ impl HNSQRIndex {
         vectors: &[VectorEmbedding],
         profile: RiveroProfile,
     ) -> HNSQRResult<BulkBuildTelemetry> {
-        let (degree, seeds, second_seeds) = {
+        let (degree, seeds, second_seeds, addr_cfg, dist_fn) = {
             let cfg = self.config.read();
             (
                 cfg.rivero_witness_degree,
                 cfg.rivero_witness_seeds,
                 cfg.rivero_witness_second_seeds,
+                cfg.rivero_address_config,
+                cfg.distance_function,
             )
         };
 
-        let builder = RiveroBulkBuilder::with_profile(profile).with_witness_params(
-            degree,
-            seeds,
-            second_seeds,
-        );
+        let builder = RiveroBulkBuilder::with_profile(profile)
+            .with_address_config(addr_cfg)
+            .with_distance_function(dist_fn)
+            .with_witness_params(degree, seeds, second_seeds);
 
         let built = builder.build(vectors)?;
         let telemetry = built.telemetry.clone();
@@ -4095,8 +4132,51 @@ impl HNSQRIndex {
         let BuiltRiveroState {
             territory,
             witnesses,
+            descriptor,
             ..
         } = built;
+
+        if descriptor.dimension != self.dimension {
+            return Err(HNSQRError::DimensionMismatch {
+                expected: self.dimension,
+                actual: descriptor.dimension,
+            });
+        }
+        if descriptor.schema_version != crate::rivero::RIVERO_SCHEMA_VERSION {
+            return Err(HNSQRError::InvalidConfig(format!(
+                "BuiltRiveroState schema version mismatch: expected {}, found {}",
+                crate::rivero::RIVERO_SCHEMA_VERSION,
+                descriptor.schema_version
+            )));
+        }
+
+        {
+            let cfg = self.config.read();
+            if descriptor.distance_function != cfg.distance_function {
+                return Err(HNSQRError::InvalidConfig(format!(
+                    "Rivero state metric mismatch: index={:?}, built={:?}",
+                    cfg.distance_function,
+                    descriptor.distance_function
+                )));
+            }
+            if descriptor.address_config != cfg.rivero_address_config {
+                return Err(HNSQRError::InvalidConfig(
+                    "Rivero state address schema does not match live index".into(),
+                ));
+            }
+        }
+
+        // Synchronize live Rivero execution settings
+        {
+            let mut cfg = self.config.write();
+            cfg.rivero_config = descriptor.rivero_config;
+            cfg.rivero_witness_degree = descriptor.witness_degree;
+            cfg.rivero_witness_seeds = descriptor.witness_seeds;
+            cfg.rivero_witness_second_seeds = descriptor.witness_second_seeds;
+            cfg.rivero_enabled = true;
+        }
+        *self.rivero_compiler.write() =
+            rivero::RiveroCompiler::with_config(self.dimension, descriptor.address_config);
 
         // Install witnesses into arena nodes
         for (slot, witness_list) in witnesses.into_iter().enumerate() {
@@ -4107,7 +4187,6 @@ impl HNSQRIndex {
 
         // Install territory index
         self.rivero_index.replace_from(territory);
-        self.config.write().rivero_enabled = true;
 
         Ok(())
     }
@@ -4170,6 +4249,209 @@ impl HNSQRIndex {
         let mut config = self.config.read().rivero_config;
         config.cell_budget = per_cell_budget;
         self.resolve_rivero_candidates_config(query, address, k, filter_mask, &config)
+    }
+
+    fn resolve_rivero_candidates_profile(
+        &self,
+        query: &VectorEmbedding,
+        address: &RiveroAddress,
+        k: usize,
+        filter_mask: Option<&roaring::RoaringBitmap>,
+        profile: RiveroProfile,
+    ) -> HNSQRResult<(Vec<(NodeIndex, SimilarityScore)>, RiveroSearchDiagnostics)> {
+        self.validate_rivero_query(query, address)?;
+        let query_data = query.complex_data();
+        let query_norm_sq = query.norm_squared();
+        let rivero_config = profile.config();
+        let (witness_degree, witness_seed_limit, witness_second_seed_limit, strict_rivero, dist_fn) = {
+            let config = self.config.read();
+            (
+                rivero_witness::bounded_degree(config.rivero_witness_degree).min(profile.witness_degree()),
+                rivero_witness::bounded_seeds(config.rivero_witness_seeds).min(profile.witness_seeds()),
+                rivero_witness::bounded_seeds(config.rivero_witness_second_seeds).min(profile.witness_second_seeds()),
+                !config.rivero_fallback_on_underfill,
+                config.distance_function,
+            )
+        };
+
+        Ok(self
+            .rivero_index
+            .with_candidates_config(address, &rivero_config, |candidates, route| {
+                let mut scored = Vec::with_capacity(candidates.len() + witness_seed_limit * witness_degree * 2);
+                let mut diagnostics = RiveroSearchDiagnostics {
+                    cells_probed: route.cells_probed,
+                    resident_reads: route.resident_reads,
+                    resident_scans: route.resident_scans,
+                    candidate_read_bound: route.candidate_read_bound,
+                    resident_scan_bound: route.resident_scan_bound,
+                    unique_candidates: route.unique_candidates,
+                    raw_unique_candidates: route.raw_unique_candidates,
+                    route_candidates_selected: route.unique_candidates,
+                    raw_unique_candidate_bound: route.raw_unique_candidate_bound,
+                    selected_candidate_bound: route.selected_candidate_bound,
+                    witness_edge_scan_bound: rivero_witness::witness_two_hop_edge_scan_bound(
+                        witness_seed_limit,
+                        witness_second_seed_limit,
+                        witness_degree,
+                    ),
+                    ..RiveroSearchDiagnostics::default()
+                };
+
+                THREAD_VISITED_POOL.with(|pool| {
+                    let mut visited = pool.borrow_mut();
+                    let epoch = visited.next_epoch(self.arena.len());
+
+                    let eval_limit = candidates.len().min(profile.candidate_eval_limit());
+                    for (cand_idx, &index) in candidates[..eval_limit].iter().enumerate() {
+                        if cand_idx + 4 < eval_limit {
+                            let next_cand = candidates[cand_idx + 4];
+                            if self.arena.is_live(next_cand) {
+                                let next_v = self.arena.get_vector_slice(next_cand);
+                                prefetch_vector(next_v);
+                            }
+                        }
+
+                        visited.mark_visited(index, epoch);
+                        if !self.arena.is_live(index) {
+                            diagnostics.non_live_rejections += 1;
+                            continue;
+                        }
+                        if filter_mask.is_some_and(|mask| !mask.contains(index)) {
+                            diagnostics.filter_rejections += 1;
+                            continue;
+                        }
+                        let vector = self.arena.get_vector_slice(index);
+                        let norm_sq = self.arena.get_norm_squared(index);
+                        diagnostics.exact_score_evaluations += 1;
+                        scored.push((
+                            index,
+                            self.similarity_score_slices_with_metric(
+                                query_data,
+                                vector,
+                                query_norm_sq,
+                                norm_sq,
+                                dist_fn,
+                            ),
+                        ));
+                    }
+
+                    scored.sort_unstable_by(|lhs, rhs| {
+                        rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
+                    });
+                    let mut seeds: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_SEEDS]> = SmallVec::new();
+                    seeds.extend(
+                        scored
+                            .iter()
+                            .take(witness_seed_limit)
+                            .map(|candidate| candidate.0),
+                    );
+                    diagnostics.witness_seeds = seeds.len();
+
+                    let mut first_hop_scored: SmallVec<
+                        [(NodeIndex, SimilarityScore);
+                            RIVERO_WITNESS_MAX_DEGREE * RIVERO_WITNESS_MAX_SEEDS],
+                    > = SmallVec::new();
+                    let mut connections: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_DEGREE]> =
+                        SmallVec::new();
+                    for seed in seeds {
+                        self.copy_rivero_witness_connections(
+                            seed,
+                            strict_rivero,
+                            witness_degree,
+                            &mut connections,
+                        );
+                        for &index in &connections {
+                            diagnostics.witness_edges_scanned += 1;
+                            if visited.is_visited(index, epoch) {
+                                continue;
+                            }
+                            visited.mark_visited(index, epoch);
+                            diagnostics.witness_candidates_added += 1;
+                            diagnostics.unique_candidates += 1;
+                            if !self.arena.is_live(index) {
+                                diagnostics.non_live_rejections += 1;
+                                continue;
+                            }
+                            if filter_mask.is_some_and(|mask| !mask.contains(index)) {
+                                diagnostics.filter_rejections += 1;
+                                continue;
+                            }
+                            let vector = self.arena.get_vector_slice(index);
+                            let norm_sq = self.arena.get_norm_squared(index);
+                            diagnostics.exact_score_evaluations += 1;
+                            let score = self.similarity_score_slices_with_metric(
+                                query_data,
+                                vector,
+                                query_norm_sq,
+                                norm_sq,
+                                dist_fn,
+                            );
+                            let candidate = (index, score);
+                            scored.push(candidate);
+                            first_hop_scored.push(candidate);
+                        }
+                    }
+
+                    first_hop_scored.sort_unstable_by(|lhs, rhs| {
+                        rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
+                    });
+                    let mut second_seeds: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_SEEDS]> =
+                        SmallVec::new();
+                    second_seeds.extend(
+                        first_hop_scored
+                            .iter()
+                            .take(witness_second_seed_limit)
+                            .map(|candidate| candidate.0),
+                    );
+                    diagnostics.witness_second_hop_seeds = second_seeds.len();
+
+                    for seed in second_seeds {
+                        self.copy_rivero_witness_connections(
+                            seed,
+                            strict_rivero,
+                            witness_degree,
+                            &mut connections,
+                        );
+                        for &index in &connections {
+                            diagnostics.witness_edges_scanned += 1;
+                            if visited.is_visited(index, epoch) {
+                                continue;
+                            }
+                            visited.mark_visited(index, epoch);
+                            diagnostics.witness_candidates_added += 1;
+                            diagnostics.unique_candidates += 1;
+                            if !self.arena.is_live(index) {
+                                diagnostics.non_live_rejections += 1;
+                                continue;
+                            }
+                            if filter_mask.is_some_and(|mask| !mask.contains(index)) {
+                                diagnostics.filter_rejections += 1;
+                                continue;
+                            }
+                            let vector = self.arena.get_vector_slice(index);
+                            let norm_sq = self.arena.get_norm_squared(index);
+                            diagnostics.exact_score_evaluations += 1;
+                            scored.push((
+                                index,
+                                self.similarity_score_slices_with_metric(
+                                    query_data,
+                                    vector,
+                                    query_norm_sq,
+                                    norm_sq,
+                                    dist_fn,
+                                ),
+                            ));
+                        }
+                    }
+
+                    scored.sort_unstable_by(|lhs, rhs| {
+                        rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
+                    });
+                    scored.truncate(k);
+                    diagnostics.results_returned = scored.len();
+                    (scored, diagnostics)
+                })
+            }))
     }
 
     fn resolve_rivero_candidates_config(
@@ -4258,12 +4540,11 @@ impl HNSQRIndex {
                     scored.sort_unstable_by(|lhs, rhs| {
                         rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
                     });
-                    let mut kth_best = scored.get(k.saturating_sub(1)).map_or(f32::NEG_INFINITY, |s| s.1);
                     let mut seeds: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_SEEDS]> = SmallVec::new();
                     seeds.extend(
                         scored
                             .iter()
-                            .take(witness_seed_limit.min(16))
+                            .take(witness_seed_limit)
                             .map(|candidate| candidate.0),
                     );
                     diagnostics.witness_seeds = seeds.len();
@@ -4278,7 +4559,7 @@ impl HNSQRIndex {
                         self.copy_rivero_witness_connections(
                             seed,
                             strict_rivero,
-                            witness_degree.min(32),
+                            witness_degree,
                             &mut connections,
                         );
                         for &index in &connections {
@@ -4309,12 +4590,7 @@ impl HNSQRIndex {
                             );
                             let candidate = (index, score);
                             scored.push(candidate);
-                            if score >= kth_best - 0.05 {
-                                first_hop_scored.push(candidate);
-                                if score > kth_best {
-                                    kth_best = score;
-                                }
-                            }
+                            first_hop_scored.push(candidate);
                         }
                     }
 
@@ -4326,7 +4602,7 @@ impl HNSQRIndex {
                     second_seeds.extend(
                         first_hop_scored
                             .iter()
-                            .take(witness_second_seed_limit.min(6))
+                            .take(witness_second_seed_limit)
                             .map(|candidate| candidate.0),
                     );
                     diagnostics.witness_second_hop_seeds = second_seeds.len();
@@ -4335,7 +4611,7 @@ impl HNSQRIndex {
                         self.copy_rivero_witness_connections(
                             seed,
                             strict_rivero,
-                            witness_degree.min(16),
+                            witness_degree,
                             &mut connections,
                         );
                         for &index in &connections {
@@ -4636,6 +4912,7 @@ impl HNSQRIndex {
         }
         let address = self
             .rivero_compiler
+            .read()
             .compile(self.arena.get_vector_slice(index));
         self.arena.delete_slot(index);
         self.rivero_index.evict(&address, index);
@@ -5094,6 +5371,49 @@ mod tests {
         assert!(diag.cumulative_resident_scans > 0);
         assert!(diag.cumulative_exact_scores > 0);
         assert!(!diag.graph_fallback_used);
+    }
+
+    #[test]
+    fn adaptive_graph_fallback_preserves_telemetry_and_counts_one_search() {
+        let mut config = HNSQRConfig::default();
+        config.rivero_enabled = true;
+        config.rivero_mode = RiveroSearchMode::Adaptive;
+        config.adaptive_policy = AdaptivePolicy::AllowGraphFallback;
+        let index = HNSQRIndex::new(config, 8);
+
+        // Fewer live vectors than k deterministically forces every Rivero stage to
+        // recommend escalation, while still producing scored Rivero candidates.
+        for i in 0..5 {
+            let vector = VectorEmbedding::new(
+                (0..8)
+                    .map(|lane| ((i * 19 + lane * 7 + 3) % 29) as f32 - 14.0)
+                    .collect(),
+            )
+            .normalize();
+            index.insert(format!("fallback-{i}"), vector).unwrap();
+        }
+
+        let query =
+            VectorEmbedding::new(vec![0.2, -0.4, 0.7, 0.1, -0.8, 0.3, 0.6, -0.5]).normalize();
+        let searches_before = index.stats().searches;
+        let (_, diag) = index
+            .search_indices_adaptive(&query, 10, None, AdaptivePolicy::AllowGraphFallback)
+            .unwrap();
+        let searches_after = index.stats().searches;
+
+        assert!(diag.graph_fallback_used);
+        assert!(diag.cumulative_exact_scores > 0);
+        assert_eq!(searches_after, searches_before + 1);
+    }
+
+    #[test]
+    fn index_and_universal_planner_share_one_crossover_primitive() {
+        for dimension in [32, 64, 128, 384, 768, 1_536, 2_048] {
+            assert_eq!(
+                HNSQRIndex::default_exact_scan_threshold(dimension),
+                crate::planning::planner::UniversalPlanner::compute_crossover(dimension),
+            );
+        }
     }
 
     #[test]

@@ -94,6 +94,11 @@ impl LabelCatalog {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// Captures a frozen point-in-time snapshot of the label catalog.
+    pub fn snapshot(&self) -> LabelCatalogSnapshot {
+        LabelCatalogSnapshot::from(self)
+    }
 }
 
 /// Compact serializable snapshot of the catalog for Raft-replication.

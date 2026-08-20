@@ -28,10 +28,11 @@ fn measure_point(n: usize, complex_dim: usize, num_queries: usize) -> (f64, f64)
     let dataset =
         generate_realistic_text_corpus(n, num_queries, complex_dim * 2, common::DEFAULT_BENCH_SEED);
 
+    let actual_complex_dim = dataset.complex_dim;
     let index = common::get_or_build_cached_index(
-        &format!("dim_crossover_n{n}_d{complex_dim}"),
+        &format!("dim_crossover_n{n}_d{actual_complex_dim}"),
         &dataset.folded_corpus,
-        complex_dim,
+        actual_complex_dim,
         RiveroProfile::Balanced,
     );
 

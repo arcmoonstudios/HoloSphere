@@ -30,7 +30,7 @@ use crate::{NodeIndex, SimilarityScore};
 pub mod bulk;
 pub mod witness;
 
-pub use bulk::{BuiltRiveroState, BulkBuildTelemetry, RiveroBulkBuilder};
+pub use bulk::{BuiltRiveroState, BulkBuildTelemetry, RiveroBuildDescriptor, RiveroBulkBuilder};
 pub use witness::{
     RIVERO_WITNESS_DEFAULT_DEGREE, RIVERO_WITNESS_DEFAULT_SECOND_SEEDS,
     RIVERO_WITNESS_DEFAULT_SEEDS, RIVERO_WITNESS_INLINE_DEGREE, RIVERO_WITNESS_MAX_DEGREE,
@@ -245,6 +245,46 @@ impl RiveroProfile {
             Self::Fast => Some(Self::Balanced),
             Self::Balanced => Some(Self::Strict),
             Self::Strict => None,
+        }
+    }
+
+    /// Number of first-hop witness seeds used during query candidate expansion.
+    #[must_use]
+    pub const fn witness_seeds(self) -> usize {
+        match self {
+            Self::Fast => 12,
+            Self::Balanced => 24,
+            Self::Strict => 32,
+        }
+    }
+
+    /// Number of second-hop witness seeds used during query candidate expansion.
+    #[must_use]
+    pub const fn witness_second_seeds(self) -> usize {
+        match self {
+            Self::Fast => 2,
+            Self::Balanced => 4,
+            Self::Strict => 8,
+        }
+    }
+
+    /// Maximum witness degree expanded per seed node.
+    #[must_use]
+    pub const fn witness_degree(self) -> usize {
+        match self {
+            Self::Fast => 16,
+            Self::Balanced => 32,
+            Self::Strict => 32,
+        }
+    }
+
+    /// Maximum candidate evaluations prior to witness expansion.
+    #[must_use]
+    pub const fn candidate_eval_limit(self) -> usize {
+        match self {
+            Self::Fast => 512,
+            Self::Balanced => 1024,
+            Self::Strict => usize::MAX,
         }
     }
 }

@@ -13,5 +13,6 @@ pub use autoforge::{
     AutoForge, DerivedPhysicalConfig, OperatorIntent, OperatorIntentConfig, PlannerProfile,
 };
 pub use planner::{
-    ExecutionPlan, ExecutionProof, QueryModality, RetrievalContract, UniversalPlanner,
+    ExactScanCrossoverModel, ExecutionPlan, ExecutionProof, QueryModality, RetrievalContract,
+    UniversalPlanner,
 };

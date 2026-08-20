@@ -57,6 +57,34 @@ impl GraphMutationApplier {
     pub fn rel_catalog(&self) -> Arc<RelTypeCatalog> { self.rel_catalog.clone() }
     pub fn generation(&self) -> Arc<RwLock<GraphGeneration>> { self.generation.clone() }
 
+    /// Captures a fully materialized immutable snapshot of the graph at generation/lsn k.
+    pub fn snapshot(&self, lsn: u64) -> crate::graph::storage::snapshot::ImmutableGraphSnapshot {
+        let (nodes, live_nodes, edge_records, live_edges, gen_id, properties) = {
+            let gen_guard = self.generation.read();
+            let (n, ln) = gen_guard.nodes.snapshot();
+            let (e, le) = if let Some(delta) = &gen_guard.edge_delta {
+                delta.snapshot()
+            } else {
+                (Vec::new(), Vec::new())
+            };
+            (n, ln, e, le, gen_guard.generation, gen_guard.properties.clone())
+        };
+
+        crate::graph::storage::snapshot::ImmutableGraphSnapshot {
+            generation: gen_id,
+            lsn,
+            label_catalog: self.label_catalog.snapshot(),
+            rel_type_catalog: self.rel_catalog.snapshot(),
+            nodes,
+            live_nodes,
+            edge_records,
+            live_edges,
+            properties,
+            node_id_map: self.node_id_map.read().clone(),
+            rel_id_map: self.rel_id_map.read().clone(),
+        }
+    }
+
     /// Applies a committed `GraphMutation`.  Called from the state machine apply loop.
     pub fn apply(&self, mutation: &GraphMutation) -> HNSQRResult<()> {
         match mutation {
@@ -283,7 +311,7 @@ impl GraphMutationApplier {
             .as_ref()
             .ok_or_else(|| HNSQRError::Internal("Graph generation is sealed; cannot write".to_string()))?;
 
-        // Build the edge record with placeholder next pointers.
+        // Build the edge record with zeroed next pointers before linking both adjacency chains.
         let mut edge = EdgeRecord::new(rel_type, src_idx, dst_idx, weight, 0);
 
         // Thread the new edge into the source node's out-chain.

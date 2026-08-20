@@ -181,7 +181,9 @@ fn main() {
             index.insert(format!("doc-{i}"), vec.clone()).unwrap();
         }
 
-        let builder = RiveroBulkBuilder::with_profile(RiveroProfile::Balanced).with_threads(8);
+        let builder = RiveroBulkBuilder::with_profile(RiveroProfile::Balanced)
+            .with_distance_function(dist_fn)
+            .with_threads(8);
         let rivero_state = builder.build(&corpus.folded_corpus).unwrap();
         index.install_rivero_state(rivero_state).unwrap();
 

@@ -71,7 +71,7 @@ fn main() {
         let index = common::get_or_build_cached_index(
             &format!("crossover_sweep_n{n}"),
             &dataset.folded_corpus,
-            dim,
+            dataset.complex_dim,
             RiveroProfile::Balanced,
         );
 
@@ -87,11 +87,10 @@ fn main() {
         // 2. Fast Rivero
         let mut fast_lats = Vec::with_capacity(num_queries);
         let mut fast_rec = 0.0f64;
-        let fast_cfg = RiveroProfile::Fast.config();
         for (q, gt) in dataset.folded_queries.iter().zip(ground_truth.iter()) {
             let t0 = Instant::now();
             let (res, _) = index
-                .search_indices_o1_with_config(q, 10, None, &fast_cfg)
+                .search_indices_profile(q, 10, None, RiveroProfile::Fast)
                 .unwrap();
             fast_lats.push(t0.elapsed().as_secs_f64() * 1000.0);
             let overlap = res.iter().filter(|s| gt.contains(&s.0)).count();

@@ -170,23 +170,23 @@ LAION-400M Multi-Modal CLIP      512        1000       0.1284          100.000% 
 
 Exact SIMD linear scans on modern AVX2/AVX-512 hardware process tens of millions of dot products per second. Index routing has non-zero overhead (hashing, pointer traversals, deduplication). HoloSphere's `UniversalPlanner` uses an empirical power-law crossover model:
 
-$$N_{\text{cross}}(D_{\text{complex}}) = 3000.0 + \frac{5,768,286.0}{D_{\text{complex}}^{1.300}}$$
+$$N_{\text{cross}}(D_{\text{complex}}) = \frac{577,169.2}{D_{\text{complex}}^{0.770}}$$
 
 ```
   ┌────────┬─────────┬──────────────┬──────────────────┬──────────────┬───────────────────────────────────────────┐
   │ Real D │ Cmplx D │ Measured N   │ Model Prediction │ Rel Error    │ Planner Execution Decision                │
   ├────────┼─────────┼──────────────┼──────────────────┼──────────────┼───────────────────────────────────────────┤
-  │     64 │      32 │      60293 N │          66731 N │      10.68%  │ Linear SIMD Scan for N < 60K; Rivero > 60K│
-  │    128 │      64 │      40000 N │          28883 N │      27.79%  │ Linear SIMD Scan for N < 40K              │
-  │    256 │     128 │      24000 N │          13512 N │      43.70%  │ Linear SIMD Scan for N < 24K              │
-  │    384 │     192 │     5413 N * │           9205 N │      70.06%  │ Linear SIMD Scan for N < 5.4K             │
-  │    512 │     256 │      13000 N │           7269 N │      44.08%  │ Linear SIMD Scan for N < 13K              │
-  │    768 │     384 │       7996 N │           5520 N │      30.96%  │ Linear SIMD Scan for N < 8.0K             │
-  │   1024 │     512 │       6674 N │           4734 N │      29.07%  │ Linear SIMD Scan for N < 6.7K             │
-  │   1536 │     768 │       5500 N │           4023 N │      26.85%  │ Linear SIMD Scan for N < 5.5K             │
-  │   2048 │    1024 │       4500 N │           3704 N │      17.69%  │ Linear SIMD Scan for N < 4.5K             │
-  │   3072 │    1536 │       3050 N │           3416 N │      11.99%  │ Linear SIMD Scan for N < 3.1K             │
-  │   4096 │    2048 │       2800 N │           3286 N │      17.36%  │ Linear SIMD Scan for N < 2.8K             │
+  │     64 │      32 │      60293 N │          40026 N │      33.61%  │ Linear SIMD Scan for N < 40.0K            │
+  │    128 │      64 │      40000 N │          23472 N │      41.32%  │ Linear SIMD Scan for N < 23.5K            │
+  │    256 │     128 │      24000 N │          13764 N │      42.65%  │ Linear SIMD Scan for N < 13.8K            │
+  │    384 │     192 │     5413 N * │          10073 N │      86.09%  │ Linear SIMD Scan for N < 10.1K            │
+  │    512 │     256 │      13000 N │           8072 N │      37.91%  │ Linear SIMD Scan for N < 8.1K             │
+  │    768 │     384 │       7996 N │           5907 N │      26.13%  │ Linear SIMD Scan for N < 5.9K             │
+  │   1024 │     512 │       6674 N │           4733 N │      29.08%  │ Linear SIMD Scan for N < 4.7K             │
+  │   1536 │     768 │       5500 N │           3464 N │      37.02%  │ Linear SIMD Scan for N < 3.5K             │
+  │   2048 │    1024 │       4500 N │           2776 N │      38.31%  │ Linear SIMD Scan for N < 2.8K             │
+  │   3072 │    1536 │       3050 N │           2031 N │      33.41%  │ Linear SIMD Scan for N < 2.0K             │
+  │   4096 │    2048 │       2800 N │           1628 N │      41.86%  │ Linear SIMD Scan for N < 1.6K             │
   └────────┴─────────┴──────────────┴──────────────────┴──────────────┴───────────────────────────────────────────┘
   * Note: D=384 reflects an empirical clustering boundary anomaly under the benchmark sweep harness.
 ```

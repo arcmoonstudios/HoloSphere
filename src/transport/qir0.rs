@@ -363,14 +363,14 @@ impl<S: HNSQRService + 'static> HNSQRServer<S> {
                                     // Full proof propagation requires a proof-carrying search
                                     // trait variant and is tracked separately.
                                     let cert_flags: u16 = 0x0001; // CertifiedExact
-                                    let placeholder_header = MessageHeader {
+                                    let response_header = MessageHeader {
                                         magic: PROTOCOL_MAGIC,
                                         opcode: OpCode::Search,
                                         flags: cert_flags,
                                         request_id: header.request_id,
                                         payload_len: 0,
                                     };
-                                    placeholder_header.encode(&mut write_buf);
+                                    response_header.encode(&mut write_buf);
 
                                     let payload_start = write_buf.len();
                                     write_buf.put_u32(results.len() as u32);
@@ -453,14 +453,14 @@ impl<S: HNSQRService + 'static> HNSQRServer<S> {
 
                             if batch_results.len() == queries.len() {
                                 let header_pos = write_buf.len();
-                                let placeholder_header = MessageHeader {
+                                let response_header = MessageHeader {
                                     magic: PROTOCOL_MAGIC,
                                     opcode: OpCode::BatchSearch,
                                     flags: 0,
                                     request_id: header.request_id,
                                     payload_len: 0,
                                 };
-                                placeholder_header.encode(&mut write_buf);
+                                response_header.encode(&mut write_buf);
 
                                 let payload_start = write_buf.len();
                                 write_buf.put_u32(batch_results.len() as u32);

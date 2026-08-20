@@ -14,8 +14,14 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
+use std::collections::HashMap;
+use std::sync::Arc;
 use crate::graph::catalog::labels::LabelCatalogSnapshot;
 use crate::graph::catalog::relationships::RelTypeCatalogSnapshot;
+use crate::graph::storage::edge_delta::EdgeRecord;
+use crate::graph::storage::node_arena::GraphNodeRecord;
+use crate::graph::storage::properties::GraphPropertyStore;
+use crate::NodeIndex;
 
 /// Lightweight snapshot descriptor for graph topology at a point in time.
 ///
@@ -36,4 +42,44 @@ pub struct GraphSnapshot {
     pub node_count: usize,
     /// Live edge count at snapshot time.
     pub edge_count: usize,
+}
+
+/// Fully materialized point-in-time immutable snapshot of graph topology, catalogs, and properties at LSN k.
+/// Completely decoupled from subsequent mutations to live graph generation.
+#[derive(Clone)]
+pub struct ImmutableGraphSnapshot {
+    pub generation: u64,
+    pub lsn: u64,
+    pub label_catalog: LabelCatalogSnapshot,
+    pub rel_type_catalog: RelTypeCatalogSnapshot,
+    pub nodes: Vec<GraphNodeRecord>,
+    pub live_nodes: Vec<bool>,
+    pub edge_records: Vec<EdgeRecord>,
+    pub live_edges: Vec<bool>,
+    pub properties: Arc<GraphPropertyStore>,
+    pub node_id_map: HashMap<String, NodeIndex>,
+    pub rel_id_map: HashMap<u64, u32>,
+}
+
+impl ImmutableGraphSnapshot {
+    pub fn node_count(&self) -> usize {
+        self.live_nodes.iter().filter(|&&l| l).count()
+    }
+
+    pub fn edge_count(&self) -> usize {
+        self.live_edges.iter().filter(|&&l| l).count()
+    }
+
+    pub fn get_node_index(&self, external_id: &str) -> Option<NodeIndex> {
+        self.node_id_map.get(external_id).copied()
+    }
+
+    pub fn get_node(&self, idx: NodeIndex) -> Option<&GraphNodeRecord> {
+        let i = idx as usize;
+        if i < self.nodes.len() && self.live_nodes.get(i).copied().unwrap_or(false) {
+            Some(&self.nodes[i])
+        } else {
+            None
+        }
+    }
 }

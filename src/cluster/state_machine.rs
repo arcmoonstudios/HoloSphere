@@ -352,26 +352,76 @@ impl ShardStateMachine {
             hypercube,
         }
     }
+}
 
-    /// Internal pre-validation ensuring atomic all-or-nothing batch execution.
-    fn prevalidate_mutation(&self, mutation: &DataMutation) -> HNSQRResult<()> {
+/// Concrete staged delta prepared for atomic publication across all 5 paradigms.
+#[derive(Clone, Debug)]
+pub enum PreparedDelta {
+    VectorUpsert {
+        key: String,
+        vector: VectorEmbedding,
+        metadata: Option<HashMap<String, MetadataValue>>,
+    },
+    VectorDelete {
+        key: String,
+    },
+    VectorMetadataPatch {
+        key: String,
+        metadata: HashMap<String, MetadataValue>,
+    },
+    Graph(GraphMutation),
+    Sql {
+        table: String,
+        pk: String,
+        row: crate::storage::relational_acid::RelationalRow,
+        is_delete: bool,
+    },
+    AgentMemory {
+        user_id: String,
+        fact: crate::ecosystem::agent_memory::EpisodicFact,
+    },
+    Hypercube {
+        coords: Vec<usize>,
+        value: f32,
+    },
+}
+
+impl ShardStateMachine {
+    /// Internal staged pre-validation ensuring atomic all-or-nothing batch execution.
+    fn prepare_mutation(&self, mutation: &DataMutation, deltas: &mut Vec<PreparedDelta>) -> HNSQRResult<()> {
         match mutation {
-            DataMutation::Upsert { vector, .. } => {
+            DataMutation::Upsert { key, vector, metadata, .. } => {
                 if vector.dimension() != self.engine.dimension {
                     return Err(HNSQRError::DimensionMismatch {
                         expected: self.engine.dimension,
                         actual: vector.dimension(),
                     });
                 }
+                deltas.push(PreparedDelta::VectorUpsert {
+                    key: key.clone(),
+                    vector: vector.clone(),
+                    metadata: metadata.clone(),
+                });
                 Ok(())
             }
-            DataMutation::Delete { .. } => Ok(()),
-            DataMutation::MetadataPatch { .. } => Ok(()),
+            DataMutation::Delete { key, .. } => {
+                deltas.push(PreparedDelta::VectorDelete { key: key.clone() });
+                Ok(())
+            }
+            DataMutation::MetadataPatch { key, metadata, .. } => {
+                deltas.push(PreparedDelta::VectorMetadataPatch {
+                    key: key.clone(),
+                    metadata: metadata.clone(),
+                });
+                Ok(())
+            }
             DataMutation::Graph { mutation, .. } => {
                 let graph = self.graph.as_ref().ok_or_else(|| {
                     HNSQRError::InvalidRequest("Graph backend not enabled on this shard".to_string())
                 })?;
-                graph.prevalidate(mutation)
+                graph.prevalidate(mutation)?;
+                deltas.push(PreparedDelta::Graph(mutation.clone()));
+                Ok(())
             }
             DataMutation::Sql { table, row, is_delete, .. } => {
                 let sql = self.sql.as_ref().ok_or_else(|| {
@@ -380,12 +430,21 @@ impl ShardStateMachine {
                 let schema = sql.get_table_schema(table).ok_or_else(|| {
                     HNSQRError::InvalidRequest(format!("Table '{table}' does not exist"))
                 })?;
-                if !row.values.contains_key(&schema.primary_key_column) {
-                    return Err(HNSQRError::InvalidRequest(format!(
+                let pk_val = row.values.get(&schema.primary_key_column).ok_or_else(|| {
+                    HNSQRError::InvalidRequest(format!(
                         "Row missing primary key '{}'",
                         schema.primary_key_column
-                    )));
-                }
+                    ))
+                })?;
+                let pk_str = match pk_val {
+                    crate::storage::relational_acid::SqlValue::Text(s) => s.clone(),
+                    crate::storage::relational_acid::SqlValue::Integer(i) => i.to_string(),
+                    _ => {
+                        return Err(HNSQRError::InvalidRequest(
+                            "Primary key must be Text or Integer".into(),
+                        ));
+                    }
+                };
                 if !*is_delete {
                     for col in &schema.columns {
                         if !col.is_nullable && !row.values.contains_key(&col.name) {
@@ -396,9 +455,15 @@ impl ShardStateMachine {
                         }
                     }
                 }
+                deltas.push(PreparedDelta::Sql {
+                    table: table.clone(),
+                    pk: pk_str,
+                    row: row.clone(),
+                    is_delete: *is_delete,
+                });
                 Ok(())
             }
-            DataMutation::AgentMemory { fact, .. } => {
+            DataMutation::AgentMemory { user_id, fact, .. } => {
                 let _memory = self.memory.as_ref().ok_or_else(|| {
                     HNSQRError::InvalidRequest("Agent memory backend not enabled on this shard".to_string())
                 })?;
@@ -414,9 +479,13 @@ impl ShardStateMachine {
                         fact.emotional_salience
                     )));
                 }
+                deltas.push(PreparedDelta::AgentMemory {
+                    user_id: user_id.clone(),
+                    fact: fact.clone(),
+                });
                 Ok(())
             }
-            DataMutation::Hypercube { coords, .. } => {
+            DataMutation::Hypercube { coords, value, .. } => {
                 let h = self.hypercube.as_ref().ok_or_else(|| {
                     HNSQRError::InvalidRequest("Hypercube backend not enabled on this shard".to_string())
                 })?;
@@ -434,63 +503,57 @@ impl ShardStateMachine {
                         )));
                     }
                 }
+                deltas.push(PreparedDelta::Hypercube {
+                    coords: coords.clone(),
+                    value: *value,
+                });
                 Ok(())
             }
             DataMutation::Batch { mutations, .. } => {
                 for m in mutations {
-                    self.prevalidate_mutation(m)?;
+                    self.prepare_mutation(m, deltas)?;
                 }
                 Ok(())
             }
         }
     }
 
-    /// Internal unlogged application directly to memory segment buffers with metadata.
-    fn apply_single_unlogged(&self, mutation: &DataMutation) -> HNSQRResult<()> {
-        match mutation {
-            DataMutation::Upsert { key, vector, metadata, .. } => {
-                self.engine.apply_committed_upsert(key.as_str(), vector.clone(), metadata.as_ref())?;
-                Ok(())
-            }
-            DataMutation::Delete { key, .. } => {
-                self.engine.apply_delete_unlogged(key.as_str());
-                Ok(())
-            }
-            DataMutation::MetadataPatch { key, metadata, .. } => {
-                self.engine.apply_committed_metadata_patch(key.as_str(), metadata)?;
-                Ok(())
-            }
-            DataMutation::Graph { mutation, .. } => {
-                let graph = self.graph.as_ref().ok_or_else(|| {
-                    HNSQRError::InvalidRequest("Graph backend not enabled on this shard".to_string())
-                })?;
-                graph.apply(mutation)
-            }
-            DataMutation::Sql { table, row, is_delete, .. } => {
-                let sql = self.sql.as_ref().ok_or_else(|| {
-                    HNSQRError::InvalidRequest("SQL backend not enabled on this shard".to_string())
-                })?;
-                sql.apply_committed_row_mutation(table, row.clone(), *is_delete)
-            }
-            DataMutation::AgentMemory { user_id, fact, .. } => {
-                let memory = self.memory.as_ref().ok_or_else(|| {
-                    HNSQRError::InvalidRequest("Agent memory backend not enabled on this shard".to_string())
-                })?;
-                memory.ingest_fact(user_id, fact.clone())
-            }
-            DataMutation::Hypercube { coords, value, .. } => {
-                let hypercube = self.hypercube.as_ref().ok_or_else(|| {
-                    HNSQRError::InvalidRequest("Hypercube backend not enabled on this shard".to_string())
-                })?;
-                hypercube.set_voxel(coords.clone(), *value)
-            }
-            DataMutation::Batch { mutations, .. } => {
-                for m in mutations {
-                    self.apply_single_unlogged(m)?;
+    /// Atomically publishes all prepared deltas to physical engines.
+    fn publish_deltas(&self, deltas: Vec<PreparedDelta>) -> HNSQRResult<()> {
+        for delta in deltas {
+            match delta {
+                PreparedDelta::VectorUpsert { key, vector, metadata } => {
+                    self.engine.apply_committed_upsert(key.as_str(), vector, metadata.as_ref())?;
                 }
-                Ok(())
+                PreparedDelta::VectorDelete { key } => {
+                    self.engine.apply_delete_unlogged(key.as_str());
+                }
+                PreparedDelta::VectorMetadataPatch { key, metadata } => {
+                    self.engine.apply_committed_metadata_patch(key.as_str(), &metadata)?;
+                }
+                PreparedDelta::Graph(m) => {
+                    if let Some(graph) = &self.graph {
+                        graph.apply(&m)?;
+                    }
+                }
+                PreparedDelta::Sql { table, row, is_delete, .. } => {
+                    if let Some(sql) = &self.sql {
+                        sql.apply_committed_row_mutation(&table, row, is_delete)?;
+                    }
+                }
+                PreparedDelta::AgentMemory { user_id, fact } => {
+                    if let Some(memory) = &self.memory {
+                        memory.ingest_fact(&user_id, fact)?;
+                    }
+                }
+                PreparedDelta::Hypercube { coords, value } => {
+                    if let Some(hypercube) = &self.hypercube {
+                        hypercube.set_voxel(coords, value)?;
+                    }
+                }
             }
         }
+        Ok(())
     }
 
     /// Creates an atomic cross-paradigm snapshot metadata handle pinned at the current applied generation.
@@ -501,22 +564,26 @@ impl ShardStateMachine {
         }
     }
 
-    /// Retains physical backing state and memory-mapped generation handles across all 5 paradigms.
-    /// Holding this snapshot guarantees that background vacuum/compaction/GC cannot reclaim
-    /// underlying data out from under an active query session.
+    /// Retains physical backing state and immutable snapshots across all 5 converged paradigms.
+    /// Holding this snapshot guarantees that background mutations/vacuum/compaction/GC cannot
+    /// mutate or reclaim underlying data out from under an active query session.
     pub fn pin_physical_snapshot(&self) -> UniversalSnapshot {
+        let lsn = self.last_applied_index.load(Ordering::SeqCst);
+        let cur_gen = self.applied_generation.load(Ordering::SeqCst);
         UniversalSnapshot {
-            generation: self.applied_generation.load(Ordering::SeqCst),
-            lsn: self.last_applied_index.load(Ordering::SeqCst),
+            generation: cur_gen,
+            lsn,
+            vector_snapshot: Some(self.engine.snapshot()),
+            graph_snapshot: self.graph.as_ref().map(|g| g.snapshot(lsn)),
+            sql_snapshot: self.sql.as_ref().map(|s| s.snapshot()),
+            memory_snapshot: self.memory.as_ref().map(|m| m.snapshot()),
+            hypercube_snapshot: self.hypercube.as_ref().map(|h| h.snapshot()),
             immutable_segments: self.engine.immutable_segments_snapshot(),
             active_segment: self.engine.active_mutable_segment(),
             graph_generation: self.graph.as_ref().map(|g| g.generation()),
             sql: self.sql.clone(),
             memory: self.memory.clone(),
             hypercube: self.hypercube.clone(),
-            sql_snapshot: self.sql.as_ref().map(|s| s.snapshot()),
-            memory_snapshot: self.memory.as_ref().map(|m| m.snapshot()),
-            hypercube_snapshot: self.hypercube.as_ref().map(|h| h.snapshot()),
         }
     }
 }
@@ -528,22 +595,27 @@ pub struct UniversalSnapshotHandle {
     pub lsn: u64,
 }
 
-/// Physical pinned snapshot retaining active generation and segment handles across all 5 converged paradigms.
+/// Physical pinned snapshot retaining active generation and immutable snapshot handles across all 5 converged paradigms.
 pub struct UniversalSnapshot {
     pub generation: u64,
     pub lsn: u64,
-    pub immutable_segments: Vec<Arc<crate::storage::segment::ImmutableSegment>>,
-    pub active_segment: Arc<crate::storage::segment::MutableSegment>,
-    pub graph_generation: Option<Arc<parking_lot::RwLock<crate::graph::storage::generation::GraphGeneration>>>,
-    pub sql: Option<Arc<crate::storage::relational_acid::RelationalSqlEngine>>,
-    pub memory: Option<Arc<crate::ecosystem::agent_memory::AutonomousMemoryConsolidator>>,
-    pub hypercube: Option<Arc<crate::vector::hypercube::HypercubeTensorSpace>>,
+    /// Immutable point-in-time vector engine snapshot at LSN k.
+    pub vector_snapshot: Option<crate::storage::segment::ImmutableVectorSnapshot>,
+    /// Immutable point-in-time graph topology snapshot at LSN k.
+    pub graph_snapshot: Option<crate::graph::storage::snapshot::ImmutableGraphSnapshot>,
     /// Immutable point-in-time relational MVCC snapshot at LSN k.
     pub sql_snapshot: Option<crate::storage::relational_acid::RelationalSqlSnapshot>,
     /// Immutable point-in-time agent memory persona snapshot at LSN k.
     pub memory_snapshot: Option<crate::ecosystem::agent_memory::AutonomousMemorySnapshot>,
     /// Immutable point-in-time hypercube tensor space snapshot at LSN k.
     pub hypercube_snapshot: Option<crate::vector::hypercube::HypercubeSnapshot>,
+
+    pub immutable_segments: Vec<Arc<crate::storage::segment::ImmutableSegment>>,
+    pub active_segment: Arc<crate::storage::segment::MutableSegment>,
+    pub graph_generation: Option<Arc<parking_lot::RwLock<crate::graph::storage::generation::GraphGeneration>>>,
+    pub sql: Option<Arc<crate::storage::relational_acid::RelationalSqlEngine>>,
+    pub memory: Option<Arc<crate::ecosystem::agent_memory::AutonomousMemoryConsolidator>>,
+    pub hypercube: Option<Arc<crate::vector::hypercube::HypercubeTensorSpace>>,
 }
 
 impl ReplicatedStateMachine for ShardStateMachine {
@@ -567,11 +639,12 @@ impl ReplicatedStateMachine for ShardStateMachine {
             }
         }
 
-        // 2. Pre-validate the entire mutation / batch before mutating ANY backend state
-        self.prevalidate_mutation(mutation)?;
+        // 2. PREPARE: Stage and validate all deltas before touching any backend
+        let mut prepared_deltas = Vec::new();
+        self.prepare_mutation(mutation, &mut prepared_deltas)?;
 
-        // 3. Deterministic atomic application to local storage engines
-        self.apply_single_unlogged(mutation)?;
+        // 3. ATOMIC PUBLISH: Apply all prepared deltas to physical engines
+        self.publish_deltas(prepared_deltas)?;
 
         // 4. Atomically advance last_applied_index and generation
         self.last_applied_index.store(entry_index, Ordering::SeqCst);
@@ -584,7 +657,7 @@ impl ReplicatedStateMachine for ShardStateMachine {
             durable_lsn: entry_index,
         };
 
-        // 4. Record in deduplication horizon
+        // 5. Record in deduplication horizon
         {
             let mut dedup = self.dedup_horizon.lock();
             dedup.insert(receipt.clone(), client, seq);
@@ -714,6 +787,167 @@ mod tests {
         hypercube.set_voxel(vec![1, 2, 3, 0], 999.0).unwrap();
         assert_eq!(hypercube.get_voxel(&[1, 2, 3, 0]).unwrap(), 999.0);
         assert_eq!(snap_hypercube.get_voxel(&[1, 2, 3, 0]).unwrap(), 42.0);
+
+        // Verify vector snapshot isolation
+        let snap_vec = phys_snap.vector_snapshot.as_ref().unwrap();
+        assert_eq!(snap_vec.search(&VectorEmbedding::from_reals(&[0.1; 8]).into_normalized(), 1, crate::proof::lutz::SemanticRerankPlan::ExactSimd).len(), 1);
+    }
+
+    #[test]
+    fn test_batch_atomicity_discards_all_mutations_on_apply_time_failure() {
+        let engine = Arc::new(SegmentedEngine::new(8, 1000));
+        let sql = Arc::new(RelationalSqlEngine::new());
+        let table_schema = TableSchema {
+            name: "accounts".into(),
+            primary_key_column: "acc_id".into(),
+            columns: vec![
+                ColumnDefinition {
+                    name: "acc_id".into(),
+                    data_type: SqlType::Text,
+                    is_primary_key: true,
+                    is_nullable: false,
+                    foreign_key_target: None,
+                },
+            ],
+        };
+        sql.create_table(table_schema).unwrap();
+
+        let sm = ShardStateMachine::with_all_paradigms(
+            1,
+            engine.clone(),
+            None,
+            Some(sql.clone()),
+            None,
+            None,
+        );
+
+        // Construct a batch where vector upsert is completely valid,
+        // but SQL row has Float primary key (which passes table existence check but fails PK type validation)
+        let mut row_values = HashMap::new();
+        row_values.insert("acc_id".into(), SqlValue::Float(12.5));
+
+        let batch = DataMutation::Batch {
+            mutation_id: MutationId::generate(),
+            mutations: vec![
+                DataMutation::new_upsert("should_not_exist", VectorEmbedding::from_reals(&[0.5; 8]).into_normalized()),
+                DataMutation::new_sql_insert("accounts", RelationalRow { values: row_values }),
+            ],
+        };
+
+        // Apply MUST fail
+        let res = sm.apply(50, &batch);
+        assert!(res.is_err(), "Batch with invalid SQL PK must return Err");
+
+        // Staged state verification: Apply(Batch)=Err => S_after = S_before
+        assert_eq!(sm.last_applied_index(), 0, "LSN must not advance on batch failure");
+        assert_eq!(engine.stats().iter().map(|s| s.live_vectors).sum::<usize>(), 0, "Vector engine must have 0 vectors");
+        let results = engine.search(&VectorEmbedding::from_reals(&[0.5; 8]).into_normalized(), 1, crate::proof::lutz::SemanticRerankPlan::ExactSimd);
+        assert!(results.is_empty(), "Uncommitted vector must not exist in engine");
+    }
+
+    #[test]
+    fn test_all_five_paradigm_immutable_snapshot_isolation() {
+        use parking_lot::RwLock;
+        use crate::graph::catalog::labels::LabelCatalog;
+        use crate::graph::catalog::relationships::RelTypeCatalog;
+        use crate::graph::storage::generation::GraphGeneration;
+
+        let engine = Arc::new(SegmentedEngine::new(8, 1000));
+        let graph_gen = Arc::new(RwLock::new(GraphGeneration::new_mutable(1)));
+        let label_cat = Arc::new(LabelCatalog::default());
+        let rel_cat = Arc::new(RelTypeCatalog::default());
+        let graph_applier = Arc::new(GraphMutationApplier::new(graph_gen, label_cat, rel_cat));
+
+        let sql = Arc::new(RelationalSqlEngine::new());
+        sql.create_table(TableSchema {
+            name: "items".into(),
+            primary_key_column: "item_id".into(),
+            columns: vec![
+                ColumnDefinition {
+                    name: "item_id".into(),
+                    data_type: SqlType::Text,
+                    is_primary_key: true,
+                    is_nullable: false,
+                    foreign_key_target: None,
+                },
+            ],
+        }).unwrap();
+
+        let memory = Arc::new(AutonomousMemoryConsolidator::new());
+        let hypercube = Arc::new(HypercubeTensorSpace::new(vec![4, 4, 4, 4]));
+
+        let sm = ShardStateMachine::with_all_paradigms(
+            1,
+            engine.clone(),
+            Some(graph_applier.clone()),
+            Some(sql.clone()),
+            Some(memory.clone()),
+            Some(hypercube.clone()),
+        );
+
+        // Apply initial state across all 5 paradigms
+        let mut row_v = HashMap::new();
+        row_v.insert("item_id".into(), SqlValue::Text("it_1".into()));
+
+        let initial_batch = DataMutation::Batch {
+            mutation_id: MutationId::generate(),
+            mutations: vec![
+                DataMutation::new_upsert("v_1", VectorEmbedding::from_reals(&[0.1; 8]).into_normalized()),
+                DataMutation::new_graph(GraphMutation::CreateNode {
+                    external_id: "node_1".into(),
+                    labels: vec![1],
+                    properties: HashMap::new(),
+                    vector_slot: None,
+                }),
+                DataMutation::new_sql_insert("items", RelationalRow { values: row_v }),
+                DataMutation::new_agent_memory("user_1", EpisodicFact {
+                    fact_id: "f1".into(),
+                    subject: "user_1".into(),
+                    predicate: "pref".into(),
+                    object: "dark_mode".into(),
+                    category: FactCategory::UserPreference,
+                    confidence: 0.9,
+                    emotional_salience: 0.5,
+                    recall_count: 1,
+                    last_accessed_secs: 100,
+                    created_at_secs: 100,
+                }),
+                DataMutation::new_hypercube_voxel(vec![0, 0, 0, 0], 10.0),
+            ],
+        };
+        sm.apply(10, &initial_batch).unwrap();
+
+        // Pin Universal Snapshot S_k at LSN 10
+        let snap = sm.pin_physical_snapshot();
+        assert_eq!(snap.lsn, 10);
+
+        // Mutate all 5 live backends after snapshot
+        sm.apply(11, &DataMutation::new_upsert("v_2", VectorEmbedding::from_reals(&[0.9; 8]).into_normalized())).unwrap();
+        sm.apply(12, &DataMutation::new_graph(GraphMutation::CreateNode {
+            external_id: "node_2".into(),
+            labels: vec![2],
+            properties: HashMap::new(),
+            vector_slot: None,
+        })).unwrap();
+        let mut row_v2 = HashMap::new();
+        row_v2.insert("item_id".into(), SqlValue::Text("it_2".into()));
+        sm.apply(13, &DataMutation::new_sql_insert("items", RelationalRow { values: row_v2 })).unwrap();
+        sm.apply(14, &DataMutation::new_hypercube_voxel(vec![0, 0, 0, 0], 999.0)).unwrap();
+
+        // Verify Snapshot S_k is completely frozen and untouched:
+        let v_snap = snap.vector_snapshot.as_ref().unwrap();
+        let v_res = v_snap.search(&VectorEmbedding::from_reals(&[0.9; 8]).into_normalized(), 10, crate::proof::lutz::SemanticRerankPlan::ExactSimd);
+        assert!(!v_res.iter().any(|(k, _)| k.as_ref() == "v_2"), "Snapshot must NOT see v_2");
+
+        let g_snap = snap.graph_snapshot.as_ref().unwrap();
+        assert_eq!(g_snap.node_count(), 1, "Graph snapshot must have exactly 1 node");
+        assert!(g_snap.get_node_index("node_2").is_none(), "Graph snapshot must NOT see node_2");
+
+        let sql_snap = snap.sql_snapshot.as_ref().unwrap();
+        assert_eq!(sql_snap.execute_select("items", None, None).unwrap().len(), 1, "SQL snapshot must have 1 row");
+
+        let cube_snap = snap.hypercube_snapshot.as_ref().unwrap();
+        assert_eq!(cube_snap.get_voxel(&[0, 0, 0, 0]).unwrap(), 10.0, "Hypercube snapshot must have old voxel value");
     }
 
     #[test]

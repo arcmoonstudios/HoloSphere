@@ -35,9 +35,19 @@ use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::rivero::{RIVERO_SCHEMA_VERSION, RiveroConfig};
+use crate::rivero::{RIVERO_SCHEMA_VERSION, RiveroAddressConfig, RiveroConfig};
 use crate::rivero_witness::ScoredWitness;
 use crate::{HNSQRConfig, HNSQRError, HNSQRIndex, HNSQRResult, Node, NodeIndex};
+
+/// Complete snapshot configuration for Rivero candidate routing and address compilation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RiveroSnapshotConfig {
+    pub rivero_config: RiveroConfig,
+    pub address_config: RiveroAddressConfig,
+    pub witness_degree: usize,
+    pub witness_seeds: usize,
+    pub witness_second_seeds: usize,
+}
 
 pub const SNAPSHOT_V2_MAGIC: [u8; 8] = *b"HNSQRV2\0";
 pub const SNAPSHOT_V2_VERSION: u32 = 2;
@@ -359,8 +369,24 @@ impl HNSQRIndex {
         ));
 
         // 7. RIVERO_CONFIG
-        let rivero_cfg = self.config.read().rivero_config;
-        let cfg_bytes = bincode::serialize(&rivero_cfg)
+        let (rivero_cfg, addr_cfg, wit_degree, wit_seeds, wit_second_seeds) = {
+            let cfg = self.config.read();
+            (
+                cfg.rivero_config,
+                cfg.rivero_address_config,
+                cfg.rivero_witness_degree,
+                cfg.rivero_witness_seeds,
+                cfg.rivero_witness_second_seeds,
+            )
+        };
+        let snap_cfg = RiveroSnapshotConfig {
+            rivero_config: rivero_cfg,
+            address_config: addr_cfg,
+            witness_degree: wit_degree,
+            witness_seeds: wit_seeds,
+            witness_second_seeds: wit_second_seeds,
+        };
+        let cfg_bytes = bincode::serialize(&snap_cfg)
             .map_err(|e| HNSQRError::SerializationError(e.to_string()))?;
         sections.push(create_section(SectionKind::RiveroConfig, 0, 1, &cfg_bytes));
 
@@ -690,8 +716,16 @@ impl HNSQRIndex {
         let t4 = Instant::now();
         if let Some(desc) = section_map.get(&SectionKind::RiveroConfig) {
             let payload = &mmap[desc.offset as usize..(desc.offset + desc.length) as usize];
-            if let Ok(rivero_cfg) = bincode::deserialize::<RiveroConfig>(payload) {
+            if let Ok(snap_cfg) = bincode::deserialize::<RiveroSnapshotConfig>(payload) {
+                config.rivero_config = snap_cfg.rivero_config;
+                config.rivero_address_config = snap_cfg.address_config;
+                config.rivero_witness_degree = snap_cfg.witness_degree;
+                config.rivero_witness_seeds = snap_cfg.witness_seeds;
+                config.rivero_witness_second_seeds = snap_cfg.witness_second_seeds;
+                config.rivero_enabled = true;
+            } else if let Ok(rivero_cfg) = bincode::deserialize::<RiveroConfig>(payload) {
                 config.rivero_config = rivero_cfg;
+                config.rivero_enabled = true;
             }
         }
         let config_restore_us = t4.elapsed().as_micros() as f64;

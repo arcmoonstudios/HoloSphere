@@ -51,6 +51,12 @@ pub enum ExecutionPlan {
     ExactScan { effective_n: usize },
     /// Corpus-Global Cauchy-Schwarz certified retrieval with Rivero seeding.
     LutzGlobalCertified { initial_seed_cap: usize },
+    /// PAC-Relaxed (ε, δ) branch-and-bound retrieval.
+    LutzPacRelaxed {
+        initial_seed_cap: usize,
+        epsilon: f32,
+        delta: f32,
+    },
     /// Rivero routing + Semantic Reranker.
     RiveroRetrieval {
         profile: RiveroProfile,
@@ -78,18 +84,52 @@ pub struct ExecutionProof {
     pub dense_exact: Option<crate::proof::DenseExactProof>,
 }
 
+/// Empirically calibrated exact-scan/Rivero crossover model.
+///
+/// This is the single canonical production primitive for deciding when linear SIMD
+/// scan is cheaper than indexed routing. Both the public index `Auto` path and the
+/// [`UniversalPlanner`] delegate to this model so planner and execution cannot drift.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ExactScanCrossoverModel {
+    /// Power-law scale coefficient.
+    pub scale: f64,
+    /// Dimension exponent.
+    pub exponent: f64,
+    /// Lower clamp protecting tiny-dimension extrapolation.
+    pub min_threshold: usize,
+    /// Upper clamp protecting tiny-dimension extrapolation.
+    pub max_threshold: usize,
+}
+
+impl ExactScanCrossoverModel {
+    /// Calibration produced by `dimension_crossover_sweep` after the metric/profile repairs.
+    pub const CALIBRATED: Self = Self {
+        scale: 577_169.2,
+        exponent: 0.770,
+        min_threshold: 512,
+        max_threshold: 100_000,
+    };
+
+    /// Returns the crossover population for a complex vector dimension.
+    #[inline(always)]
+    #[must_use]
+    pub fn threshold(self, complex_dim: usize) -> usize {
+        let d = complex_dim.max(1) as f64;
+        let n_cross = self.scale / d.powf(self.exponent);
+        (n_cross.round() as usize).clamp(self.min_threshold, self.max_threshold)
+    }
+}
+
 /// Universal Cost-Based Query Planner.
 pub struct UniversalPlanner;
 
 impl UniversalPlanner {
-    /// Computes the exact-scan crossover threshold calibrated from empirical sweeps:
-    /// $$N_{\text{cross}}(D_{\text{complex}}) = 3000.0 + \frac{5,768,286.0}{D_{\text{complex}}^{1.300}}$$
+    /// Computes the canonical exact-scan crossover threshold calibrated from empirical sweeps:
+    /// $$N_{\text{cross}}(D_{\text{complex}}) = \frac{577169.2}{D_{\text{complex}}^{0.770}}$$
     #[inline(always)]
+    #[must_use]
     pub fn compute_crossover(complex_dim: usize) -> usize {
-        let d = complex_dim.max(8) as f64;
-        let d_pow = d.powf(1.300);
-        let n_cross = 3000.0 + (5_768_286.0 / d_pow);
-        n_cross.round().clamp(100.0, 1_000_000.0) as usize
+        ExactScanCrossoverModel::CALIBRATED.threshold(complex_dim)
     }
 
     /// Plans the optimal execution path given corpus state and query constraints.
@@ -124,9 +164,11 @@ impl UniversalPlanner {
             };
         }
 
-        if let RetrievalContract::PacRelaxed { epsilon, .. } = contract {
-            return ExecutionPlan::LutzGlobalCertified {
+        if let RetrievalContract::PacRelaxed { epsilon, delta } = contract {
+            return ExecutionPlan::LutzPacRelaxed {
                 initial_seed_cap: ((2048.0 * dim_multiplier) * (1.0 - epsilon)).round() as usize,
+                epsilon,
+                delta,
             };
         }
 
@@ -207,5 +249,13 @@ mod tests {
             plan_filtered,
             ExecutionPlan::ExactScan { effective_n: 200 }
         ));
+    }
+
+    #[test]
+    fn calibrated_crossover_model_matches_reported_fit() {
+        assert_eq!(UniversalPlanner::compute_crossover(32), 40_026);
+        assert_eq!(UniversalPlanner::compute_crossover(384), 5_907);
+        assert_eq!(UniversalPlanner::compute_crossover(768), 3_464);
+        assert_eq!(UniversalPlanner::compute_crossover(2_048), 1_628);
     }
 }

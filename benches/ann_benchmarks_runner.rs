@@ -35,7 +35,8 @@ fn evaluate_ann_benchmarks(real_dim: usize, complex_dim: usize, n: usize, num_qu
         ground_truth.push(topk);
     }
 
-    // Benchmark HNSQR Segmented Engine with Rivero + ExactSimd
+    // Benchmark HNSQR Segmented Engine: Rivero candidate generation + ExactSimd candidate rerank
+    // (Note: In SegmentedEngine, ExactSimd performs exact candidate reranking over Rivero proposals, not exhaustive scan)
     let engine = SegmentedEngine::new(complex_dim, 2048);
     let t_build = Instant::now();
     for (i, v) in dataset.folded_corpus.iter().enumerate() {

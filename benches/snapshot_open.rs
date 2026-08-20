@@ -2,7 +2,7 @@ mod common;
 
 use std::fs;
 
-use common::{BenchScale, DEFAULT_BENCH_SEED, get_or_build_snapshot_v2};
+use common::{BenchScale, DEFAULT_BENCH_SEED, open_prebuilt_snapshot_v2};
 use hnsqr::HNSQRIndex;
 use hnsqr::rivero::RiveroProfile;
 use hnsqr::storage::snapshot::{SnapshotOpenOptions, VerificationMode};
@@ -23,7 +23,7 @@ fn main() {
     );
 
     let (snap_path, _) =
-        get_or_build_snapshot_v2(scale, RiveroProfile::Balanced, DEFAULT_BENCH_SEED);
+        open_prebuilt_snapshot_v2(scale, RiveroProfile::Balanced, DEFAULT_BENCH_SEED);
     let meta = fs::metadata(&snap_path).unwrap();
     let file_size_mb = meta.len() as f64 / (1024.0 * 1024.0);
     let bytes_per_vec = meta.len() as f64 / n as f64;

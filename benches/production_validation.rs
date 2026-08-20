@@ -42,7 +42,7 @@ use rayon::prelude::*;
 
 mod common;
 
-use common::{generate_realistic_text_corpus, get_or_build_cached_index, TextRetrievalCorpus};
+use common::{generate_realistic_text_corpus, open_prebuilt_index, TextRetrievalCorpus};
 
 const SEED: u64 = 0x484e_5351_525f_5641; // "HNSQR_VA"
 
@@ -602,7 +602,7 @@ fn run_scalability_and_saturation_matrix() {
 
     for &n in &scale_points {
         let corpus = generate_realistic_text_corpus(n, 50, d * 2, SEED ^ (n as u64));
-        let index = get_or_build_cached_index(
+        let index = open_prebuilt_index(
             &format!("prod_val_scale_n{n}"),
             &corpus.folded_corpus,
             corpus.complex_dim,
@@ -911,7 +911,7 @@ fn main() {
     let base_corpus = generate_realistic_text_corpus(25_000, 100, 64, SEED);
 
     // Build or attach cached base index
-    let index = Arc::new(get_or_build_cached_index(
+    let index = Arc::new(open_prebuilt_index(
         "prod_val_base_25k",
         &base_corpus.folded_corpus,
         base_corpus.complex_dim,

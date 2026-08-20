@@ -68,7 +68,7 @@ fn main() {
         }
 
         // Build or load cached Snapshot Index
-        let index = common::get_or_build_cached_index(
+        let index = common::open_prebuilt_index(
             &format!("crossover_sweep_n{n}"),
             &dataset.folded_corpus,
             dataset.complex_dim,

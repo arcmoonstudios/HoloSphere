@@ -3,7 +3,7 @@ mod common;
 use std::sync::Arc;
 use std::time::Instant;
 
-use common::{BenchScale, DEFAULT_BENCH_SEED, get_or_build_snapshot_v2};
+use common::{BenchScale, DEFAULT_BENCH_SEED, open_prebuilt_snapshot_v2};
 use hnsqr::HNSQRIndex;
 use hnsqr::rivero::{AdaptivePolicy, RiveroProfile};
 use hnsqr::storage::snapshot::{SnapshotOpenOptions, VerificationMode};
@@ -26,7 +26,7 @@ fn main() {
     );
 
     let (snap_path, corpus) =
-        get_or_build_snapshot_v2(scale, RiveroProfile::Balanced, DEFAULT_BENCH_SEED);
+        open_prebuilt_snapshot_v2(scale, RiveroProfile::Balanced, DEFAULT_BENCH_SEED);
     let index = Arc::new(
         HNSQRIndex::open_snapshot_v2(
             &snap_path,

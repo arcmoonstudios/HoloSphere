@@ -37,6 +37,7 @@ impl RunConfig {
         RiveroAddressConfig {
             foundations: self.foundations,
             projection: self.projection,
+            geometry: hnsqr::rivero::VectorGeometry::Real,
         }
     }
 }

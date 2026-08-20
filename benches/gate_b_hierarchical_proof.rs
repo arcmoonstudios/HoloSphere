@@ -98,6 +98,7 @@ fn run_experiment(exp: &ExperimentConfig) -> BenchmarkResult {
     let addr_cfg = RiveroAddressConfig {
         foundations: 64,
         projection: RiveroProjectionMode::GlobalMix,
+        geometry: hnsqr::rivero::VectorGeometry::Real,
     };
     let compiler = RiveroCompiler::with_config(complex_dim, addr_cfg);
     let builder = RiveroBulkBuilder::new(rivero_cfg)

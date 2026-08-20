@@ -173,6 +173,19 @@ fn run_mode(
         let doc_id = format!("doc_{i}");
         index.insert(doc_id.as_str(), v.clone()).unwrap();
     }
+    index.freeze_rivero_routing();
+
+    // Warmup query to populate CPU instruction and data caches
+    if let Some(first_query) = queries.first() {
+        match mode {
+            ExecMode::PlannerDefault => {
+                let _ = index.search_indices_with_contract(first_query, k, None, RetrievalContract::Certified);
+            }
+            _ => {
+                let _ = index.search_indices(first_query, k);
+            }
+        }
+    }
 
     let mut recalls = Vec::with_capacity(queries.len());
     let mut latencies = Vec::with_capacity(queries.len());

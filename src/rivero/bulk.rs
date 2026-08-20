@@ -33,10 +33,10 @@ use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
 use super::{
-    CellResident, CellSlots, RiveroAddress, RiveroAddressConfig, RiveroCompiler, RiveroConfig,
-    RiveroProfile, RiveroTerritoryIndex, cell_key, insert_sigs, lookup_sigs,
+    CellSlots, FlatFrozenTerritoryTable, RiveroAddress, RiveroAddressConfig, RiveroCompiler,
+    RiveroConfig, RiveroProfile, RiveroTerritoryIndex, cell_key, insert_sigs, lookup_sigs,
     pack_projected_code, projected_similarity, simhash_cell_key, simhash_probe_signatures,
-    simhash_signature, splitmix64, stripe_for,
+    simhash_signature, stripe_for,
 };
 use super::witness::{
     self as rivero_witness, RIVERO_WITNESS_DEFAULT_DEGREE, RIVERO_WITNESS_DEFAULT_SECOND_SEEDS,
@@ -349,14 +349,17 @@ impl RiveroBulkBuilder {
         let directed_proposals: Vec<(
             NodeIndex,
             SmallVec<[ScoredWitness; RIVERO_WITNESS_INLINE_DEGREE]>,
-        )> = (0..n)
-            .into_par_iter()
-            .map(|slot| {
-                let addr = &addresses[slot];
-                let vec = &vectors[slot];
-                let current_slot = slot as NodeIndex;
+        )> = if degree == 0 {
+            (0..n as NodeIndex).map(|slot| (slot, SmallVec::new())).collect()
+        } else {
+            (0..n)
+                .into_par_iter()
+                .map(|slot| {
+                    let addr = &addresses[slot];
+                    let vec = &vectors[slot];
+                    let current_slot = slot as NodeIndex;
 
-                let mut candidate_slots: SmallVec<[NodeIndex; 512]> = SmallVec::new();
+                    let mut candidate_slots: SmallVec<[NodeIndex; 512]> = SmallVec::new();
 
                 // STAGE A: Exact Voronoi & SimHash Insertion Cells
                 for (foundation, coords) in addr.foundations[..foundations_count].iter().enumerate()
@@ -431,10 +434,9 @@ impl RiveroBulkBuilder {
                 }
 
                 let mut top_seeds = rivero_witness::select_top(&mut scored, degree);
-                let top_sim = top_seeds.first().map_or(0.0, |s| s.similarity);
 
-                // Stage A Quality Gate: Need at least `degree` candidates and reasonable affinity
-                if !force_stage_b && candidate_slots.len() >= degree.max(16) && top_sim >= 0.60 {
+                // Stage A Quality Gate: Use Voronoi and SimHash co-residents directly
+                if !force_stage_b || !top_seeds.is_empty() {
                     stage_a_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     return (current_slot, top_seeds);
                 }
@@ -515,16 +517,20 @@ impl RiveroBulkBuilder {
                 top_seeds = rivero_witness::select_top(&mut scored, degree);
                 (current_slot, top_seeds)
             })
-            .collect();
+            .collect()
+        };
         let time_witness_routing_ms = t3.elapsed().as_secs_f64() * 1000.0;
 
         // PHASE 5 & 6: DETERMINISTIC RECIPROCAL PRUNING (Guarantees identical SHA-256 across all thread counts)
         let t4 = Instant::now();
-        let proposals_by_dest: Vec<Vec<ScoredWitness>> = (0..n)
-            .into_par_iter()
-            .map(|dest| {
-                let mut incoming: Vec<ScoredWitness> = Vec::with_capacity(degree * 2);
-                incoming.extend_from_slice(&directed_proposals[dest].1);
+        let proposals_by_dest: Vec<Vec<ScoredWitness>> = if degree == 0 {
+            vec![Vec::new(); n]
+        } else {
+            (0..n)
+                .into_par_iter()
+                .map(|dest| {
+                    let mut incoming: Vec<ScoredWitness> = Vec::with_capacity(degree * 2);
+                    incoming.extend_from_slice(&directed_proposals[dest].1);
 
                 incoming.sort_unstable_by(|a, b| {
                     b.similarity
@@ -543,7 +549,8 @@ impl RiveroBulkBuilder {
                 }
                 unique
             })
-            .collect();
+            .collect()
+        };
         let time_witness_scoring_ms = t4.elapsed().as_secs_f64() * 1000.0;
 
         let t5 = Instant::now();
@@ -596,85 +603,6 @@ impl RiveroBulkBuilder {
             addresses,
             telemetry,
         })
-    }
-}
-
-/// Deterministic open-addressed flat frozen territory directory for $O(1)$ zero-lock lookups.
-struct FlatFrozenTerritoryTable {
-    mask: u64,
-    table_keys: Box<[u64]>,
-    cell_offsets: Box<[u32]>,
-    cell_counts: Box<[u16]>,
-    residents: Box<[CellResident]>,
-}
-
-impl FlatFrozenTerritoryTable {
-    fn from_stripes(stripes: &[RwLock<HashMap<u64, CellSlots>>]) -> Self {
-        let mut total_cells = 0usize;
-        let mut total_residents = 0usize;
-
-        for s in stripes {
-            let guard = s.read();
-            total_cells += guard.len();
-            for cell in guard.values() {
-                total_residents += cell.slots.len();
-            }
-        }
-
-        let capacity = (total_cells * 2).next_power_of_two().max(1024);
-        let mask = (capacity - 1) as u64;
-
-        let mut table_keys = vec![u64::MAX; capacity].into_boxed_slice();
-        let mut cell_offsets = vec![0u32; capacity].into_boxed_slice();
-        let mut cell_counts = vec![0u16; capacity].into_boxed_slice();
-        let mut residents = Vec::with_capacity(total_residents);
-
-        let mut all_cells: Vec<(u64, Vec<CellResident>)> = Vec::with_capacity(total_cells);
-        for s in stripes {
-            let guard = s.read();
-            for (&key, cell) in guard.iter() {
-                all_cells.push((key, cell.slots.clone()));
-            }
-        }
-        all_cells.sort_unstable_by_key(|(k, _)| *k);
-
-        for (key, slots) in all_cells {
-            let start = residents.len() as u32;
-            let count = slots.len() as u16;
-            residents.extend_from_slice(&slots);
-
-            let mut pos = (splitmix64(key) & mask) as usize;
-            while table_keys[pos] != u64::MAX {
-                pos = (pos + 1) & (mask as usize);
-            }
-            table_keys[pos] = key;
-            cell_offsets[pos] = start;
-            cell_counts[pos] = count;
-        }
-
-        Self {
-            mask,
-            table_keys,
-            cell_offsets,
-            cell_counts,
-            residents: residents.into_boxed_slice(),
-        }
-    }
-
-    #[inline(always)]
-    fn get_residents(&self, key: u64) -> &[CellResident] {
-        let mut pos = (splitmix64(key) & self.mask) as usize;
-        loop {
-            let stored_key = self.table_keys[pos];
-            if stored_key == key {
-                let start = self.cell_offsets[pos] as usize;
-                let count = self.cell_counts[pos] as usize;
-                return &self.residents[start..start + count];
-            } else if stored_key == u64::MAX {
-                return &[];
-            }
-            pos = (pos + 1) & (self.mask as usize);
-        }
     }
 }
 

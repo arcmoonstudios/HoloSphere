@@ -18,7 +18,7 @@
 use std::cell::RefCell;
 use std::cmp::Ordering as CmpOrdering;
 use std::collections::HashMap;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use num_complex::Complex32;
@@ -41,6 +41,7 @@ pub use witness::{
 /// Number of roots in the canonical E8 root system.
 pub const E8_ROOT_COUNT: usize = 240;
 
+#[allow(dead_code)]
 const E8_ROOT_LAST_ID: u8 = 239;
 
 /// Top-root count used at insert time. Each node is registered in C(7,3) = 35 cells.
@@ -50,6 +51,56 @@ pub const INSERT_TOP_ROOTS: usize = 7;
 pub const LOOKUP_TOP_ROOTS: usize = 9;
 
 static E8_ROOTS: LazyLock<[[f32; 8]; E8_ROOT_COUNT]> = LazyLock::new(generate_e8_roots);
+
+static E8_ROOTS_TRANSPOSED: LazyLock<[f32; 8 * E8_ROOT_COUNT]> = LazyLock::new(|| {
+    let mut transposed = [0.0f32; 8 * E8_ROOT_COUNT];
+    for root_id in 0..E8_ROOT_COUNT {
+        let root = &E8_ROOTS[root_id];
+        for dim in 0..8 {
+            transposed[dim * E8_ROOT_COUNT + root_id] = root[dim];
+        }
+    }
+    transposed
+});
+
+/// Computes inner products against all 240 canonical E8 roots simultaneously using broadcast AVX2 FMAs.
+#[inline(always)]
+pub fn score_240_roots(q: &[f32; 8], out_scores: &mut [f32; E8_ROOT_COUNT]) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            unsafe {
+                score_240_roots_avx2_internal(q, out_scores);
+                return;
+            }
+        }
+    }
+    for (i, root) in E8_ROOTS.iter().enumerate() {
+        out_scores[i] = dot8(q, root);
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2,fma")]
+unsafe fn score_240_roots_avx2_internal(q: &[f32; 8], out_scores: &mut [f32; E8_ROOT_COUNT]) {
+    use core::arch::x86_64::*;
+    let transposed = E8_ROOTS_TRANSPOSED.as_ptr();
+    let mut acc = [_mm256_setzero_ps(); 30]; // 30 YMM registers * 8 floats = 240 roots
+
+    for dim in 0..8 {
+        let q_broadcast = _mm256_set1_ps(q[dim]);
+        let row_ptr = transposed.add(dim * 240);
+        for reg in 0..30 {
+            let e8_chunk = _mm256_loadu_ps(row_ptr.add(reg * 8));
+            acc[reg] = _mm256_fmadd_ps(q_broadcast, e8_chunk, acc[reg]);
+        }
+    }
+
+    let out_ptr = out_scores.as_mut_ptr();
+    for reg in 0..30 {
+        _mm256_storeu_ps(out_ptr.add(reg * 8), acc[reg]);
+    }
+}
 /// Maximum number of independent E8 foundations supported by the universal Rivero address.
 pub const RIVERO_MAX_FOUNDATIONS: usize = 64;
 /// Default number of independent E8 foundations in standard profiles.
@@ -89,6 +140,19 @@ pub enum RiveroProjectionMode {
     },
 }
 
+/// Vector geometry domain for Rivero address projection and quantization.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum VectorGeometry {
+    /// Euclidean or spherical real vector embeddings ($\mathbb{R}^D / \mathbb{S}^{D-1}$)
+    /// (e.g. GloVe, SIFT, CLIP, Cohere, OpenAI). Bypasses $U(1)$ complex phase gauge quotient
+    /// and performs direct orthogonal subspace projections.
+    #[default]
+    Real,
+    /// Complex projective state embeddings ($\mathbb{C}\mathrm{P}^{n-1}$),
+    /// requiring canonical $U(1)$ global phase invariance ($\mathbf{x} \sim e^{i\theta}\mathbf{x}$).
+    ComplexPhaseInvariant,
+}
+
 /// Address configuration defining foundation geometry and projection mode.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RiveroAddressConfig {
@@ -96,6 +160,8 @@ pub struct RiveroAddressConfig {
     pub foundations: u8,
     /// Projection architecture (GlobalMix or MultiLane). Default: GlobalMix.
     pub projection: RiveroProjectionMode,
+    /// Geometry domain of the vector embeddings. Default: Real.
+    pub geometry: VectorGeometry,
 }
 
 impl Default for RiveroAddressConfig {
@@ -103,6 +169,7 @@ impl Default for RiveroAddressConfig {
         Self {
             foundations: RIVERO_DEFAULT_FOUNDATIONS as u8,
             projection: RiveroProjectionMode::GlobalMix,
+            geometry: VectorGeometry::ComplexPhaseInvariant,
         }
     }
 }
@@ -160,11 +227,11 @@ impl RiveroProfile {
                 query_candidate_cap: 512,
             },
             Self::Balanced => RiveroConfig {
-                foundations: 12,
-                simhash_query_probes: 16,
+                foundations: 16,
+                simhash_query_probes: 24,
                 cell_capacity: 48,
                 affinity_elites: 18,
-                cell_budget: 12,
+                cell_budget: 14,
                 query_candidate_cap: 1024,
             },
             Self::Strict => RiveroConfig::strict_default(),
@@ -592,17 +659,17 @@ impl RiveroConfidence {
 
         let score = score.clamp(0.0, 1.0);
         let threshold = match profile {
-            RiveroProfile::Fast => 0.42,
-            RiveroProfile::Balanced => 0.36,
-            RiveroProfile::Strict => 0.28,
+            RiveroProfile::Fast => 0.82,
+            RiveroProfile::Balanced => 0.72,
+            RiveroProfile::Strict => 0.35,
         };
 
         let escalation_recommended = score < threshold
             || scored.len() < k
             || top_fidelity < 0.20
-            || (witness_dependency > 0.50)
-            || (scored.len() > k && topk_tail_margin < 0.0005)
-            || (cross_stage_stability.is_some_and(|s| s < 0.80));
+            || (witness_dependency > 0.40)
+            || (scored.len() > k && topk_tail_margin < 0.001)
+            || (cross_stage_stability.is_some_and(|s| s < 0.85));
 
         Self {
             score,
@@ -722,105 +789,153 @@ impl RiveroCompiler {
         let mut references = [Complex32::new(0.0, 0.0); RIVERO_MAX_FOUNDATIONS];
         let limit = data.len().min(self.dimension);
 
-        match self.config.projection {
-            RiveroProjectionMode::GlobalMix => {
-                for foundation in 0..foundation_count {
-                    let mut ref_acc = Complex32::new(0.0, 0.0);
-                    for (index, &value) in data[..limit].iter().enumerate() {
-                        if !value.re.is_finite() || !value.im.is_finite() {
-                            continue;
+        match self.config.geometry {
+            VectorGeometry::Real => {
+                match self.config.projection {
+                    RiveroProjectionMode::GlobalMix => {
+                        for foundation in 0..foundation_count {
+                            let f_arr = &mut foundations[foundation];
+                            for (index, &value) in data[..limit].iter().enumerate() {
+                                if !value.re.is_finite() || !value.im.is_finite() {
+                                    continue;
+                                }
+                                let mixed = self.rot_seeds[index][foundation];
+                                let re_lane = (mixed & 7) as usize;
+                                let im_lane = ((mixed >> 8) & 7) as usize;
+                                let re_sign = if mixed & (1 << 16) == 0 { 1.0 } else { -1.0 };
+                                let im_sign = if mixed & (1 << 17) == 0 { 1.0 } else { -1.0 };
+                                f_arr[re_lane] += value.re * re_sign;
+                                f_arr[im_lane] += value.im * im_sign;
+                            }
                         }
-                        let mixed = self.phase_seeds[index][foundation];
-                        let weighted = match (mixed >> 20) & 3 {
-                            0 => value,
-                            1 => -value,
-                            2 => Complex32::new(-value.im, value.re),
-                            _ => Complex32::new(value.im, -value.re),
-                        };
-                        ref_acc += weighted;
                     }
-                    references[foundation] = ref_acc;
-                }
+                    RiveroProjectionMode::MultiLane { lanes, .. } => {
+                        let lanes_count = (lanes as usize).max(1);
+                        let f_per_lane = (foundation_count / lanes_count).max(1);
+                        for (index, &value) in data[..limit].iter().enumerate() {
+                            if !value.re.is_finite() || !value.im.is_finite() {
+                                continue;
+                            }
+                            let lane = (self.dim_lanes[index] as usize).min(lanes_count - 1);
+                            let f_start = lane * f_per_lane;
+                            let f_end = (f_start + f_per_lane).min(foundation_count);
+                            let r_row = &self.rot_seeds[index];
 
-                let fallback_rotation = canonical_phase_rotation(&data[..limit]);
-                let mut rotations = [fallback_rotation; RIVERO_MAX_FOUNDATIONS];
-                for foundation in 0..foundation_count {
-                    let magnitude = references[foundation].norm();
-                    if magnitude.is_finite() && magnitude > 1e-6 {
-                        rotations[foundation] = references[foundation].conj() / magnitude;
-                    }
-                }
-
-                for foundation in 0..foundation_count {
-                    let rot = rotations[foundation];
-                    let f_arr = &mut foundations[foundation];
-                    for (index, &value) in data[..limit].iter().enumerate() {
-                        if !value.re.is_finite() || !value.im.is_finite() {
-                            continue;
+                            for foundation in f_start..f_end {
+                                let mixed = r_row[foundation];
+                                let re_lane = (mixed & 7) as usize;
+                                let im_lane = ((mixed >> 8) & 7) as usize;
+                                let re_sign = if mixed & (1 << 16) == 0 { 1.0 } else { -1.0 };
+                                let im_sign = if mixed & (1 << 17) == 0 { 1.0 } else { -1.0 };
+                                foundations[foundation][re_lane] += value.re * re_sign;
+                                foundations[foundation][im_lane] += value.im * im_sign;
+                            }
                         }
-                        let canonical = value * rot;
-                        let mixed = self.rot_seeds[index][foundation];
-                        let re_lane = (mixed & 7) as usize;
-                        let im_lane = ((mixed >> 8) & 7) as usize;
-                        let re_sign = if mixed & (1 << 16) == 0 { 1.0 } else { -1.0 };
-                        let im_sign = if mixed & (1 << 17) == 0 { 1.0 } else { -1.0 };
-                        f_arr[re_lane] += canonical.re * re_sign;
-                        f_arr[im_lane] += canonical.im * im_sign;
                     }
                 }
             }
-            RiveroProjectionMode::MultiLane { lanes, .. } => {
-                let lanes_count = (lanes as usize).max(1);
-                let f_per_lane = (foundation_count / lanes_count).max(1);
+            VectorGeometry::ComplexPhaseInvariant => {
+                match self.config.projection {
+                    RiveroProjectionMode::GlobalMix => {
+                        for foundation in 0..foundation_count {
+                            let mut ref_acc = Complex32::new(0.0, 0.0);
+                            for (index, &value) in data[..limit].iter().enumerate() {
+                                if !value.re.is_finite() || !value.im.is_finite() {
+                                    continue;
+                                }
+                                let mixed = self.phase_seeds[index][foundation];
+                                let weighted = match (mixed >> 20) & 3 {
+                                    0 => value,
+                                    1 => -value,
+                                    2 => Complex32::new(-value.im, value.re),
+                                    _ => Complex32::new(value.im, -value.re),
+                                };
+                                ref_acc += weighted;
+                            }
+                            references[foundation] = ref_acc;
+                        }
 
-                for (index, value) in data.iter().copied().take(limit).enumerate() {
-                    if !value.re.is_finite() || !value.im.is_finite() {
-                        continue;
+                        let fallback_rotation = canonical_phase_rotation(&data[..limit]);
+                        let mut rotations = [fallback_rotation; RIVERO_MAX_FOUNDATIONS];
+                        for foundation in 0..foundation_count {
+                            let magnitude = references[foundation].norm();
+                            if magnitude.is_finite() && magnitude > 1e-6 {
+                                rotations[foundation] = references[foundation].conj() / magnitude;
+                            }
+                        }
+
+                        for foundation in 0..foundation_count {
+                            let rot = rotations[foundation];
+                            let f_arr = &mut foundations[foundation];
+                            for (index, &value) in data[..limit].iter().enumerate() {
+                                if !value.re.is_finite() || !value.im.is_finite() {
+                                    continue;
+                                }
+                                let canonical = value * rot;
+                                let mixed = self.rot_seeds[index][foundation];
+                                let re_lane = (mixed & 7) as usize;
+                                let im_lane = ((mixed >> 8) & 7) as usize;
+                                let re_sign = if mixed & (1 << 16) == 0 { 1.0 } else { -1.0 };
+                                let im_sign = if mixed & (1 << 17) == 0 { 1.0 } else { -1.0 };
+                                f_arr[re_lane] += canonical.re * re_sign;
+                                f_arr[im_lane] += canonical.im * im_sign;
+                            }
+                        }
                     }
-                    let lane = (self.dim_lanes[index] as usize).min(lanes_count - 1);
-                    let f_start = lane * f_per_lane;
-                    let f_end = (f_start + f_per_lane).min(foundation_count);
-                    let p_row = &self.phase_seeds[index];
+                    RiveroProjectionMode::MultiLane { lanes, .. } => {
+                        let lanes_count = (lanes as usize).max(1);
+                        let f_per_lane = (foundation_count / lanes_count).max(1);
 
-                    for foundation in f_start..f_end {
-                        let mixed = p_row[foundation];
-                        let weighted = match (mixed >> 20) & 3 {
-                            0 => value,
-                            1 => -value,
-                            2 => Complex32::new(-value.im, value.re),
-                            _ => Complex32::new(value.im, -value.re),
-                        };
-                        references[foundation] += weighted;
-                    }
-                }
+                        for (index, &value) in data[..limit].iter().enumerate() {
+                            if !value.re.is_finite() || !value.im.is_finite() {
+                                continue;
+                            }
+                            let lane = (self.dim_lanes[index] as usize).min(lanes_count - 1);
+                            let f_start = lane * f_per_lane;
+                            let f_end = (f_start + f_per_lane).min(foundation_count);
+                            let p_row = &self.phase_seeds[index];
 
-                let fallback_rotation = canonical_phase_rotation(&data[..limit]);
-                let mut rotations = [fallback_rotation; RIVERO_MAX_FOUNDATIONS];
-                for foundation in 0..foundation_count {
-                    let magnitude = references[foundation].norm();
-                    if magnitude.is_finite() && magnitude > 1e-6 {
-                        rotations[foundation] = references[foundation].conj() / magnitude;
-                    }
-                }
+                            for foundation in f_start..f_end {
+                                let mixed = p_row[foundation];
+                                let weighted = match (mixed >> 20) & 3 {
+                                    0 => value,
+                                    1 => -value,
+                                    2 => Complex32::new(-value.im, value.re),
+                                    _ => Complex32::new(value.im, -value.re),
+                                };
+                                references[foundation] += weighted;
+                            }
+                        }
 
-                for (index, value) in data.iter().copied().take(limit).enumerate() {
-                    if !value.re.is_finite() || !value.im.is_finite() {
-                        continue;
-                    }
-                    let lane = (self.dim_lanes[index] as usize).min(lanes_count - 1);
-                    let f_start = lane * f_per_lane;
-                    let f_end = (f_start + f_per_lane).min(foundation_count);
-                    let r_row = &self.rot_seeds[index];
+                        let fallback_rotation = canonical_phase_rotation(&data[..limit]);
+                        let mut rotations = [fallback_rotation; RIVERO_MAX_FOUNDATIONS];
+                        for foundation in 0..foundation_count {
+                            let magnitude = references[foundation].norm();
+                            if magnitude.is_finite() && magnitude > 1e-6 {
+                                rotations[foundation] = references[foundation].conj() / magnitude;
+                            }
+                        }
 
-                    for foundation in f_start..f_end {
-                        let canonical = value * rotations[foundation];
-                        let mixed = r_row[foundation];
-                        let re_lane = (mixed & 7) as usize;
-                        let im_lane = ((mixed >> 8) & 7) as usize;
-                        let re_sign = if mixed & (1 << 16) == 0 { 1.0 } else { -1.0 };
-                        let im_sign = if mixed & (1 << 17) == 0 { 1.0 } else { -1.0 };
-                        foundations[foundation][re_lane] += canonical.re * re_sign;
-                        foundations[foundation][im_lane] += canonical.im * im_sign;
+                        for (index, &value) in data[..limit].iter().enumerate() {
+                            if !value.re.is_finite() || !value.im.is_finite() {
+                                continue;
+                            }
+                            let lane = (self.dim_lanes[index] as usize).min(lanes_count - 1);
+                            let f_start = lane * f_per_lane;
+                            let f_end = (f_start + f_per_lane).min(foundation_count);
+                            let r_row = &self.rot_seeds[index];
+
+                            for foundation in f_start..f_end {
+                                let canonical = value * rotations[foundation];
+                                let mixed = r_row[foundation];
+                                let re_lane = (mixed & 7) as usize;
+                                let im_lane = ((mixed >> 8) & 7) as usize;
+                                let re_sign = if mixed & (1 << 16) == 0 { 1.0 } else { -1.0 };
+                                let im_sign = if mixed & (1 << 17) == 0 { 1.0 } else { -1.0 };
+                                foundations[foundation][re_lane] += canonical.re * re_sign;
+                                foundations[foundation][im_lane] += canonical.im * im_sign;
+                            }
+                        }
                     }
                 }
             }
@@ -1007,10 +1122,10 @@ impl CellResident {
 }
 
 #[derive(Clone, Copy)]
-struct RankedResident {
-    dot: i16,
-    l1_distance: u16,
-    slot: NodeIndex,
+pub(crate) struct RankedResident {
+    pub(crate) dot: i16,
+    pub(crate) l1_distance: u16,
+    pub(crate) slot: NodeIndex,
 }
 
 impl RankedResident {
@@ -1186,10 +1301,11 @@ impl CellSlots {
     ) -> (usize, usize) {
         let scanned = self.slots.len();
         let admitted = scanned.min(budget);
+        let q = unpack_projected_coords(query_code);
         if scanned <= budget {
             candidates.extend(self.slots.iter().map(|resident| {
                 let (dot, l1_distance) =
-                    projected_similarity(query_code, resident.projected_code());
+                    projected_similarity_unpacked(q, resident.projected_code());
                 RankedResident {
                     dot,
                     l1_distance,
@@ -1201,23 +1317,149 @@ impl CellSlots {
 
         let mut ranked = [RankedResident::EMPTY; RIVERO_CELL_CAPACITY];
         for (rank, resident) in ranked.iter_mut().zip(self.slots.iter().copied()) {
-            let (dot, l1_distance) = projected_similarity(query_code, resident.projected_code());
+            let (dot, l1_distance) = projected_similarity_unpacked(q, resident.projected_code());
             *rank = RankedResident {
                 dot,
                 l1_distance,
                 slot: resident.slot,
             };
         }
-        ranked[..scanned].select_nth_unstable_by(budget - 1, ranked_resident_order);
-        ranked[..budget].sort_unstable_by(ranked_resident_order);
-        candidates.extend_from_slice(&ranked[..budget]);
-        (scanned, admitted)
+        ranked[..scanned].select_nth_unstable_by(admitted - 1, |lhs, rhs| {
+            ranked_resident_order(lhs, rhs)
+        });
+        append_best_slice(&self.slots, query_code, budget, candidates)
+    }
+}
+
+/// Appends the highest-affinity residents from a slice to `candidates`.
+#[inline]
+pub(crate) fn append_best_slice(
+    residents: &[CellResident],
+    query_code: u32,
+    budget: usize,
+    candidates: &mut Vec<RankedResident>,
+) -> (usize, usize) {
+    let scanned = residents.len();
+    let admitted = scanned.min(budget);
+    let q = unpack_projected_coords(query_code);
+    if scanned <= budget {
+        candidates.extend(residents.iter().map(|resident| {
+            let (dot, l1_distance) =
+                projected_similarity_unpacked(q, resident.projected_code());
+            RankedResident {
+                dot,
+                l1_distance,
+                slot: resident.slot,
+            }
+        }));
+        return (scanned, admitted);
+    }
+
+    let mut ranked = [RankedResident::EMPTY; RIVERO_CELL_CAPACITY];
+    let capped_scanned = scanned.min(RIVERO_CELL_CAPACITY);
+    for (rank, resident) in ranked[..capped_scanned].iter_mut().zip(residents.iter().copied()) {
+        let (dot, l1_distance) = projected_similarity_unpacked(q, resident.projected_code());
+        *rank = RankedResident {
+            dot,
+            l1_distance,
+            slot: resident.slot,
+        };
+    }
+    ranked[..capped_scanned].select_nth_unstable_by(admitted - 1, |lhs, rhs| {
+        ranked_resident_order(lhs, rhs)
+    });
+    candidates.extend_from_slice(&ranked[..admitted]);
+    (scanned, admitted)
+}
+
+/// Deterministic open-addressed flat frozen territory directory for O(1) zero-lock cacheline lookups.
+#[derive(Clone, Debug)]
+pub struct FlatFrozenTerritoryTable {
+    pub(crate) mask: u64,
+    pub(crate) table_keys: Box<[u64]>,
+    pub(crate) cell_offsets: Box<[u32]>,
+    pub(crate) cell_counts: Box<[u16]>,
+    pub(crate) residents: Box<[CellResident]>,
+}
+
+impl FlatFrozenTerritoryTable {
+    /// Builds a frozen flat table from striped territory cells.
+    #[must_use]
+    pub(crate) fn from_stripes(stripes: &[RwLock<HashMap<u64, CellSlots>>]) -> Self {
+        let mut total_cells = 0usize;
+        let mut total_residents = 0usize;
+
+        for s in stripes {
+            let guard = s.read();
+            total_cells += guard.len();
+            for cell in guard.values() {
+                total_residents += cell.slots.len();
+            }
+        }
+
+        let capacity = (total_cells * 2).next_power_of_two().max(1024);
+        let mask = (capacity - 1) as u64;
+
+        let mut table_keys = vec![u64::MAX; capacity].into_boxed_slice();
+        let mut cell_offsets = vec![0u32; capacity].into_boxed_slice();
+        let mut cell_counts = vec![0u16; capacity].into_boxed_slice();
+        let mut residents = Vec::with_capacity(total_residents);
+
+        let mut all_cells: Vec<(u64, Vec<CellResident>)> = Vec::with_capacity(total_cells);
+        for s in stripes {
+            let guard = s.read();
+            for (&key, cell) in guard.iter() {
+                all_cells.push((key, cell.slots.clone()));
+            }
+        }
+        all_cells.sort_unstable_by_key(|(k, _)| *k);
+
+        for (key, slots) in all_cells {
+            let start = residents.len() as u32;
+            let count = slots.len() as u16;
+            residents.extend_from_slice(&slots);
+
+            let mut pos = (splitmix64(key) & mask) as usize;
+            while table_keys[pos] != u64::MAX {
+                pos = (pos + 1) & (mask as usize);
+            }
+            table_keys[pos] = key;
+            cell_offsets[pos] = start;
+            cell_counts[pos] = count;
+        }
+
+        Self {
+            mask,
+            table_keys,
+            cell_offsets,
+            cell_counts,
+            residents: residents.into_boxed_slice(),
+        }
+    }
+
+    /// Resolves residents for a cell key with zero locks and direct power-of-two bitmask indexing.
+    #[inline(always)]
+    #[must_use]
+    pub(crate) fn get_residents(&self, key: u64) -> &[CellResident] {
+        let mut pos = (splitmix64(key) & self.mask) as usize;
+        loop {
+            let stored_key = self.table_keys[pos];
+            if stored_key == key {
+                let start = self.cell_offsets[pos] as usize;
+                let count = self.cell_counts[pos] as usize;
+                return &self.residents[start..start + count];
+            } else if stored_key == u64::MAX {
+                return &[];
+            }
+            pos = (pos + 1) & (self.mask as usize);
+        }
     }
 }
 
 /// Concurrent bounded territory index for [`RiveroAddress`] values.
 pub struct RiveroTerritoryIndex {
     pub(crate) stripes: Box<[RwLock<HashMap<u64, CellSlots>>]>,
+    pub(crate) flat_table: RwLock<Option<Arc<FlatFrozenTerritoryTable>>>,
     inserts: AtomicU64,
     overflows: AtomicU64,
 }
@@ -1230,6 +1472,7 @@ impl Default for RiveroTerritoryIndex {
             .into_boxed_slice();
         Self {
             stripes,
+            flat_table: RwLock::new(None),
             inserts: AtomicU64::new(0),
             overflows: AtomicU64::new(0),
         }
@@ -1241,6 +1484,18 @@ impl RiveroTerritoryIndex {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Freezes the current territory stripes into a zero-lock flat open-addressed directory.
+    pub fn freeze_flat_table(&self) {
+        let flat = FlatFrozenTerritoryTable::from_stripes(&self.stripes);
+        *self.flat_table.write() = Some(Arc::new(flat));
+    }
+
+    /// Obtains a reference-counted clone of the current frozen flat table, if compiled.
+    #[must_use]
+    pub fn get_flat_table(&self) -> Option<Arc<FlatFrozenTerritoryTable>> {
+        self.flat_table.read().clone()
     }
 
     /// Registers a node in the bounded C(7,3) cells of every foundation using strict default config.
@@ -1255,6 +1510,7 @@ impl RiveroTerritoryIndex {
         slot: NodeIndex,
         config: &RiveroConfig,
     ) {
+        *self.flat_table.write() = None;
         RIVERO_INSERT_CELLS.with(|scratch| {
             let mut cells = scratch.borrow_mut();
             cells.clear();
@@ -1309,6 +1565,7 @@ impl RiveroTerritoryIndex {
 
     /// Removes a node from every cell generated by its address.
     pub fn evict(&self, address: &RiveroAddress, slot: NodeIndex) {
+        *self.flat_table.write() = None;
         RIVERO_INSERT_CELLS.with(|scratch| {
             let mut cells = scratch.borrow_mut();
             cells.clear();
@@ -1423,24 +1680,37 @@ impl RiveroTerritoryIndex {
                         cells.push((stripe_for(key), key, query_code));
                     }
                 }
-                cells.sort_unstable_by_key(|&(stripe, key, _)| (stripe, key));
-
                 let mut resident_reads = 0usize;
                 let mut resident_scans = 0usize;
-                let mut cursor = 0usize;
-                while cursor < cells.len() {
-                    let stripe_index = cells[cursor].0;
-                    let stripe = self.stripes[stripe_index].read();
-                    while cursor < cells.len() && cells[cursor].0 == stripe_index {
-                        let key = cells[cursor].1;
-                        let query_code = cells[cursor].2;
-                        if let Some(cell) = stripe.get(&key) {
+
+                let flat_opt = self.get_flat_table();
+                if let Some(ref flat) = flat_opt {
+                    for &(_, key, query_code) in cells.iter() {
+                        let residents = flat.get_residents(key);
+                        if !residents.is_empty() {
                             let (scanned, admitted) =
-                                cell.append_best(query_code, budget, &mut admissions);
+                                append_best_slice(residents, query_code, budget, &mut admissions);
                             resident_scans += scanned;
                             resident_reads += admitted;
                         }
-                        cursor += 1;
+                    }
+                } else {
+                    cells.sort_unstable_by_key(|&(stripe, key, _)| (stripe, key));
+                    let mut cursor = 0usize;
+                    while cursor < cells.len() {
+                        let stripe_index = cells[cursor].0;
+                        let stripe = self.stripes[stripe_index].read();
+                        while cursor < cells.len() && cells[cursor].0 == stripe_index {
+                            let key = cells[cursor].1;
+                            let query_code = cells[cursor].2;
+                            if let Some(cell) = stripe.get(&key) {
+                                let (scanned, admitted) =
+                                    cell.append_best(query_code, budget, &mut admissions);
+                                resident_scans += scanned;
+                                resident_reads += admitted;
+                            }
+                            cursor += 1;
+                        }
                     }
                 }
 
@@ -1482,7 +1752,6 @@ impl RiveroTerritoryIndex {
                                 .take(selected_cap)
                                 .map(|candidate| candidate.slot),
                         );
-                        candidates.sort_unstable();
                         let diagnostics = RiveroRouteDiagnostics {
                             cells_probed: cells.len(),
                             resident_reads,
@@ -1529,8 +1798,10 @@ impl RiveroTerritoryIndex {
         inserts: u64,
         overflows: u64,
     ) -> Self {
+        let flat = FlatFrozenTerritoryTable::from_stripes(&stripes);
         Self {
             stripes,
+            flat_table: RwLock::new(Some(Arc::new(flat))),
             inserts: AtomicU64::new(inserts),
             overflows: AtomicU64::new(overflows),
         }
@@ -1545,6 +1816,7 @@ impl RiveroTerritoryIndex {
             .store(other.inserts.load(Ordering::Relaxed), Ordering::Relaxed);
         self.overflows
             .store(other.overflows.load(Ordering::Relaxed), Ordering::Relaxed);
+        self.freeze_flat_table();
     }
 
     /// Computes a canonical cryptographic fingerprint over all populated cells and resident codes.
@@ -1686,28 +1958,40 @@ impl AdaptiveRouteState {
             }
         }
 
-        delta_cells.sort_unstable_by_key(|&(stripe, key, _)| (stripe, key));
-
         // 2. Scan delta cells and admit residents
         let mut delta_admissions: Vec<RankedResident> =
             Vec::with_capacity(delta_cells.len() * budget);
         let mut resident_scans = 0usize;
         let mut resident_reads = 0usize;
 
-        let mut cursor = 0usize;
-        while cursor < delta_cells.len() {
-            let stripe_index = delta_cells[cursor].0;
-            let stripe = territory.stripes[stripe_index].read();
-            while cursor < delta_cells.len() && delta_cells[cursor].0 == stripe_index {
-                let key = delta_cells[cursor].1;
-                let query_code = delta_cells[cursor].2;
-                if let Some(cell) = stripe.get(&key) {
+        let flat_opt = territory.get_flat_table();
+        if let Some(ref flat) = flat_opt {
+            for &(_, key, query_code) in delta_cells.iter() {
+                let residents = flat.get_residents(key);
+                if !residents.is_empty() {
                     let (scanned, admitted) =
-                        cell.append_best(query_code, budget, &mut delta_admissions);
+                        append_best_slice(residents, query_code, budget, &mut delta_admissions);
                     resident_scans += scanned;
                     resident_reads += admitted;
                 }
-                cursor += 1;
+            }
+        } else {
+            delta_cells.sort_unstable_by_key(|&(stripe, key, _)| (stripe, key));
+            let mut cursor = 0usize;
+            while cursor < delta_cells.len() {
+                let stripe_index = delta_cells[cursor].0;
+                let stripe = territory.stripes[stripe_index].read();
+                while cursor < delta_cells.len() && delta_cells[cursor].0 == stripe_index {
+                    let key = delta_cells[cursor].1;
+                    let query_code = delta_cells[cursor].2;
+                    if let Some(cell) = stripe.get(&key) {
+                        let (scanned, admitted) =
+                            cell.append_best(query_code, budget, &mut delta_admissions);
+                        resident_scans += scanned;
+                        resident_reads += admitted;
+                    }
+                    cursor += 1;
+                }
             }
         }
 
@@ -1811,18 +2095,41 @@ fn pack_fine_code(projected_code: u32, affinity: f32, simhash: bool) -> u32 {
     (projected_code & 0x00ff_ffff) | (affinity_rank << 24)
 }
 
-#[inline]
-pub(crate) fn projected_similarity(lhs: u32, rhs: u32) -> (i16, u16) {
-    let mut dot = 0i16;
-    let mut l1_distance = 0u16;
-    for lane in 0..8 {
-        let shift = lane * 3;
-        let left = ((lhs >> shift) & 7) as i16 - 3;
-        let right = ((rhs >> shift) & 7) as i16 - 3;
-        dot += left * right;
-        l1_distance += left.abs_diff(right);
-    }
+#[inline(always)]
+pub(crate) fn unpack_projected_coords(code: u32) -> [i16; 8] {
+    [
+        ((code >> 0) & 7) as i16 - 3,
+        ((code >> 3) & 7) as i16 - 3,
+        ((code >> 6) & 7) as i16 - 3,
+        ((code >> 9) & 7) as i16 - 3,
+        ((code >> 12) & 7) as i16 - 3,
+        ((code >> 15) & 7) as i16 - 3,
+        ((code >> 18) & 7) as i16 - 3,
+        ((code >> 21) & 7) as i16 - 3,
+    ]
+}
+
+#[inline(always)]
+pub(crate) fn projected_similarity_unpacked(q: [i16; 8], rhs: u32) -> (i16, u16) {
+    let r0 = ((rhs >> 0) & 7) as i16 - 3;
+    let r1 = ((rhs >> 3) & 7) as i16 - 3;
+    let r2 = ((rhs >> 6) & 7) as i16 - 3;
+    let r3 = ((rhs >> 9) & 7) as i16 - 3;
+    let r4 = ((rhs >> 12) & 7) as i16 - 3;
+    let r5 = ((rhs >> 15) & 7) as i16 - 3;
+    let r6 = ((rhs >> 18) & 7) as i16 - 3;
+    let r7 = ((rhs >> 21) & 7) as i16 - 3;
+
+    let dot = q[0] * r0 + q[1] * r1 + q[2] * r2 + q[3] * r3
+        + q[4] * r4 + q[5] * r5 + q[6] * r6 + q[7] * r7;
+    let l1_distance = q[0].abs_diff(r0) + q[1].abs_diff(r1) + q[2].abs_diff(r2) + q[3].abs_diff(r3)
+        + q[4].abs_diff(r4) + q[5].abs_diff(r5) + q[6].abs_diff(r6) + q[7].abs_diff(r7);
     (dot, l1_distance)
+}
+
+#[inline(always)]
+pub(crate) fn projected_similarity(lhs: u32, rhs: u32) -> (i16, u16) {
+    projected_similarity_unpacked(unpack_projected_coords(lhs), rhs)
 }
 
 #[inline]
@@ -2105,10 +2412,12 @@ pub fn top_orbits_stack<const N: usize>(coords: &[f32; 8]) -> ([u8; N], usize) {
     );
 
     let query = normalize8(*coords);
+    let mut root_scores = [0.0f32; E8_ROOT_COUNT];
+    score_240_roots(&query, &mut root_scores);
+
     let mut scored = [(f32::NEG_INFINITY, 0u8); E8_ROOT_COUNT];
-    for root_id in 0u8..=E8_ROOT_LAST_ID {
-        let root_index = usize::from(root_id);
-        scored[root_index] = (dot8(&query, &E8_ROOTS[root_index]), root_id);
+    for (root_id, &score) in root_scores.iter().enumerate() {
+        scored[root_id] = (score, root_id as u8);
     }
 
     let count = N.min(E8_ROOT_COUNT);
@@ -2498,6 +2807,7 @@ mod tests {
         let config_48 = RiveroAddressConfig {
             foundations: 48,
             projection: RiveroProjectionMode::GlobalMix,
+            geometry: VectorGeometry::Real,
         };
         let addr_48 = RiveroAddress::compile_with_config(&data, config_48);
         assert_eq!(addr_48.foundation_count, 48);
@@ -2510,6 +2820,7 @@ mod tests {
                 lanes: 4,
                 assignment: LaneAssignment::Hashed,
             },
+            geometry: VectorGeometry::Real,
         };
         let addr_ml = RiveroAddress::compile_with_config(&data, config_ml);
         assert_eq!(addr_ml.foundation_count, 48);
@@ -2522,6 +2833,7 @@ mod tests {
                 lanes: 8,
                 assignment: LaneAssignment::Interleaved,
             },
+            geometry: VectorGeometry::Real,
         };
         let addr_64 = RiveroAddress::compile_with_config(&data, config_64);
         assert_eq!(addr_64.foundation_count, 64);

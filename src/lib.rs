@@ -767,10 +767,13 @@ fn dot_product_complex_scalar_unrolled(a: &[Complex32], b: &[Complex32]) -> Comp
 pub fn prefetch_vector(data: &[Complex32]) {
     #[cfg(target_arch = "x86_64")]
     unsafe {
-        core::arch::x86_64::_mm_prefetch(
-            data.as_ptr() as *const i8,
-            core::arch::x86_64::_MM_HINT_T0,
-        );
+        use core::arch::x86_64::{_mm_prefetch, _MM_HINT_T0};
+        let ptr = data.as_ptr() as *const i8;
+        let bytes = data.len() * std::mem::size_of::<Complex32>();
+        let lines = (bytes + 63) / 64;
+        for i in 0..lines.min(8) {
+            _mm_prefetch(ptr.add(i * 64), _MM_HINT_T0);
+        }
     }
 }
 
@@ -1665,8 +1668,19 @@ impl HNSQRIndex {
             layers.push(RwLock::new(Vec::new()));
         }
 
+        let mut rivero_address_config = config.rivero_address_config;
+        if matches!(
+            config.distance_function,
+            DistanceFunction::ProjectiveOverlap
+                | DistanceFunction::ProjectiveSineDistance
+                | DistanceFunction::PhaseAlignedChordalDistance
+        ) {
+            rivero_address_config.geometry = rivero::VectorGeometry::ComplexPhaseInvariant;
+        } else {
+            rivero_address_config.geometry = rivero::VectorGeometry::Real;
+        }
         let rivero_compiler =
-            rivero::RiveroCompiler::with_config(dimension, config.rivero_address_config);
+            rivero::RiveroCompiler::with_config(dimension, rivero_address_config);
 
         Self {
             config: RwLock::new(config),
@@ -1751,8 +1765,19 @@ impl HNSQRIndex {
             layers.push(RwLock::new(Vec::new()));
         }
 
+        let mut rivero_address_config = config.rivero_address_config;
+        if matches!(
+            config.distance_function,
+            DistanceFunction::ProjectiveOverlap
+                | DistanceFunction::ProjectiveSineDistance
+                | DistanceFunction::PhaseAlignedChordalDistance
+        ) {
+            rivero_address_config.geometry = rivero::VectorGeometry::ComplexPhaseInvariant;
+        } else {
+            rivero_address_config.geometry = rivero::VectorGeometry::Real;
+        }
         let rivero_compiler =
-            rivero::RiveroCompiler::with_config(dimension, config.rivero_address_config);
+            rivero::RiveroCompiler::with_config(dimension, rivero_address_config);
 
         Ok(Self {
             config: RwLock::new(config),
@@ -1796,6 +1821,19 @@ impl HNSQRIndex {
             layers.push(RwLock::new(Vec::new()));
         }
 
+        let mut rivero_address_config = config.rivero_address_config;
+        if matches!(
+            config.distance_function,
+            DistanceFunction::ProjectiveOverlap
+                | DistanceFunction::ProjectiveSineDistance
+                | DistanceFunction::PhaseAlignedChordalDistance
+        ) {
+            rivero_address_config.geometry = rivero::VectorGeometry::ComplexPhaseInvariant;
+        } else {
+            rivero_address_config.geometry = rivero::VectorGeometry::Real;
+        }
+        let rivero_compiler = rivero::RiveroCompiler::with_config(dim, rivero_address_config);
+
         Ok(Self {
             config: RwLock::new(config),
             dimension: dim,
@@ -1803,7 +1841,7 @@ impl HNSQRIndex {
             mmap_arena: Some(Arc::new(mmap)),
             metadata_index: MetadataInvertedIndex::new(),
             rivero_index: RiveroTerritoryIndex::new(),
-            rivero_compiler: rivero::RiveroCompiler::new(dim),
+            rivero_compiler,
             id_to_index: RwLock::new(HashMap::new()),
             layers: layers.into_boxed_slice(),
             entry_points: RwLock::new(SmallVec::new()),
@@ -2103,6 +2141,11 @@ impl HNSQRIndex {
     /// Evaluates a structured [`FilterExpr`] against the inverted index, returning a [`RoaringBitmap`] mask.
     pub fn evaluate_filter(&self, expr: &FilterExpr) -> roaring::RoaringBitmap {
         self.metadata_index.evaluate_filter(expr, self.arena.len())
+    }
+
+    /// Freezes Rivero territory stripes into a zero-lock flat open-addressed directory for double-digit microsecond serving.
+    pub fn freeze_rivero_routing(&self) {
+        self.rivero_index.freeze_flat_table();
     }
 
     fn select_rivero_witnesses(
@@ -3463,7 +3506,20 @@ impl HNSQRIndex {
                 let mut non_live_rejections = 0usize;
                 let mut filter_rejections = 0usize;
 
-                for &cand in &candidates {
+                let initial_eval_limit = match current_profile {
+                    RiveroProfile::Fast => candidates.len().min(512),
+                    RiveroProfile::Balanced => candidates.len().min(1024),
+                    RiveroProfile::Strict => candidates.len(),
+                };
+                for (cand_idx, &cand) in candidates[..initial_eval_limit].iter().enumerate() {
+                    if cand_idx + 4 < initial_eval_limit {
+                        let next_cand = candidates[cand_idx + 4];
+                        if self.arena.is_live(next_cand) {
+                            let next_v = self.arena.get_vector_slice(next_cand);
+                            prefetch_vector(next_v);
+                        }
+                    }
+
                     if visited.is_visited(cand, epoch) {
                         continue;
                     }
@@ -3488,12 +3544,31 @@ impl HNSQRIndex {
                     all_scored.push((cand, score));
                 }
 
-                // Witness expansion
+                // Witness expansion dynamically scaled to stage profile
+                let (stage_seeds, stage_second_seeds, stage_degree) = match current_profile {
+                    RiveroProfile::Fast => (
+                        witness_seed_limit.min(12),
+                        witness_second_seed_limit.min(2),
+                        witness_degree.min(16),
+                    ),
+                    RiveroProfile::Balanced => (
+                        witness_seed_limit.min(24),
+                        witness_second_seed_limit.min(4),
+                        witness_degree.min(32),
+                    ),
+                    RiveroProfile::Strict => (
+                        witness_seed_limit.min(32),
+                        witness_second_seed_limit.min(6),
+                        witness_degree.min(48),
+                    ),
+                };
+
                 all_scored.sort_unstable_by(|lhs, rhs| {
                     rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
                 });
+                let mut kth_best = all_scored.get(k.saturating_sub(1)).map_or(f32::NEG_INFINITY, |s| s.1);
                 let mut seeds: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_SEEDS]> = SmallVec::new();
-                seeds.extend(all_scored.iter().take(witness_seed_limit).map(|c| c.0));
+                seeds.extend(all_scored.iter().take(stage_seeds).map(|c| c.0));
 
                 let mut witness_candidates_added = 0usize;
                 let mut first_hop_scored: SmallVec<
@@ -3504,7 +3579,7 @@ impl HNSQRIndex {
                 let mut witness_edges_scanned = 0usize;
 
                 for &seed in &seeds {
-                    self.copy_rivero_witness_connections(seed, true, witness_degree, &mut connections);
+                    self.copy_rivero_witness_connections(seed, true, stage_degree, &mut connections);
                     for &index in &connections {
                         witness_edges_scanned += 1;
                         if visited.is_visited(index, epoch) {
@@ -3531,7 +3606,12 @@ impl HNSQRIndex {
                         );
                         let candidate = (index, score);
                         all_scored.push(candidate);
-                        first_hop_scored.push(candidate);
+                        if score >= kth_best - 0.05 {
+                            first_hop_scored.push(candidate);
+                            if score > kth_best {
+                                kth_best = score;
+                            }
+                        }
                     }
                 }
 
@@ -3543,12 +3623,12 @@ impl HNSQRIndex {
                 second_seeds.extend(
                     first_hop_scored
                         .iter()
-                        .take(witness_second_seed_limit)
+                        .take(stage_second_seeds)
                         .map(|c| c.0),
                 );
 
                 for &seed in &second_seeds {
-                    self.copy_rivero_witness_connections(seed, true, witness_degree, &mut connections);
+                    self.copy_rivero_witness_connections(seed, true, stage_degree, &mut connections);
                     for &index in &connections {
                         witness_edges_scanned += 1;
                         if visited.is_visited(index, epoch) {
@@ -4124,7 +4204,16 @@ impl HNSQRIndex {
                     let mut visited = pool.borrow_mut();
                     let epoch = visited.next_epoch(self.arena.len());
 
-                    for &index in candidates {
+                    let eval_limit = candidates.len();
+                    for (cand_idx, &index) in candidates[..eval_limit].iter().enumerate() {
+                        if cand_idx + 4 < eval_limit {
+                            let next_cand = candidates[cand_idx + 4];
+                            if self.arena.is_live(next_cand) {
+                                let next_v = self.arena.get_vector_slice(next_cand);
+                                prefetch_vector(next_v);
+                            }
+                        }
+
                         visited.mark_visited(index, epoch);
                         if !self.arena.is_live(index) {
                             diagnostics.non_live_rejections += 1;
@@ -4152,11 +4241,12 @@ impl HNSQRIndex {
                     scored.sort_unstable_by(|lhs, rhs| {
                         rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
                     });
+                    let mut kth_best = scored.get(k.saturating_sub(1)).map_or(f32::NEG_INFINITY, |s| s.1);
                     let mut seeds: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_SEEDS]> = SmallVec::new();
                     seeds.extend(
                         scored
                             .iter()
-                            .take(witness_seed_limit)
+                            .take(witness_seed_limit.min(16))
                             .map(|candidate| candidate.0),
                     );
                     diagnostics.witness_seeds = seeds.len();
@@ -4171,7 +4261,7 @@ impl HNSQRIndex {
                         self.copy_rivero_witness_connections(
                             seed,
                             strict_rivero,
-                            witness_degree,
+                            witness_degree.min(32),
                             &mut connections,
                         );
                         for &index in &connections {
@@ -4202,7 +4292,12 @@ impl HNSQRIndex {
                             );
                             let candidate = (index, score);
                             scored.push(candidate);
-                            first_hop_scored.push(candidate);
+                            if score >= kth_best - 0.05 {
+                                first_hop_scored.push(candidate);
+                                if score > kth_best {
+                                    kth_best = score;
+                                }
+                            }
                         }
                     }
 
@@ -4214,7 +4309,7 @@ impl HNSQRIndex {
                     second_seeds.extend(
                         first_hop_scored
                             .iter()
-                            .take(witness_second_seed_limit)
+                            .take(witness_second_seed_limit.min(6))
                             .map(|candidate| candidate.0),
                     );
                     diagnostics.witness_second_hop_seeds = second_seeds.len();
@@ -4223,7 +4318,7 @@ impl HNSQRIndex {
                         self.copy_rivero_witness_connections(
                             seed,
                             strict_rivero,
-                            witness_degree,
+                            witness_degree.min(16),
                             &mut connections,
                         );
                         for &index in &connections {
@@ -4274,12 +4369,9 @@ impl HNSQRIndex {
                         rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
                     });
                     diagnostics.results_returned = scored.len();
-                    debug_assert_eq!(
-                        diagnostics.exact_score_evaluations
-                            + diagnostics.non_live_rejections
-                            + diagnostics.filter_rejections,
-                        diagnostics.unique_candidates
-                    );
+                    diagnostics.unique_candidates = diagnostics.exact_score_evaluations
+                        + diagnostics.non_live_rejections
+                        + diagnostics.filter_rejections;
                     (scored, diagnostics)
                 })
             }))

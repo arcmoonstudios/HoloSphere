@@ -858,6 +858,7 @@ impl HNSQRIndex {
                     }
                     *index.rivero_index.stripes[stripe_idx].write() = map;
                 });
+            index.rivero_index.freeze_flat_table();
         }
         let rivero_restore_us = t9.elapsed().as_micros() as f64;
 

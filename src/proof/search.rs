@@ -537,18 +537,14 @@ impl GlobalExactProofSearch {
             let tau = topk.kth_score() as f64;
 
             let total_regions = proof.proof_regions_pruned + proof.proof_regions_expanded;
-            let region_prune_ratio = if total_regions > 0 {
+            let _region_prune_ratio = if total_regions > 0 {
                 proof.proof_regions_pruned as f64 / total_regions as f64
             } else {
                 0.0
             };
 
-            // (ε, δ)-PAC Progressive Proof Relaxation Bound under isotropic stress
-            let effective_ub = if region_prune_ratio < 0.20 && total_corpus > 10_000 {
-                entry.upper_bound * 0.985 // 1.5% PAC epsilon relaxation
-            } else {
-                entry.upper_bound
-            };
+            // Strict admissible upper bound pruning for exact certification
+            let effective_ub = entry.upper_bound;
 
             if topk.is_full() && effective_ub < tau {
                 proof.proof_regions_pruned += 1;

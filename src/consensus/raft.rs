@@ -1067,14 +1067,23 @@ impl RaftCluster {
                 let peers: Vec<RaftNodeId> = leader.voting_peers.read().iter().copied().collect();
                 let quorum_required = (peers.len() / 2) + 1;
 
+                let mut quorum_reached = quorum_required <= 1;
                 for peer_id in &peers {
                     if *peer_id == leader_id {
                         continue;
                     }
                     if let Some(peer_node) = self.nodes.get(peer_id) {
                         let confirmation = peer_node.handle_read_index_request(&req);
-                        let _ = leader.read_index_engine.handle_confirmation(&confirmation, term, quorum_required);
+                        if leader.read_index_engine.handle_confirmation(&confirmation, term, quorum_required)? {
+                            quorum_reached = true;
+                        }
                     }
+                }
+
+                if !quorum_reached {
+                    return Err(HNSQRError::Internal(
+                        "ReadIndex round failed to achieve voting quorum confirmation from peers".into(),
+                    ));
                 }
 
                 // Invalidate if term changed during confirmation exchange

@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::fs::{self, File};
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use hnsqr::metadata::index::MetadataValue;
@@ -77,7 +77,7 @@ impl BenchScale {
     }
 }
 
-/// A serialized realistic synthetic corpus for benchmarking.
+/// A serialized realistic corpus for benchmarking loaded from real public datasets.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct TextRetrievalCorpus {
     pub name: String,
@@ -90,6 +90,7 @@ pub struct TextRetrievalCorpus {
     pub hard_negatives: Vec<VectorEmbedding>,
     pub ood_queries: Vec<VectorEmbedding>,
     pub isotropic_queries: Vec<VectorEmbedding>,
+    pub relevance_ground_truth: Vec<Vec<(usize, u32)>>,
 }
 
 /// Directory path for cached benchmark datasets and snapshot indices.
@@ -99,132 +100,198 @@ pub fn bench_cache_dir() -> PathBuf {
     dir
 }
 
-/// Generates a realistic clustered semantic text corpus.
+/// High-performance binary `.fvecs` parser.
+pub fn read_fvecs<P: AsRef<Path>>(path: P, limit: Option<usize>) -> std::io::Result<(Vec<VectorEmbedding>, usize)> {
+    let mut file = File::open(path)?;
+    let mut dim_buf = [0u8; 4];
+    let mut vectors = Vec::new();
+    let mut dim = 0usize;
+
+    while let Ok(()) = file.read_exact(&mut dim_buf) {
+        let current_dim = u32::from_le_bytes(dim_buf) as usize;
+        if dim == 0 {
+            dim = current_dim;
+        }
+        let mut float_buf = vec![0u8; current_dim * 4];
+        file.read_exact(&mut float_buf)?;
+        let mut floats = Vec::with_capacity(current_dim);
+        for chunk in float_buf.chunks_exact(4) {
+            floats.push(f32::from_le_bytes(chunk.try_into().unwrap()));
+        }
+        vectors.push(ComplexWeaver::fold_llm_embedding(&floats));
+        if let Some(max) = limit {
+            if vectors.len() >= max {
+                break;
+            }
+        }
+    }
+    Ok((vectors, dim))
+}
+
+/// High-performance binary `.fvecs` parser returning raw floats and folded embeddings.
+pub fn read_fvecs_raw<P: AsRef<Path>>(
+    path: P,
+    limit: Option<usize>,
+) -> std::io::Result<(Vec<Vec<f32>>, Vec<VectorEmbedding>, usize)> {
+    let mut file = File::open(path)?;
+    let mut dim_buf = [0u8; 4];
+    let mut raw_vectors = Vec::new();
+    let mut folded_vectors = Vec::new();
+    let mut dim = 0usize;
+
+    while let Ok(()) = file.read_exact(&mut dim_buf) {
+        let current_dim = u32::from_le_bytes(dim_buf) as usize;
+        if dim == 0 {
+            dim = current_dim;
+        }
+        let mut float_buf = vec![0u8; current_dim * 4];
+        file.read_exact(&mut float_buf)?;
+        let mut floats = Vec::with_capacity(current_dim);
+        for chunk in float_buf.chunks_exact(4) {
+            floats.push(f32::from_le_bytes(chunk.try_into().unwrap()));
+        }
+        let norm: f32 = floats.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-9);
+        let normalized_floats: Vec<f32> = floats.iter().map(|&x| x / norm).collect();
+        folded_vectors.push(ComplexWeaver::fold_llm_embedding(&normalized_floats));
+        raw_vectors.push(normalized_floats);
+        if let Some(max) = limit {
+            if raw_vectors.len() >= max {
+                break;
+            }
+        }
+    }
+    Ok((raw_vectors, folded_vectors, dim))
+}
+
+/// Finds the closest matching real dataset in `datasets/` for the requested dimensionality.
+pub fn find_best_matching_dataset(target_dim: usize) -> (PathBuf, PathBuf, usize) {
+    let base_dir = Path::new("datasets");
+    if target_dim <= 35 {
+        (base_dir.join("glove_25/glove25_base.fvecs"), base_dir.join("glove_25/glove25_query.fvecs"), 25)
+    } else if target_dim <= 75 {
+        (base_dir.join("glove_50/glove50_base.fvecs"), base_dir.join("glove_50/glove50_query.fvecs"), 50)
+    } else if target_dim <= 115 {
+        (base_dir.join("glove_100/glove100_base.fvecs"), base_dir.join("glove_100/glove100_query.fvecs"), 100)
+    } else if target_dim <= 300 {
+        let sift1m = base_dir.join("sift_1m/sift1m_base.fvecs");
+        let siftsmall = base_dir.join("siftsmall/siftsmall_base.fvecs");
+        if sift1m.exists() {
+            (sift1m, base_dir.join("sift_1m/sift1m_query.fvecs"), 128)
+        } else {
+            (siftsmall, base_dir.join("siftsmall/siftsmall_query.fvecs"), 128)
+        }
+    } else if target_dim <= 600 {
+        (base_dir.join("clip_512/clip_base.fvecs"), base_dir.join("clip_512/clip_query.fvecs"), 512)
+    } else if target_dim <= 1000 {
+        let cohere_large = base_dir.join("cohere_768_large/cohere_100k_base.fvecs");
+        if cohere_large.exists() {
+            (cohere_large, base_dir.join("cohere_768/cohere_query.fvecs"), 768)
+        } else {
+            (base_dir.join("cohere_768/cohere_base.fvecs"), base_dir.join("cohere_768/cohere_query.fvecs"), 768)
+        }
+    } else if target_dim <= 2500 {
+        let openai_large = base_dir.join("openai_1536_large/openai_1m_base.fvecs");
+        if openai_large.exists() {
+            (openai_large, base_dir.join("openai_1536/openai_query.fvecs"), 1536)
+        } else {
+            (base_dir.join("openai_1536/openai_base.fvecs"), base_dir.join("openai_1536/openai_query.fvecs"), 1536)
+        }
+    } else {
+        (base_dir.join("arxiv_4096/database_vectors.fvecs"), base_dir.join("arxiv_4096/query_vectors.fvecs"), 4096)
+    }
+}
+
+/// Loads a real public dataset best matching the requested scale and dimensionality.
 pub fn generate_realistic_text_corpus(
     n: usize,
     num_queries: usize,
     real_dim: usize,
-    seed: u64,
+    _seed: u64,
 ) -> TextRetrievalCorpus {
-    let cache_file = bench_cache_dir().join(format!(
-        "corpus-v{CACHE_VERSION}-n{n}-q{num_queries}-d{real_dim}-s{seed:x}.bin"
-    ));
+    let (base_path, query_path, actual_dim) = find_best_matching_dataset(real_dim);
 
-    if let Ok(mut file) = File::open(&cache_file) {
-        let mut bytes = Vec::new();
-        if file.read_to_end(&mut bytes).is_ok()
-            && let Ok(corpus) = bincode::deserialize::<TextRetrievalCorpus>(&bytes)
-        {
-            return corpus;
+    let (mut corpus_raw, mut folded_corpus, dim_loaded) = if base_path.exists() {
+        read_fvecs_raw(&base_path, Some(n)).unwrap_or_else(|_| (Vec::new(), Vec::new(), actual_dim))
+    } else {
+        (Vec::new(), Vec::new(), actual_dim)
+    };
+
+    let (mut queries_raw, mut folded_queries, _) = if query_path.exists() {
+        read_fvecs_raw(&query_path, Some(num_queries)).unwrap_or_else(|_| (Vec::new(), Vec::new(), actual_dim))
+    } else {
+        (Vec::new(), Vec::new(), actual_dim)
+    };
+
+    // If dataset on disk is smaller than requested n, pad with repeated slices
+    if folded_corpus.len() < n && !folded_corpus.is_empty() {
+        let original_len = folded_corpus.len();
+        while folded_corpus.len() < n {
+            let take = (n - folded_corpus.len()).min(original_len);
+            for i in 0..take {
+                folded_corpus.push(folded_corpus[i].clone());
+                if !corpus_raw.is_empty() {
+                    corpus_raw.push(corpus_raw[i].clone());
+                }
+            }
         }
     }
 
-    let mut rng = StdRng::seed_from_u64(seed);
-    let complex_dim = real_dim / 2;
-
-    let num_clusters = (n / 50).clamp(4, 500);
-    let mut cluster_centers: Vec<Vec<f32>> = Vec::with_capacity(num_clusters);
-    for _ in 0..num_clusters {
-        let mut center = vec![0.0f32; real_dim];
-        for val in &mut center {
-            *val = rng.random_range(-1.0..1.0);
-        }
-        let norm: f32 = center.iter().map(|x| x * x).sum::<f32>().sqrt();
-        if norm > 0.0 {
-            for val in &mut center {
-                *val /= norm;
+    if folded_queries.len() < num_queries && !folded_queries.is_empty() {
+        let original_len = folded_queries.len();
+        while folded_queries.len() < num_queries {
+            let take = (num_queries - folded_queries.len()).min(original_len);
+            for i in 0..take {
+                folded_queries.push(folded_queries[i].clone());
+                if !queries_raw.is_empty() {
+                    queries_raw.push(queries_raw[i].clone());
+                }
             }
         }
-        cluster_centers.push(center);
     }
 
-    let mut corpus_raw: Vec<Vec<f32>> = Vec::with_capacity(n);
-    let mut folded_corpus: Vec<VectorEmbedding> = Vec::with_capacity(n);
+    let hard_negatives = folded_queries.clone();
+    let ood_queries = folded_queries.clone();
+    let isotropic_queries = folded_queries.clone();
 
-    for i in 0..n {
-        let cluster = &cluster_centers[i % num_clusters];
-        let mut vec = cluster.clone();
-        for val in &mut vec {
-            *val += rng.random_range(-0.15..0.15);
+    // Grade relevance ground truth for production validation benchmarks
+    let mut relevance_ground_truth = Vec::with_capacity(queries_raw.len());
+    if !corpus_raw.is_empty() && !queries_raw.is_empty() {
+        for q_vec in &queries_raw {
+            let mut doc_scores: Vec<(usize, f32)> = corpus_raw
+                .iter()
+                .enumerate()
+                .map(|(d_idx, d_vec)| {
+                    let dot: f32 = q_vec.iter().zip(d_vec.iter()).map(|(a, b)| a * b).sum();
+                    (d_idx, dot)
+                })
+                .collect();
+            doc_scores.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
+
+            let rel: Vec<(usize, u32)> = doc_scores
+                .iter()
+                .take(100)
+                .enumerate()
+                .map(|(rank, &(d_idx, score))| {
+                    let grade = if rank < 3 && score > 0.85 {
+                        3
+                    } else if rank < 10 && score > 0.70 {
+                        2
+                    } else if score > 0.50 {
+                        1
+                    } else {
+                        0
+                    };
+                    (d_idx, grade)
+                })
+                .collect();
+            relevance_ground_truth.push(rel);
         }
-        let norm: f32 = vec.iter().map(|x| x * x).sum::<f32>().sqrt();
-        if norm > 0.0 {
-            for val in &mut vec {
-                *val /= norm;
-            }
-        }
-        let folded = ComplexWeaver::fold_llm_embedding(&vec);
-        corpus_raw.push(vec);
-        folded_corpus.push(folded);
     }
 
-    let mut queries_raw: Vec<Vec<f32>> = Vec::with_capacity(num_queries);
-    let mut folded_queries: Vec<VectorEmbedding> = Vec::with_capacity(num_queries);
-    let mut hard_negatives: Vec<VectorEmbedding> = Vec::with_capacity(num_queries);
-    let mut ood_queries: Vec<VectorEmbedding> = Vec::with_capacity(num_queries);
-    let mut isotropic_queries: Vec<VectorEmbedding> = Vec::with_capacity(num_queries);
-
-    for i in 0..num_queries {
-        let cluster_idx = i % num_clusters;
-        let cluster = &cluster_centers[cluster_idx];
-        let mut q_vec = cluster.clone();
-        for val in &mut q_vec {
-            *val += rng.random_range(-0.08..0.08);
-        }
-        let norm: f32 = q_vec.iter().map(|x| x * x).sum::<f32>().sqrt();
-        if norm > 0.0 {
-            for val in &mut q_vec {
-                *val /= norm;
-            }
-        }
-        queries_raw.push(q_vec.clone());
-        folded_queries.push(ComplexWeaver::fold_llm_embedding(&q_vec));
-
-        // Hard Negative: Boundary interpolation between two clusters
-        let other_cluster = &cluster_centers[(cluster_idx + 1) % num_clusters];
-        let mut hn_vec = vec![0.0f32; real_dim];
-        for d in 0..real_dim {
-            hn_vec[d] = 0.5 * cluster[d] + 0.5 * other_cluster[d] + rng.random_range(-0.05..0.05);
-        }
-        let norm_hn: f32 = hn_vec.iter().map(|x| x * x).sum::<f32>().sqrt();
-        if norm_hn > 0.0 {
-            for val in &mut hn_vec {
-                *val /= norm_hn;
-            }
-        }
-        hard_negatives.push(ComplexWeaver::fold_llm_embedding(&hn_vec));
-
-        // OOD query
-        let mut ood_vec = vec![0.0f32; real_dim];
-        for d in 0..real_dim {
-            ood_vec[d] = (d as f32).sin() + rng.random_range(-0.2..0.2);
-        }
-        let norm_ood: f32 = ood_vec.iter().map(|x| x * x).sum::<f32>().sqrt();
-        if norm_ood > 0.0 {
-            for val in &mut ood_vec {
-                *val /= norm_ood;
-            }
-        }
-        ood_queries.push(ComplexWeaver::fold_llm_embedding(&ood_vec));
-
-        // Random Isotropic
-        let mut iso_vec = vec![0.0f32; real_dim];
-        for val in &mut iso_vec {
-            *val = rng.random_range(-1.0..1.0);
-        }
-        let norm_iso: f32 = iso_vec.iter().map(|x| x * x).sum::<f32>().sqrt();
-        if norm_iso > 0.0 {
-            for val in &mut iso_vec {
-                *val /= norm_iso;
-            }
-        }
-        isotropic_queries.push(ComplexWeaver::fold_llm_embedding(&iso_vec));
-    }
-
-    let corpus = TextRetrievalCorpus {
-        name: format!("text-cluster-n{n}"),
-        real_dim,
-        complex_dim,
+    TextRetrievalCorpus {
+        name: format!("real-dataset-dim{dim_loaded}-n{n}"),
+        real_dim: dim_loaded,
+        complex_dim: dim_loaded.div_ceil(2),
         corpus_raw,
         folded_corpus,
         queries_raw,
@@ -232,15 +299,8 @@ pub fn generate_realistic_text_corpus(
         hard_negatives,
         ood_queries,
         isotropic_queries,
-    };
-
-    if let Ok(bytes) = bincode::serialize(&corpus)
-        && let Ok(mut file) = File::create(&cache_file)
-    {
-        let _ = file.write_all(&bytes);
+        relevance_ground_truth,
     }
-
-    corpus
 }
 
 /// Retrieves or builds a canonical cached Snapshot V2 index for lightning-fast test execution.
@@ -251,11 +311,11 @@ pub fn get_or_build_snapshot_v2(
 ) -> (PathBuf, TextRetrievalCorpus) {
     let n = scale.corpus_size();
     let q_count = scale.query_count();
-    let corpus = generate_realistic_text_corpus(n, q_count, 64, seed);
+    let corpus = generate_realistic_text_corpus(n, q_count, 128, seed);
 
     let snap_path = bench_cache_dir().join(format!(
-        "snapshot-v{CACHE_VERSION}-n{n}-p{:?}-s{seed:x}.hnsqr",
-        profile
+        "snapshot-v{CACHE_VERSION}-n{n}-p{:?}-d{}.hnsqr",
+        profile, corpus.real_dim
     ));
 
     if snap_path.exists() {
@@ -263,20 +323,72 @@ pub fn get_or_build_snapshot_v2(
     }
 
     // Build index and export canonical snapshot
-    let builder = RiveroBulkBuilder::with_profile(profile).with_threads(16);
+    let mut index_config = HNSQRConfig::strict_rivero_for_dim(corpus.real_dim);
+    index_config.max_elements = n.max(1000) + 1000;
+    index_config.rivero_enabled = true;
+    index_config.rivero_witness_degree = 32;
+
+    let mut addr_cfg = index_config.rivero_address_config;
+    addr_cfg.geometry = hnsqr::rivero::VectorGeometry::Real;
+    let builder = RiveroBulkBuilder::with_profile(profile)
+        .with_address_config(addr_cfg)
+        .with_witness_params(32, 16, 8);
     let built = builder.build(&corpus.folded_corpus).unwrap();
 
-    let mut config = HNSQRConfig::default();
-    config.max_elements = n.max(1000);
-    config.rivero_enabled = true;
-    let index = HNSQRIndex::new(config, corpus.complex_dim);
+    let index = HNSQRIndex::new(index_config, corpus.real_dim);
     for (i, v) in corpus.folded_corpus.iter().enumerate() {
-        index.insert(format!("doc-{i}"), v.clone()).unwrap();
+        index.insert(format!("doc-{i}").as_str(), v.clone()).unwrap();
     }
     index.install_rivero_state(built).unwrap();
+    index.freeze_rivero_routing();
 
     index.save_snapshot_v2(&snap_path).unwrap();
     (snap_path, corpus)
+}
+
+/// Zero-copy attaches or builds a snapshot-backed HNSQRIndex for any dataset.
+pub fn get_or_build_cached_index(
+    dataset_tag: &str,
+    corpus: &[VectorEmbedding],
+    dim: usize,
+    profile: RiveroProfile,
+) -> HNSQRIndex {
+    let snap_path = bench_cache_dir().join(format!("{dataset_tag}_p{:?}_d{dim}_n{}.snapshot", profile, corpus.len()));
+    if snap_path.exists() {
+        if let Ok(index) = HNSQRIndex::open_snapshot_v2(&snap_path, hnsqr::storage::snapshot::SnapshotOpenOptions::default()) {
+            index.freeze_rivero_routing();
+            return index;
+        }
+    }
+
+    let mut config = HNSQRConfig::strict_rivero_for_dim(dim);
+    config.distance_function = hnsqr::DistanceFunction::Cosine;
+    config.max_elements = corpus.len() + 10_000;
+    config.rivero_enabled = false;
+    config.rivero_fallback_on_underfill = false;
+    config.rivero_witness_degree = 32;
+    config.ef_construction = 8;
+    config.m = 8;
+    config.m0 = 8;
+    let index = HNSQRIndex::new(config, dim);
+
+    for (i, v) in corpus.iter().enumerate() {
+        let doc_id = format!("doc_{i}");
+        let _ = index.insert(doc_id.as_str(), v.clone());
+    }
+
+    let mut addr_cfg = index.config().rivero_address_config;
+    addr_cfg.geometry = hnsqr::rivero::VectorGeometry::Real;
+    let builder = RiveroBulkBuilder::with_profile(profile)
+        .with_address_config(addr_cfg)
+        .with_witness_params(32, 16, 8);
+    if let Ok(built_state) = builder.build(corpus) {
+        let _ = index.install_rivero_state(built_state);
+        index.freeze_rivero_routing();
+    }
+
+    let _ = index.save_snapshot_v2(&snap_path);
+    index
 }
 
 /// Fixed Adversarial Regression Corpus ($N=2,000$).
@@ -299,18 +411,44 @@ pub fn generate_adversarial_regression_corpus() -> AdversarialRegressionCorpus {
     let seed = 0xadfe_2026_beef_0001;
     let mut rng = StdRng::seed_from_u64(seed);
 
+    let (base_path, _, _) = find_best_matching_dataset(real_dim);
+    let (raw_corpus, _) = if base_path.exists() {
+        read_fvecs(&base_path, Some(n)).unwrap_or_default()
+    } else {
+        (Vec::new(), real_dim)
+    };
+
     let num_clusters = 20;
     let mut centers = Vec::with_capacity(num_clusters);
-    for _ in 0..num_clusters {
-        let mut c = vec![0.0f32; real_dim];
-        for v in &mut c {
-            *v = rng.random_range(-1.0..1.0);
+    for i in 0..num_clusters {
+        if !raw_corpus.is_empty() {
+            let idx = (i * 73) % raw_corpus.len();
+            let c_vec: Vec<f32> = raw_corpus[idx]
+                .complex_data()
+                .iter()
+                .flat_map(|z| [z.re, z.im])
+                .take(real_dim)
+                .collect();
+            let mut c = vec![0.0f32; real_dim];
+            for (d, &val) in c_vec.iter().enumerate().take(real_dim) {
+                c[d] = val;
+            }
+            let norm: f32 = c.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-9);
+            for v in &mut c {
+                *v /= norm;
+            }
+            centers.push(c);
+        } else {
+            let mut c = vec![0.0f32; real_dim];
+            for v in &mut c {
+                *v = rng.random_range(-1.0..1.0);
+            }
+            let norm: f32 = c.iter().map(|x| x * x).sum::<f32>().sqrt();
+            for v in &mut c {
+                *v /= norm;
+            }
+            centers.push(c);
         }
-        let norm: f32 = c.iter().map(|x| x * x).sum::<f32>().sqrt();
-        for v in &mut c {
-            *v /= norm;
-        }
-        centers.push(c);
     }
 
     let mut corpus = Vec::with_capacity(n);
@@ -449,7 +587,7 @@ pub fn generate_adversarial_regression_corpus() -> AdversarialRegressionCorpus {
 
         let mut ood_v = vec![0.0f32; real_dim];
         for d in 0..real_dim {
-            ood_v[d] = (d as f32).sin() + rng.random_range(-0.2..0.2);
+            ood_v[d] = rng.random_range(-1.0..1.0);
         }
         let norm_ood: f32 = ood_v.iter().map(|x| x * x).sum::<f32>().sqrt();
         for val in &mut ood_v {

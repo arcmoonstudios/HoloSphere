@@ -3180,8 +3180,24 @@ impl HNSQRIndex {
                 self.search_indices_exact(query, k, filter_mask)
             }
             crate::planning::planner::ExecutionPlan::LutzGlobalCertified { initial_seed_cap: _ } => {
-                let (certified, _) = self.search_indices_with_proof(query, k, filter_mask)?;
-                Ok(certified)
+                match self.certified_search(query, k, filter_mask)? {
+                    CertifiedSearchOutcome::Exact { results, .. } => Ok(results),
+                    CertifiedSearchOutcome::DeadlineExceeded { proof, .. } => {
+                        let total_regions = proof.proof_regions_pruned + proof.proof_regions_expanded;
+                        let ppm = if total_regions > 0 {
+                            ((proof.proof_regions_pruned as f64 / total_regions as f64) * 1_000_000.0) as u32
+                        } else {
+                            0
+                        };
+                        let budget_us = self.config.read().certified_query_timeout_ms.unwrap_or(0) * 1000;
+                        Err(HNSQRError::CertifiedDeadlineExceeded {
+                            elapsed_us: proof.elapsed_us,
+                            budget_us,
+                            frontier_nodes_remaining: proof.frontier_nodes_remaining,
+                            region_prune_ratio_ppm: ppm,
+                        })
+                    }
+                }
             }
             crate::planning::planner::ExecutionPlan::RiveroRetrieval {
                 profile,
@@ -4091,6 +4107,7 @@ impl HNSQRIndex {
 
         // Install territory index
         self.rivero_index.replace_from(territory);
+        self.config.write().rivero_enabled = true;
 
         Ok(())
     }

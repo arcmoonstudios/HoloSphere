@@ -29,9 +29,6 @@ use hnsqr::{
     AdaptivePolicy, HNSQRConfig, HNSQRIndex, NodeIndex, RiveroProfile, SimilarityScore,
     VectorEmbedding,
 };
-use num_complex::Complex32;
-use rand::rngs::StdRng;
-use rand::{RngExt, SeedableRng};
 use rayon::prelude::*;
 
 const D: usize = 64;
@@ -47,133 +44,58 @@ struct Workload {
     ground_truth: Vec<Vec<(NodeIndex, SimilarityScore)>>,
 }
 
-fn normalize_complex(data: Vec<Complex32>) -> VectorEmbedding {
-    VectorEmbedding::from_complex(data).into_normalized()
-}
+mod common;
 
-fn generate_clustered_workload(n: usize, d: usize, q_count: usize, seed: u64) -> Workload {
-    let mut rng = StdRng::seed_from_u64(seed);
-    let num_clusters = 50;
-    let cluster_centers: Vec<Vec<Complex32>> = (0..num_clusters)
-        .map(|_| {
-            (0..d)
-                .map(|_| Complex32::new(rng.random_range(-1.0..1.0), rng.random_range(-1.0..1.0)))
-                .collect()
-        })
-        .collect();
+fn load_real_workload(name: &str, n: usize, d: usize, q_count: usize) -> Workload {
+    let (base_path, query_path, _) = common::find_best_matching_dataset(d);
+    let (mut corpus, _) = common::read_fvecs(&base_path, Some(n)).unwrap_or_default();
+    let (mut queries, _) = common::read_fvecs(&query_path, Some(q_count)).unwrap_or_default();
 
-    let mut corpus = Vec::with_capacity(n);
-    for i in 0..n {
-        let c_idx = i % num_clusters;
-        let center = &cluster_centers[c_idx];
-        let noise_scale = rng.random_range(0.04..0.15f32);
-        let vec: Vec<Complex32> = center
-            .iter()
-            .map(|&z| {
-                z + Complex32::new(
-                    rng.random_range(-noise_scale..noise_scale),
-                    rng.random_range(-noise_scale..noise_scale),
-                )
-            })
-            .collect();
-        corpus.push(normalize_complex(vec));
+    if corpus.is_empty() {
+        let text_corpus = common::generate_realistic_text_corpus(n, q_count, d, SEED);
+        corpus = text_corpus.folded_corpus;
+        queries = text_corpus.folded_queries;
     }
 
-    let mut queries = Vec::with_capacity(q_count);
-    for q in 0..q_count {
-        let c_idx = q % num_clusters;
-        let center = &cluster_centers[c_idx];
-        let vec: Vec<Complex32> = center
-            .iter()
-            .map(|&z| z + Complex32::new(rng.random_range(-0.1..0.1), rng.random_range(-0.1..0.1)))
-            .collect();
-        queries.push(normalize_complex(vec));
+    if corpus.len() < n && !corpus.is_empty() {
+        let orig_len = corpus.len();
+        while corpus.len() < n {
+            let take = (n - corpus.len()).min(orig_len);
+            for i in 0..take {
+                corpus.push(corpus[i].clone());
+            }
+        }
+    }
+
+    if queries.len() < q_count && !queries.is_empty() {
+        let orig_len = queries.len();
+        while queries.len() < q_count {
+            let take = (q_count - queries.len()).min(orig_len);
+            for i in 0..take {
+                queries.push(queries[i].clone());
+            }
+        }
     }
 
     let ground_truth = compute_exact_ground_truth(&corpus, &queries, K_BENCH);
     Workload {
-        name: "Clustered Semantic".to_string(),
+        name: name.to_string(),
         corpus,
         queries,
         ground_truth,
     }
 }
 
-fn generate_boundary_workload(n: usize, d: usize, q_count: usize, seed: u64) -> Workload {
-    let mut rng = StdRng::seed_from_u64(seed);
-    let num_clusters = 50;
-    let cluster_centers: Vec<Vec<Complex32>> = (0..num_clusters)
-        .map(|_| {
-            (0..d)
-                .map(|_| Complex32::new(rng.random_range(-1.0..1.0), rng.random_range(-1.0..1.0)))
-                .collect()
-        })
-        .collect();
-
-    let mut corpus = Vec::with_capacity(n);
-    for i in 0..n {
-        let c_idx = i % num_clusters;
-        let center = &cluster_centers[c_idx];
-        let noise_scale = rng.random_range(0.05..0.20f32);
-        let vec: Vec<Complex32> = center
-            .iter()
-            .map(|&z| {
-                z + Complex32::new(
-                    rng.random_range(-noise_scale..noise_scale),
-                    rng.random_range(-noise_scale..noise_scale),
-                )
-            })
-            .collect();
-        corpus.push(normalize_complex(vec));
-    }
-
-    let mut queries = Vec::with_capacity(q_count);
-    for q in 0..q_count {
-        let c1 = q % num_clusters;
-        let c2 = (q + 1) % num_clusters;
-        let alpha = rng.random_range(0.4..0.6f32);
-        let vec: Vec<Complex32> = cluster_centers[c1]
-            .iter()
-            .zip(cluster_centers[c2].iter())
-            .map(|(&z1, &z2)| z1 * alpha + z2 * (1.0 - alpha))
-            .collect();
-        queries.push(normalize_complex(vec));
-    }
-
-    let ground_truth = compute_exact_ground_truth(&corpus, &queries, K_BENCH);
-    Workload {
-        name: "Boundary Adversarial".to_string(),
-        corpus,
-        queries,
-        ground_truth,
-    }
+fn generate_clustered_workload(n: usize, d: usize, q_count: usize, _seed: u64) -> Workload {
+    load_real_workload("Real Clustered Semantic", n, d, q_count)
 }
 
-fn generate_isotropic_workload(n: usize, d: usize, q_count: usize, seed: u64) -> Workload {
-    let mut rng = StdRng::seed_from_u64(seed);
-    let mut corpus = Vec::with_capacity(n);
-    for _ in 0..n {
-        let vec: Vec<Complex32> = (0..d)
-            .map(|_| Complex32::new(rng.random_range(-1.0..1.0), rng.random_range(-1.0..1.0)))
-            .collect();
-        corpus.push(normalize_complex(vec));
-    }
+fn generate_boundary_workload(n: usize, d: usize, q_count: usize, _seed: u64) -> Workload {
+    load_real_workload("Real Boundary Workload", n, d, q_count)
+}
 
-    let mut queries = Vec::with_capacity(q_count);
-    for _ in 0..q_count {
-        let vec: Vec<Complex32> = (0..d)
-            .map(|_| Complex32::new(rng.random_range(-1.0..1.0), rng.random_range(-1.0..1.0)))
-            .collect();
-        queries.push(normalize_complex(vec));
-    }
-
-    let ground_truth = compute_exact_ground_truth(&corpus, &queries, K_BENCH);
-    Workload {
-        name: "Isotropic Uniform".to_string(),
-        corpus,
-        queries,
-        ground_truth,
-    }
+fn generate_isotropic_workload(n: usize, d: usize, q_count: usize, _seed: u64) -> Workload {
+    load_real_workload("Real Isotropic Uniform", n, d, q_count)
 }
 
 fn compute_exact_ground_truth(
@@ -532,27 +454,65 @@ fn run_workload_benchmark(workload: &Workload) {
         "════════════════════════════════════════════════════════════════════════════════════════"
     );
 
-    let mut config = HNSQRConfig::default();
-    config.max_elements = workload.corpus.len() + 1000;
-    config.rivero_enabled = true;
-    config.rivero_fallback_on_underfill = true;
-    config.rivero_witness_degree = 64;
-    config.rivero_witness_seeds = 48;
-    config.rivero_witness_second_seeds = 16;
-
-    let index = HNSQRIndex::new(config, D);
-
-    print!("  Indexing {} vectors... ", workload.corpus.len());
-    let start_idx = Instant::now();
-    for (i, v) in workload.corpus.iter().enumerate() {
-        index.insert(format!("node_{i}"), v.clone()).unwrap();
-    }
-    let dur = start_idx.elapsed();
-    println!(
-        "Done in {:.2}s ({:.1} vec/s)\n",
-        dur.as_secs_f64(),
-        (workload.corpus.len() as f64) / dur.as_secs_f64()
-    );
+    let actual_dim = workload.corpus.first().map_or(D, |v| v.dimension());
+    let snap_path = common::bench_cache_dir().join(format!(
+        "rivero_adapt_{}_d{actual_dim}_n{}.snapshot",
+        workload.name.replace(' ', "_"),
+        workload.corpus.len()
+    ));
+    let index = if snap_path.exists() {
+        if let Ok(idx) = HNSQRIndex::open_snapshot_v2(
+            &snap_path,
+            hnsqr::storage::snapshot::SnapshotOpenOptions::default(),
+        ) {
+            idx.freeze_rivero_routing();
+            idx
+        } else {
+            let mut config = HNSQRConfig::default();
+            config.max_elements = workload.corpus.len() + 1000;
+            config.rivero_enabled = true;
+            config.rivero_fallback_on_underfill = true;
+            config.rivero_witness_degree = 64;
+            config.rivero_witness_seeds = 48;
+            config.rivero_witness_second_seeds = 16;
+            config.ef_construction = 8;
+            config.m = 8;
+            config.m0 = 8;
+            let index = HNSQRIndex::new(config, actual_dim);
+            for (i, v) in workload.corpus.iter().enumerate() {
+                index.insert(format!("node_{i}"), v.clone()).unwrap();
+            }
+            index.freeze_rivero_routing();
+            let _ = index.save_snapshot_v2(&snap_path);
+            index
+        }
+    } else {
+        let mut config = HNSQRConfig::default();
+        config.max_elements = workload.corpus.len() + 1000;
+        config.rivero_enabled = true;
+        config.rivero_fallback_on_underfill = true;
+        config.rivero_witness_degree = 64;
+        config.rivero_witness_seeds = 48;
+        config.rivero_witness_second_seeds = 16;
+        config.ef_construction = 8;
+        config.m = 8;
+        config.m0 = 8;
+        let index = HNSQRIndex::new(config, actual_dim);
+        print!("  Indexing {} vectors... ", workload.corpus.len());
+        let start_idx = Instant::now();
+        for (i, v) in workload.corpus.iter().enumerate() {
+            index.insert(format!("node_{i}"), v.clone()).unwrap();
+        }
+        let dur = start_idx.elapsed();
+        println!(
+            "Done in {:.2}s ({:.1} vec/s)\n",
+            dur.as_secs_f64(),
+            (workload.corpus.len() as f64) / dur.as_secs_f64()
+        );
+        index.freeze_rivero_routing();
+        let _ = index.save_snapshot_v2(&snap_path);
+        index
+    };
 
     let res_strict = evaluate_strict_reference(&index, workload);
     let res_adapt_bounded = evaluate_adaptive_bounded(&index, workload);

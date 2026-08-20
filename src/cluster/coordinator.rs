@@ -392,13 +392,23 @@ impl DistributedCoordinator {
 
         let mut global_candidates = Vec::with_capacity(shards.len() * k);
         for shard in shards {
-            let shard_topk = shard.engine.search_pinned(
-                &snapshot.immutable_segments,
-                &snapshot.active_segment,
-                query,
-                k,
-                rerank_plan,
-            );
+            let shard_topk = if let Some((immutables, active)) = snapshot.all_shard_snapshots.get(&shard.shard_id) {
+                shard.engine.search_pinned(
+                    immutables,
+                    active,
+                    query,
+                    k,
+                    rerank_plan,
+                )
+            } else {
+                shard.engine.search_pinned(
+                    &snapshot.immutable_segments,
+                    &snapshot.active_segment,
+                    query,
+                    k,
+                    rerank_plan,
+                )
+            };
             global_candidates.extend(shard_topk);
         }
 

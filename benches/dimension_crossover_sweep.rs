@@ -4,9 +4,6 @@ use std::time::Instant;
 
 use common::generate_realistic_text_corpus;
 use hnsqr::rivero::RiveroProfile;
-use hnsqr::rivero::bulk::RiveroBulkBuilder;
-use hnsqr::{DistanceFunction, HNSQRConfig, HNSQRIndex, SearchPlan};
-use rayon::prelude::*;
 
 fn percentile(mut latencies: Vec<f64>, p: f64) -> f64 {
     if latencies.is_empty() {
@@ -31,25 +28,12 @@ fn measure_point(n: usize, complex_dim: usize, num_queries: usize) -> (f64, f64)
     let dataset =
         generate_realistic_text_corpus(n, num_queries, complex_dim * 2, common::DEFAULT_BENCH_SEED);
 
-    let mut config = HNSQRConfig::default();
-    config.max_elements = n;
-    config.distance_function = DistanceFunction::Cosine;
-    config.rivero_enabled = true;
-    config.search_plan = SearchPlan::Rivero;
-    config.ef_construction = 16;
-    config.m = 16;
-    config.m0 = 16;
-
-    let index = HNSQRIndex::new(config, complex_dim);
-    (0..n).into_par_iter().for_each(|i| {
-        index
-            .insert(format!("doc-{i}"), dataset.folded_corpus[i].clone())
-            .unwrap();
-    });
-
-    let builder = RiveroBulkBuilder::with_profile(RiveroProfile::Balanced).with_threads(16);
-    let rivero_state = builder.build(&dataset.folded_corpus).unwrap();
-    index.install_rivero_state(rivero_state).unwrap();
+    let index = common::get_or_build_cached_index(
+        &format!("dim_crossover_n{n}_d{complex_dim}"),
+        &dataset.folded_corpus,
+        complex_dim,
+        RiveroProfile::Balanced,
+    );
 
     // 1. Exact Scan
     let mut exact_lats = Vec::with_capacity(num_queries);

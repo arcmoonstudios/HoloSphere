@@ -114,10 +114,10 @@ pub const TILE_EDGE: usize = 16;
 
 /// Contiguous Dense Hyper-Tile containing localized voxels in flat memory.
 #[derive(Clone, Debug)]
-struct HyperTile {
-    tile_origin: CoordinateND,
-    dense_buffer: Vec<f32>,
-    occupancy: roaring::RoaringBitmap,
+pub struct HyperTile {
+    pub tile_origin: CoordinateND,
+    pub dense_buffer: Vec<f32>,
+    pub occupancy: roaring::RoaringBitmap,
 }
 
 impl HyperTile {
@@ -308,6 +308,52 @@ impl HypercubeTensorSpace {
 
     pub fn strides(&self) -> &[usize] {
         &self.strides
+    }
+
+    /// Captures an immutable point-in-time snapshot of the hypercube tensor space.
+    pub fn snapshot(&self) -> HypercubeSnapshot {
+        let tiles = self.tiles.read().clone();
+        HypercubeSnapshot {
+            shape: self.shape.clone(),
+            strides: self.strides.clone(),
+            tiles,
+        }
+    }
+}
+
+/// Immutable point-in-time snapshot of Hypercube Tensor Space at a specific LSN.
+#[derive(Clone, Debug)]
+pub struct HypercubeSnapshot {
+    pub shape: CoordinateND,
+    pub strides: Vec<usize>,
+    pub tiles: HashMap<u64, HyperTile>,
+}
+
+impl HypercubeSnapshot {
+    pub fn dimensions(&self) -> usize {
+        self.shape.len()
+    }
+
+    pub fn get_voxel(&self, coords: &[usize]) -> Option<f32> {
+        if coords.len() != self.shape.len() {
+            return None;
+        }
+        for (i, &c) in coords.iter().enumerate() {
+            if c >= self.shape[i] {
+                return None;
+            }
+        }
+        let mut origin = Vec::with_capacity(self.shape.len());
+        let mut local = Vec::with_capacity(self.shape.len());
+        for &c in coords {
+            origin.push((c / TILE_EDGE) * TILE_EDGE);
+            local.push(c % TILE_EDGE);
+        }
+        let encoder = MortonEncoderND::new(self.shape.len());
+        let local_morton = encoder.encode(&local) as u32;
+        let tile_morton = encoder.encode(&origin);
+        let tile = self.tiles.get(&tile_morton)?;
+        tile.get(local_morton)
     }
 }
 

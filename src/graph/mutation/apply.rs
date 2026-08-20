@@ -107,9 +107,7 @@ impl GraphMutationApplier {
         }
     }
 
-    // ── Internal helpers ────────────────────────────────────────────────
-
-    fn prevalidate(&self, mutation: &GraphMutation) -> HNSQRResult<()> {
+    pub fn prevalidate(&self, mutation: &GraphMutation) -> HNSQRResult<()> {
         match mutation {
             GraphMutation::CreateRelationship { src_external_id, dst_external_id, .. } => {
                 let map = self.node_id_map.read();
@@ -118,6 +116,22 @@ impl GraphMutationApplier {
                 }
                 if !map.contains_key(dst_external_id.as_str()) {
                     return Err(HNSQRError::NodeNotFound(dst_external_id.clone()));
+                }
+                Ok(())
+            }
+            GraphMutation::SetNodeLabels { external_id, .. }
+            | GraphMutation::RemoveNodeLabels { external_id, .. }
+            | GraphMutation::PatchNodeProperties { external_id, .. } => {
+                let map = self.node_id_map.read();
+                if !map.contains_key(external_id.as_str()) {
+                    return Err(HNSQRError::NodeNotFound(external_id.clone()));
+                }
+                Ok(())
+            }
+            GraphMutation::PatchRelationshipProperties { relationship_id, .. } => {
+                let rels = self.rel_id_map.read();
+                if !rels.contains_key(relationship_id) {
+                    return Err(HNSQRError::InvalidRequest(format!("Relationship {relationship_id} not found")));
                 }
                 Ok(())
             }

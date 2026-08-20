@@ -20,7 +20,6 @@ use hnsqr::proof::{
 };
 use hnsqr::rivero::{RiveroCompiler, RiveroProfile};
 use hnsqr::rivero::bulk::RiveroBulkBuilder;
-use hnsqr::vector::folding::ComplexWeaver;
 use hnsqr::{NodeIndex, SimilarityScore, VectorEmbedding};
 
 #[derive(Debug, Clone)]
@@ -82,60 +81,34 @@ fn generate_semantic_manifold_corpus(
     d_real: usize,
     seed: u64,
 ) -> (Vec<VectorEmbedding>, Vec<VectorEmbedding>) {
-    use rand::RngExt;
-    use rand::SeedableRng;
-    use rand::rngs::StdRng;
-    let mut rng = StdRng::seed_from_u64(seed);
+    let (base_path, query_path, _) = common::find_best_matching_dataset(d_real);
+    let (mut corpus, _) = common::read_fvecs(&base_path, Some(n_corpus)).unwrap_or_default();
+    let (mut queries, _) = common::read_fvecs(&query_path, Some(n_queries)).unwrap_or_default();
 
-    let num_clusters = (n_corpus / 64).clamp(16, 256);
-    let mut cluster_centers: Vec<Vec<f32>> = Vec::with_capacity(num_clusters);
-
-    for _ in 0..num_clusters {
-        let mut center = vec![0.0f32; d_real];
-        for val in &mut center {
-            *val = rng.random_range(-1.0..1.0);
-        }
-        let norm: f32 = center.iter().map(|x| x * x).sum::<f32>().sqrt();
-        if norm > 0.0 {
-            for val in &mut center {
-                *val /= norm;
-            }
-        }
-        cluster_centers.push(center);
+    if corpus.is_empty() {
+        let text_corpus = common::generate_realistic_text_corpus(n_corpus, n_queries, d_real, seed);
+        corpus = text_corpus.folded_corpus;
+        queries = text_corpus.folded_queries;
     }
 
-    let noise_scale = 1.0f32 / (d_real as f32).sqrt();
-
-    let mut corpus = Vec::with_capacity(n_corpus);
-    for i in 0..n_corpus {
-        let cluster = &cluster_centers[i % num_clusters];
-        let mut vec = cluster.clone();
-        for val in &mut vec {
-            *val += rng.random_range(-noise_scale..noise_scale);
-        }
-        let norm: f32 = vec.iter().map(|x| x * x).sum::<f32>().sqrt();
-        if norm > 0.0 {
-            for val in &mut vec {
-                *val /= norm;
+    if corpus.len() < n_corpus && !corpus.is_empty() {
+        let orig_len = corpus.len();
+        while corpus.len() < n_corpus {
+            let take = (n_corpus - corpus.len()).min(orig_len);
+            for i in 0..take {
+                corpus.push(corpus[i].clone());
             }
         }
-        corpus.push(ComplexWeaver::fold_llm_embedding(&vec));
     }
 
-    let mut queries = Vec::with_capacity(n_queries);
-    for i in 0..n_queries {
-        let cluster = &cluster_centers[i % num_clusters];
-        let mut q_vec = cluster.clone();
-        for val in &mut q_vec {
-            *val += rng.random_range(-(0.5 * noise_scale)..(0.5 * noise_scale));
-        }
-        let norm: f32 = q_vec.iter().map(|x| x * x).sum::<f32>().sqrt();
-        if norm > 0.0 {
-            for val in &mut q_vec {
-                *val /= norm;
+    if queries.len() < n_queries && !queries.is_empty() {
+        let orig_len = queries.len();
+        while queries.len() < n_queries {
+            let take = (n_queries - queries.len()).min(orig_len);
+            for i in 0..take {
+                queries.push(queries[i].clone());
             }
         }
-        queries.push(ComplexWeaver::fold_llm_embedding(&q_vec));
     }
 
     (corpus, queries)

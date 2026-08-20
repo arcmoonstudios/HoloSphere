@@ -491,6 +491,63 @@ impl RelationalSqlEngine {
     pub fn get_table_schema(&self, table: &str) -> Option<TableSchema> {
         self.tables.read().get(table).cloned()
     }
+
+    /// Captures an immutable point-in-time snapshot of the relational tables and schemas at current version.
+    pub fn snapshot(&self) -> RelationalSqlSnapshot {
+        let tables = self.tables.read().clone();
+        let storage_guard = self.storage.read();
+        let mut storage = HashMap::with_capacity(storage_guard.len());
+        for (name, table_arc) in storage_guard.iter() {
+            storage.insert(name.clone(), table_arc.read().clone());
+        }
+        let version = self.current_version.load(Ordering::Relaxed);
+        RelationalSqlSnapshot {
+            tables,
+            storage,
+            version,
+        }
+    }
+}
+
+/// Point-in-time immutable MVCC snapshot of relational SQL storage.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RelationalSqlSnapshot {
+    pub tables: HashMap<String, TableSchema>,
+    pub storage: HashMap<String, ColumnarTable>,
+    pub version: u64,
+}
+
+impl RelationalSqlSnapshot {
+    pub fn execute_select(
+        &self,
+        table: &str,
+        where_clause: Option<Box<dyn Fn(&RelationalRow) -> bool>>,
+        rls_policy: Option<&RowLevelSecurityPolicy>,
+    ) -> HNSQRResult<Vec<RelationalRow>> {
+        let table_store = self.storage.get(table).ok_or_else(|| {
+            HNSQRError::InvalidRequest(format!("Table '{table}' not found in snapshot"))
+        })?;
+
+        let mut results = Vec::new();
+        for row in table_store.iter_rows() {
+            if let Some(rls) = rls_policy {
+                if !rls.allows(&row) {
+                    continue;
+                }
+            }
+            if let Some(pred) = &where_clause {
+                if !pred(&row) {
+                    continue;
+                }
+            }
+            results.push(row);
+        }
+        Ok(results)
+    }
+
+    pub fn get_table_schema(&self, table: &str) -> Option<&TableSchema> {
+        self.tables.get(table)
+    }
 }
 
 impl Default for RelationalSqlEngine {

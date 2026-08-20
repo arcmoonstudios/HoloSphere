@@ -14,6 +14,6 @@ pub mod quantization;
 
 pub use folding::{ComplexWeaver, GatewayRouter, create_http_router, run_http_server};
 pub use gpu_tensor::{GpuDeviceConfig, GpuExecutionDevice, GpuPrecision, GpuTensorAccelerator};
-pub use hypercube::{CoordinateND, HypercubeBoundingBox, HypercubeTensorSpace};
+pub use hypercube::{CoordinateND, HypercubeBoundingBox, HypercubeSnapshot, HypercubeTensorSpace};
 pub use inference::{InProcessModelEmbedder, InferenceModelConfig, ModelArchitecture};
 pub use quantization::PolarQuantizedVector;

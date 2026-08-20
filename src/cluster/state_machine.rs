@@ -367,22 +367,41 @@ impl ShardStateMachine {
             }
             DataMutation::Delete { .. } => Ok(()),
             DataMutation::MetadataPatch { .. } => Ok(()),
-            DataMutation::Graph { .. } => Ok(()),
-            DataMutation::Sql { table, row, .. } => {
-                if let Some(sql) = &self.sql {
-                    let schema = sql.get_table_schema(table).ok_or_else(|| {
-                        HNSQRError::InvalidRequest(format!("Table '{table}' does not exist"))
-                    })?;
-                    if !row.values.contains_key(&schema.primary_key_column) {
-                        return Err(HNSQRError::InvalidRequest(format!(
-                            "Row missing primary key '{}'",
-                            schema.primary_key_column
-                        )));
+            DataMutation::Graph { mutation, .. } => {
+                let graph = self.graph.as_ref().ok_or_else(|| {
+                    HNSQRError::InvalidRequest("Graph backend not enabled on this shard".to_string())
+                })?;
+                graph.prevalidate(mutation)
+            }
+            DataMutation::Sql { table, row, is_delete, .. } => {
+                let sql = self.sql.as_ref().ok_or_else(|| {
+                    HNSQRError::InvalidRequest("SQL backend not enabled on this shard".to_string())
+                })?;
+                let schema = sql.get_table_schema(table).ok_or_else(|| {
+                    HNSQRError::InvalidRequest(format!("Table '{table}' does not exist"))
+                })?;
+                if !row.values.contains_key(&schema.primary_key_column) {
+                    return Err(HNSQRError::InvalidRequest(format!(
+                        "Row missing primary key '{}'",
+                        schema.primary_key_column
+                    )));
+                }
+                if !*is_delete {
+                    for col in &schema.columns {
+                        if !col.is_nullable && !row.values.contains_key(&col.name) {
+                            return Err(HNSQRError::InvalidRequest(format!(
+                                "Non-nullable column '{}' missing in row",
+                                col.name
+                            )));
+                        }
                     }
                 }
                 Ok(())
             }
             DataMutation::AgentMemory { fact, .. } => {
+                let _memory = self.memory.as_ref().ok_or_else(|| {
+                    HNSQRError::InvalidRequest("Agent memory backend not enabled on this shard".to_string())
+                })?;
                 if fact.confidence < 0.0 || fact.confidence > 1.0 {
                     return Err(HNSQRError::InvalidRequest(format!(
                         "Invalid fact confidence: {}",
@@ -398,12 +417,21 @@ impl ShardStateMachine {
                 Ok(())
             }
             DataMutation::Hypercube { coords, .. } => {
-                if let Some(h) = &self.hypercube {
-                    if coords.len() != h.dimensions() {
-                        return Err(HNSQRError::DimensionMismatch {
-                            expected: h.dimensions(),
-                            actual: coords.len(),
-                        });
+                let h = self.hypercube.as_ref().ok_or_else(|| {
+                    HNSQRError::InvalidRequest("Hypercube backend not enabled on this shard".to_string())
+                })?;
+                if coords.len() != h.dimensions() {
+                    return Err(HNSQRError::DimensionMismatch {
+                        expected: h.dimensions(),
+                        actual: coords.len(),
+                    });
+                }
+                let shape = h.shape();
+                for (d, (&coord, &max_dim)) in coords.iter().zip(shape.iter()).enumerate() {
+                    if coord >= max_dim {
+                        return Err(HNSQRError::InvalidRequest(format!(
+                            "Coordinate index out of bounds on dimension {d}: {coord} >= {max_dim}"
+                        )));
                     }
                 }
                 Ok(())
@@ -433,28 +461,28 @@ impl ShardStateMachine {
                 Ok(())
             }
             DataMutation::Graph { mutation, .. } => {
-                if let Some(graph) = &self.graph {
-                    graph.apply(mutation)?;
-                }
-                Ok(())
+                let graph = self.graph.as_ref().ok_or_else(|| {
+                    HNSQRError::InvalidRequest("Graph backend not enabled on this shard".to_string())
+                })?;
+                graph.apply(mutation)
             }
             DataMutation::Sql { table, row, is_delete, .. } => {
-                if let Some(sql) = &self.sql {
-                    sql.apply_committed_row_mutation(table, row.clone(), *is_delete)?;
-                }
-                Ok(())
+                let sql = self.sql.as_ref().ok_or_else(|| {
+                    HNSQRError::InvalidRequest("SQL backend not enabled on this shard".to_string())
+                })?;
+                sql.apply_committed_row_mutation(table, row.clone(), *is_delete)
             }
             DataMutation::AgentMemory { user_id, fact, .. } => {
-                if let Some(memory) = &self.memory {
-                    memory.ingest_fact(user_id, fact.clone())?;
-                }
-                Ok(())
+                let memory = self.memory.as_ref().ok_or_else(|| {
+                    HNSQRError::InvalidRequest("Agent memory backend not enabled on this shard".to_string())
+                })?;
+                memory.ingest_fact(user_id, fact.clone())
             }
             DataMutation::Hypercube { coords, value, .. } => {
-                if let Some(hypercube) = &self.hypercube {
-                    hypercube.set_voxel(coords.clone(), *value)?;
-                }
-                Ok(())
+                let hypercube = self.hypercube.as_ref().ok_or_else(|| {
+                    HNSQRError::InvalidRequest("Hypercube backend not enabled on this shard".to_string())
+                })?;
+                hypercube.set_voxel(coords.clone(), *value)
             }
             DataMutation::Batch { mutations, .. } => {
                 for m in mutations {
@@ -486,6 +514,9 @@ impl ShardStateMachine {
             sql: self.sql.clone(),
             memory: self.memory.clone(),
             hypercube: self.hypercube.clone(),
+            sql_snapshot: self.sql.as_ref().map(|s| s.snapshot()),
+            memory_snapshot: self.memory.as_ref().map(|m| m.snapshot()),
+            hypercube_snapshot: self.hypercube.as_ref().map(|h| h.snapshot()),
         }
     }
 }
@@ -507,6 +538,12 @@ pub struct UniversalSnapshot {
     pub sql: Option<Arc<crate::storage::relational_acid::RelationalSqlEngine>>,
     pub memory: Option<Arc<crate::ecosystem::agent_memory::AutonomousMemoryConsolidator>>,
     pub hypercube: Option<Arc<crate::vector::hypercube::HypercubeTensorSpace>>,
+    /// Immutable point-in-time relational MVCC snapshot at LSN k.
+    pub sql_snapshot: Option<crate::storage::relational_acid::RelationalSqlSnapshot>,
+    /// Immutable point-in-time agent memory persona snapshot at LSN k.
+    pub memory_snapshot: Option<crate::ecosystem::agent_memory::AutonomousMemorySnapshot>,
+    /// Immutable point-in-time hypercube tensor space snapshot at LSN k.
+    pub hypercube_snapshot: Option<crate::vector::hypercube::HypercubeSnapshot>,
 }
 
 impl ReplicatedStateMachine for ShardStateMachine {
@@ -649,23 +686,59 @@ mod tests {
         assert_eq!(receipt.durable_lsn, 1001);
         assert_eq!(receipt.applied_index, 1001);
 
-        // 4. Pin universal snapshot
+        // 4. Pin universal snapshot and physical MVCC snapshot
         let snapshot = sm.pin_universal_snapshot();
         assert_eq!(snapshot.lsn, 1001);
         assert_eq!(snapshot.generation, receipt.applied_generation);
 
-        // 5. Verify all 4 paradigms reflect the change in the same atomic tick
-        // (a) Vector exists
+        let phys_snap = sm.pin_physical_snapshot();
+        assert_eq!(phys_snap.lsn, 1001);
+        let snap_sql = phys_snap.sql_snapshot.as_ref().unwrap();
+        assert_eq!(snap_sql.execute_select("customers", None, None).unwrap().len(), 1);
+        let snap_hypercube = phys_snap.hypercube_snapshot.as_ref().unwrap();
+        assert_eq!(snap_hypercube.get_voxel(&[1, 2, 3, 0]).unwrap(), 42.0);
+        let snap_memory = phys_snap.memory_snapshot.as_ref().unwrap();
+        assert_eq!(snap_memory.get_profile("cust_999").unwrap().consolidated_facts[0].object, "EU-West");
+
+        // 5. Verify live state
         assert_eq!(engine.stats().iter().map(|s| s.live_vectors).sum::<usize>(), 1);
-        // (b) Relational row exists
         let rows = sql.execute_select("customers", None, None).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].values.get("cust_id"), Some(&SqlValue::Text("cust_999".into())));
-        // (c) Agent memory fact exists
         let profile = memory.get_profile("cust_999").unwrap();
         assert_eq!(profile.consolidated_facts.len(), 1);
         assert_eq!(profile.consolidated_facts[0].object, "EU-West");
-        // (d) Hypercube voxel exists
         assert_eq!(hypercube.get_voxel(&[1, 2, 3, 0]).unwrap(), 42.0);
+
+        // 6. Mutate live state and ensure pinned snapshot at LSN 1001 remains immutable
+        hypercube.set_voxel(vec![1, 2, 3, 0], 999.0).unwrap();
+        assert_eq!(hypercube.get_voxel(&[1, 2, 3, 0]).unwrap(), 999.0);
+        assert_eq!(snap_hypercube.get_voxel(&[1, 2, 3, 0]).unwrap(), 42.0);
+    }
+
+    #[test]
+    fn test_prevalidation_rejects_missing_backend_and_bounds_violation() {
+        let engine = Arc::new(SegmentedEngine::new(8, 1000));
+        let hypercube = Arc::new(HypercubeTensorSpace::new(vec![4, 4, 4, 4]));
+
+        // State machine without SQL or Graph backends
+        let sm = ShardStateMachine::with_all_paradigms(
+            1,
+            engine.clone(),
+            None,
+            None,
+            None,
+            Some(hypercube),
+        );
+
+        // (a) Hypercube out-of-bounds coordinate should fail prevalidation
+        let bad_hypercube = DataMutation::new_hypercube_voxel(vec![10, 0, 0, 0], 1.0);
+        assert!(sm.apply(100, &bad_hypercube).is_err());
+
+        // (b) Absent SQL backend should fail prevalidation
+        let mut row = HashMap::new();
+        row.insert("id".into(), SqlValue::Text("1".into()));
+        let bad_sql = DataMutation::new_sql_insert("test", RelationalRow { values: row });
+        assert!(sm.apply(101, &bad_sql).is_err());
     }
 }

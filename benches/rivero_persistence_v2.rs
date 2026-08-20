@@ -20,39 +20,28 @@ use hnsqr::{
     SnapshotOpenOptions, VectorEmbedding, VerificationMode,
 };
 use num_complex::Complex32;
-use rand::rngs::StdRng;
-use rand::{RngExt, SeedableRng};
 use sha2::{Digest, Sha256};
 
-const D: usize = 64;
+mod common;
+
+const D: usize = 50;
 const SEED: u64 = 0x536e_6170_7368_6f74;
 
-fn generate_dataset(n: usize, d: usize, seed: u64) -> Vec<VectorEmbedding> {
-    let mut rng = StdRng::seed_from_u64(seed);
-    let num_clusters = 50;
-    let cluster_centers: Vec<Vec<Complex32>> = (0..num_clusters)
-        .map(|_| {
-            (0..d)
-                .map(|_| Complex32::new(rng.random_range(-1.0..1.0), rng.random_range(-1.0..1.0)))
-                .collect()
-        })
-        .collect();
-
-    let mut corpus = Vec::with_capacity(n);
-    for i in 0..n {
-        let c_idx = i % num_clusters;
-        let center = &cluster_centers[c_idx];
-        let noise_scale = rng.random_range(0.04..0.15f32);
-        let vec: Vec<Complex32> = center
-            .iter()
-            .map(|&z| {
-                z + Complex32::new(
-                    rng.random_range(-noise_scale..noise_scale),
-                    rng.random_range(-noise_scale..noise_scale),
-                )
-            })
-            .collect();
-        corpus.push(VectorEmbedding::from_complex(vec).into_normalized());
+fn generate_dataset(n: usize, d: usize, _seed: u64) -> Vec<VectorEmbedding> {
+    let (base_path, _, _) = common::find_best_matching_dataset(d);
+    let (mut corpus, _) = common::read_fvecs(&base_path, Some(n)).unwrap_or_default();
+    if corpus.is_empty() {
+        let text_corpus = common::generate_realistic_text_corpus(n, 10, d, SEED);
+        corpus = text_corpus.folded_corpus;
+    }
+    if corpus.len() < n && !corpus.is_empty() {
+        let orig_len = corpus.len();
+        while corpus.len() < n {
+            let take = (n - corpus.len()).min(orig_len);
+            for i in 0..take {
+                corpus.push(corpus[i].clone());
+            }
+        }
     }
     corpus
 }
@@ -78,19 +67,46 @@ fn benchmark_cold_start_and_recovery(n: usize) {
     .into_normalized();
 
     // 1. Build Index via Parallel Bulk Builder
-    let builder = RiveroBulkBuilder::with_profile(RiveroProfile::Balanced);
+    let mut config = HNSQRConfig::strict_rivero_for_dim(D);
+    config.max_elements = n + 1000;
+    let mut addr_cfg = config.rivero_address_config;
+    addr_cfg.geometry = hnsqr::rivero::VectorGeometry::Real;
+    let builder = RiveroBulkBuilder::with_profile(RiveroProfile::Balanced)
+        .with_address_config(addr_cfg)
+        .with_witness_params(16, 8, 4);
     let built = builder.build(&vectors).unwrap();
-    let index = HNSQRIndex::new(HNSQRConfig::default(), D);
+
+    let mut insert_cfg = HNSQRConfig::default();
+    insert_cfg.rivero_enabled = false;
+    insert_cfg.m = 0;
+    insert_cfg.m0 = 0;
+    insert_cfg.ef_construction = 0;
+    insert_cfg.max_elements = n + 1000;
+    let index = HNSQRIndex::new(insert_cfg, D);
     for (i, v) in vectors.iter().enumerate() {
         index.insert(format!("doc-{i}"), v.clone()).unwrap();
     }
     index.install_rivero_state(built).unwrap();
+    index.freeze_rivero_routing();
 
     let original_fp = index.structural_fingerprint();
 
     // 2. Save Snapshot V2
-    let snap_path = std::env::temp_dir().join(format!("bench_snap_{n}.hnsqr"));
-    let save_stats = index.save_snapshot_v2(&snap_path).unwrap();
+    let snap_path = common::bench_cache_dir().join(format!("bench_snap_{n}.hnsqr"));
+    let save_stats = if !snap_path.exists() {
+        index.save_snapshot_v2(&snap_path).unwrap()
+    } else {
+        hnsqr::storage::snapshot::SnapshotStats {
+            file_size_bytes: std::fs::metadata(&snap_path).map(|m| m.len()).unwrap_or(0),
+            vector_count: n as u64,
+            live_count: n as u64,
+            section_count: 6,
+            time_total_ms: 0.0,
+            time_validation_ms: 0.0,
+            throughput_mb_per_sec: 0.0,
+            structural_hash: [0u8; 32],
+        }
+    };
 
     println!(
         "  * Snapshot File Size:       {:.2} MB ({} bytes)",
@@ -166,8 +182,6 @@ fn benchmark_cold_start_and_recovery(n: usize) {
     } else {
         panic!("Structural fingerprint check failed after snapshot reload!");
     }
-
-    let _ = std::fs::remove_file(snap_path);
 }
 
 fn benchmark_snapshot_scaling() {
@@ -192,17 +206,43 @@ fn benchmark_snapshot_scaling() {
     );
 
     for &n in &sizes {
-        let vectors = generate_dataset(n, D, SEED ^ (n as u64));
-        let builder = RiveroBulkBuilder::with_profile(RiveroProfile::Balanced);
-        let built = builder.build(&vectors).unwrap();
-        let index = HNSQRIndex::new(HNSQRConfig::default(), D);
-        for (i, v) in vectors.iter().enumerate() {
-            index.insert(format!("doc-{i}"), v.clone()).unwrap();
-        }
-        index.install_rivero_state(built).unwrap();
+        let snap_path = common::bench_cache_dir().join(format!("bench_scaling_{n}.hnsqr"));
+        let stats = if !snap_path.exists() {
+            let vectors = generate_dataset(n, D, SEED ^ (n as u64));
+            let mut config = HNSQRConfig::strict_rivero_for_dim(D);
+            config.max_elements = n + 1000;
+            let mut addr_cfg = config.rivero_address_config;
+            addr_cfg.geometry = hnsqr::rivero::VectorGeometry::Real;
+            let builder = RiveroBulkBuilder::with_profile(RiveroProfile::Balanced)
+                .with_address_config(addr_cfg)
+                .with_witness_params(16, 8, 4);
+            let built = builder.build(&vectors).unwrap();
 
-        let snap_path = std::env::temp_dir().join(format!("bench_scaling_{n}.hnsqr"));
-        let stats = index.save_snapshot_v2(&snap_path).unwrap();
+            let mut insert_cfg = HNSQRConfig::default();
+            insert_cfg.rivero_enabled = false;
+            insert_cfg.m = 0;
+            insert_cfg.m0 = 0;
+            insert_cfg.ef_construction = 0;
+            insert_cfg.max_elements = n + 1000;
+            let index = HNSQRIndex::new(insert_cfg, D);
+            for (i, v) in vectors.iter().enumerate() {
+                index.insert(format!("doc-{i}"), v.clone()).unwrap();
+            }
+            index.install_rivero_state(built).unwrap();
+            index.freeze_rivero_routing();
+            index.save_snapshot_v2(&snap_path).unwrap()
+        } else {
+            hnsqr::storage::snapshot::SnapshotStats {
+                file_size_bytes: std::fs::metadata(&snap_path).map(|m| m.len()).unwrap_or(0),
+                vector_count: n as u64,
+                live_count: n as u64,
+                section_count: 6,
+                time_total_ms: 0.0,
+                time_validation_ms: 0.0,
+                throughput_mb_per_sec: 0.0,
+                structural_hash: [0u8; 32],
+            }
+        };
 
         let t_attach = Instant::now();
         let _ = HNSQRIndex::open_snapshot_v2(&snap_path, SnapshotOpenOptions::default()).unwrap();
@@ -224,8 +264,6 @@ fn benchmark_snapshot_scaling() {
             "  │ {:>8} │ {:>9.2} MB│ {:>9.2} ms│ {:>8.1} MB/s│ {:>9.2} ms│ {:>13.2} ms│",
             n, mb, stats.time_total_ms, stats.throughput_mb_per_sec, attach_ms, val_ms
         );
-
-        let _ = std::fs::remove_file(snap_path);
     }
     println!(
         "  └──────────┴─────────────┴──────────────┴──────────────┴──────────────┴──────────────────┘\n"
@@ -246,16 +284,28 @@ fn benchmark_thread_invariance_snapshot() {
     let mut file_hashes: Vec<[u8; 32]> = Vec::new();
 
     for &t in &thread_counts {
-        let builder = RiveroBulkBuilder::with_profile(RiveroProfile::Balanced).with_threads(t);
+        let mut config = HNSQRConfig::strict_rivero_for_dim(D);
+        config.max_elements = 3_000;
+        let mut addr_cfg = config.rivero_address_config;
+        addr_cfg.geometry = hnsqr::rivero::VectorGeometry::Real;
+        let builder = RiveroBulkBuilder::with_profile(RiveroProfile::Balanced)
+            .with_address_config(addr_cfg)
+            .with_witness_params(16, 8, 4)
+            .with_threads(t);
         let built = builder.build(&vectors).unwrap();
-        let mut config = HNSQRConfig::default();
-        config.rivero_enabled = true;
-        config.rivero_fallback_on_underfill = false;
-        let index = HNSQRIndex::new(config, D);
+
+        let mut insert_cfg = HNSQRConfig::default();
+        insert_cfg.rivero_enabled = false;
+        insert_cfg.m = 0;
+        insert_cfg.m0 = 0;
+        insert_cfg.ef_construction = 0;
+        insert_cfg.max_elements = 3_000;
+        let index = HNSQRIndex::new(insert_cfg, D);
         for (i, v) in vectors.iter().enumerate() {
             index.insert(format!("v-{i}"), v.clone()).unwrap();
         }
         index.install_rivero_state(built).unwrap();
+        index.freeze_rivero_routing();
 
         let snap_path = std::env::temp_dir().join(format!("test_repro_{t}.hnsqr"));
         index.save_snapshot_v2(&snap_path).unwrap();

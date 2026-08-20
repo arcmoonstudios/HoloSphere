@@ -84,67 +84,42 @@ fn hybrid_similarity(a: &VectorEmbedding, b: &VectorEmbedding, alpha: f32) -> f3
     alpha * fidelity + (1.0 - alpha) * herm
 }
 
-fn generate_dataset(seed: u64) -> Dataset {
-    let mut rng = StdRng::seed_from_u64(seed);
-    let total_vectors = CLUSTERS * VECTORS_PER_CLUSTER;
-    let mut real_corpus = Vec::with_capacity(total_vectors);
-    let mut cluster_labels = Vec::with_capacity(total_vectors);
+mod common;
 
-    // Create overlapping cluster centers with correlated subspace structure
-    let mut centers: Vec<Vec<f32>> = Vec::with_capacity(CLUSTERS);
-    for _ in 0..CLUSTERS {
-        let center: Vec<f32> = (0..D_REAL).map(|_| rng.random_range(-1.0..1.0)).collect();
-        centers.push(center);
+fn generate_dataset(seed: u64) -> Dataset {
+    let total_vectors = CLUSTERS * VECTORS_PER_CLUSTER;
+    let (base_path, query_path, _) = common::find_best_matching_dataset(D_REAL);
+    let (mut complex_corpus, _) = common::read_fvecs(&base_path, Some(total_vectors)).unwrap_or_default();
+    let (mut complex_queries, _) = common::read_fvecs(&query_path, Some(QUERY_COUNT)).unwrap_or_default();
+
+    if complex_corpus.is_empty() {
+        let text_corpus = common::generate_realistic_text_corpus(total_vectors, QUERY_COUNT, D_REAL, seed);
+        complex_corpus = text_corpus.folded_corpus;
+        complex_queries = text_corpus.folded_queries;
     }
 
-    // Add inter-cluster overlap by blending nearby centers
-    for c in 0..CLUSTERS {
-        let base_center = &centers[c];
-        let neighbor_center = &centers[(c + 1) % CLUSTERS];
-
-        for _ in 0..VECTORS_PER_CLUSTER {
-            let blend = rng.random_range(0.0..0.25f32); // overlap bleed
-            let noise_scale = rng.random_range(0.05..0.20f32);
-
-            let vec: Vec<f32> = base_center
-                .iter()
-                .zip(neighbor_center.iter())
-                .map(|(&x1, &x2)| {
-                    let mean = x1 * (1.0 - blend) + x2 * blend;
-                    mean + rng.random_range(-noise_scale..noise_scale)
-                })
-                .collect();
-
-            real_corpus.push(vec);
-            cluster_labels.push(c);
+    if complex_corpus.len() < total_vectors && !complex_corpus.is_empty() {
+        let orig_len = complex_corpus.len();
+        while complex_corpus.len() < total_vectors {
+            let take = (total_vectors - complex_corpus.len()).min(orig_len);
+            for i in 0..take {
+                complex_corpus.push(complex_corpus[i].clone());
+            }
         }
     }
 
-    // Complex corpus via ComplexWeaver folding
-    let complex_corpus: Vec<VectorEmbedding> = real_corpus
+    let real_corpus: Vec<Vec<f32>> = complex_corpus
         .iter()
-        .map(|v| ComplexWeaver::fold_llm_embedding(v))
+        .map(|v| v.complex_data().iter().flat_map(|c| [c.re, c.im]).collect())
         .collect();
 
-    // Generate queries (with difficult negatives & boundary queries)
-    let mut real_queries = Vec::with_capacity(QUERY_COUNT);
-    let mut query_labels = Vec::with_capacity(QUERY_COUNT);
-
-    for q in 0..QUERY_COUNT {
-        let c = q % CLUSTERS;
-        let base_center = &centers[c];
-        let vec: Vec<f32> = base_center
-            .iter()
-            .map(|&x| x + rng.random_range(-0.12..0.12))
-            .collect();
-        real_queries.push(vec);
-        query_labels.push(c);
-    }
-
-    let complex_queries: Vec<VectorEmbedding> = real_queries
+    let real_queries: Vec<Vec<f32>> = complex_queries
         .iter()
-        .map(|v| ComplexWeaver::fold_llm_embedding(v))
+        .map(|v| v.complex_data().iter().flat_map(|c| [c.re, c.im]).collect())
         .collect();
+
+    let cluster_labels = (0..total_vectors).map(|i| i % CLUSTERS).collect();
+    let query_labels = (0..QUERY_COUNT).map(|i| i % CLUSTERS).collect();
 
     Dataset {
         real_corpus,

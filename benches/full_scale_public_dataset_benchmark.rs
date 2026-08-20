@@ -126,6 +126,7 @@ fn percentile(mut xs: Vec<Duration>, pct: f64) -> Duration {
 
 fn evaluate_corpus_full(
     name: &str,
+    base_path: &Path,
     corpus: &[VectorEmbedding],
     queries: &[VectorEmbedding],
     dim: usize,
@@ -133,17 +134,31 @@ fn evaluate_corpus_full(
     declared_n: usize,
 ) -> DatasetResult {
     let label_consistent = declared_n == corpus.len();
+    let snapshot_path = base_path.with_extension("snapshot");
 
-    eprintln!("  [{name}] building index over {} vectors...", corpus.len());
-    let mut config = HNSQRConfig::default();
-    config.distance_function = DistanceFunction::Cosine;
-    let index = HNSQRIndex::new(config, dim);
-    let build_start = Instant::now();
-    for (i, v) in corpus.iter().enumerate() {
-        let doc_id = format!("doc_{i}");
-        index.insert(doc_id.as_str(), v.clone()).unwrap();
-    }
-    eprintln!("  [{name}] index built in {:.2?}", build_start.elapsed());
+    let index = if snapshot_path.exists() {
+        eprintln!("  [{name}] found prebuilt snapshot {:?}, attaching via mmap...", snapshot_path);
+        let t_load = Instant::now();
+        let idx = HNSQRIndex::open_snapshot_v2(&snapshot_path, hnsqr::SnapshotOpenOptions::default())
+            .expect("Failed to open prebuilt snapshot");
+        idx.freeze_rivero_routing();
+        eprintln!("  [{name}] snapshot attached in {:.2?}", t_load.elapsed());
+        idx
+    } else {
+        eprintln!("  [{name}] building index over {} vectors...", corpus.len());
+        let mut config = HNSQRConfig::default();
+        config.distance_function = DistanceFunction::Cosine;
+        let index = HNSQRIndex::new(config, dim);
+        let build_start = Instant::now();
+        for (i, v) in corpus.iter().enumerate() {
+            let doc_id = format!("doc_{i}");
+            index.insert(doc_id.as_str(), v.clone()).unwrap();
+        }
+        index.freeze_rivero_routing();
+        let _ = index.save_snapshot_v2(&snapshot_path);
+        eprintln!("  [{name}] index built and snapshot saved in {:.2?}", build_start.elapsed());
+        index
+    };
 
     let mut samples = Vec::with_capacity(queries.len());
     for (qi, query) in queries.iter().enumerate() {
@@ -261,7 +276,7 @@ fn main() {
             match (read_fvecs_limited(base_path, None), read_fvecs_limited(query_path, Some(QUERIES_PER_DATASET))) {
                 (Ok(base_vecs), Ok(query_vecs)) if !base_vecs.is_empty() && !query_vecs.is_empty() => {
                     let dim = base_vecs[0].dimension();
-                    evaluate_corpus_full(name, &base_vecs, &query_vecs, dim, k, *declared_n)
+                    evaluate_corpus_full(name, base_path, &base_vecs, &query_vecs, dim, k, *declared_n)
                 }
                 (Ok(_), Ok(_)) => DatasetResult::skipped(name, *declared_n, "dataset files present but empty after parse".to_string()),
                 (Err(e), _) | (_, Err(e)) => DatasetResult::skipped(name, *declared_n, format!("read_fvecs failed: {e}")),

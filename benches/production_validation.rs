@@ -32,7 +32,7 @@ use std::time::Instant;
 
 use hnsqr::vector::folding::ComplexWeaver;
 use hnsqr::{
-    AdaptivePolicy, HNSQRConfig, HNSQRIndex, NodeIndex, RiveroBulkBuilder, RiveroProfile,
+    AdaptivePolicy, HNSQRIndex, NodeIndex, RiveroBulkBuilder, RiveroProfile,
     SnapshotOpenOptions, VectorEmbedding, VerificationMode,
 };
 use num_complex::Complex32;
@@ -40,125 +40,11 @@ use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 use rayon::prelude::*;
 
+mod common;
+
+use common::{generate_realistic_text_corpus, get_or_build_cached_index, TextRetrievalCorpus};
+
 const SEED: u64 = 0x484e_5351_525f_5641; // "HNSQR_VA"
-
-// ════════════════════════════════════════════════════════════════════════════════
-// 0. SYNTHETIC REALISTIC EMBEDDING GENERATOR (MULTI-TOPIC TEXT RETRIEVAL CORPUS)
-// ════════════════════════════════════════════════════════════════════════════════
-
-struct TextRetrievalCorpus {
-    pub raw_real_corpus: Vec<Vec<f32>>,
-    pub folded_corpus: Vec<VectorEmbedding>,
-    pub queries: Vec<Vec<f32>>,
-    pub folded_queries: Vec<VectorEmbedding>,
-    pub relevance_ground_truth: Vec<Vec<(usize, u32)>>, // (doc_idx, relevance_score: 0..3)
-    pub real_dim: usize,
-    pub complex_dim: usize,
-}
-
-fn generate_realistic_text_corpus(
-    n_docs: usize,
-    n_queries: usize,
-    real_dim: usize,
-    seed: u64,
-) -> TextRetrievalCorpus {
-    let mut rng = StdRng::seed_from_u64(seed);
-    let n_topics = (n_docs / 100).clamp(20, 500);
-
-    // Topic manifolds in real semantic embedding space
-    let topic_centers: Vec<Vec<f32>> = (0..n_topics)
-        .map(|_| {
-            let mut v: Vec<f32> = (0..real_dim).map(|_| rng.random_range(-1.0..1.0)).collect();
-            let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-9);
-            v.iter_mut().for_each(|x| *x /= norm);
-            v
-        })
-        .collect();
-
-    let mut raw_real_corpus = Vec::with_capacity(n_docs);
-    let mut doc_topics = Vec::with_capacity(n_docs);
-
-    for i in 0..n_docs {
-        let topic_idx = i % n_topics;
-        let center = &topic_centers[topic_idx];
-        let noise_scale = rng.random_range(0.05..0.25f32);
-        let mut v: Vec<f32> = center
-            .iter()
-            .map(|&x| x + rng.random_range(-noise_scale..noise_scale))
-            .collect();
-        let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-9);
-        v.iter_mut().for_each(|x| *x /= norm);
-        raw_real_corpus.push(v);
-        doc_topics.push(topic_idx);
-    }
-
-    let mut queries = Vec::with_capacity(n_queries);
-    let mut relevance_ground_truth = Vec::with_capacity(n_queries);
-
-    for q_idx in 0..n_queries {
-        let target_topic = q_idx % n_topics;
-        let center = &topic_centers[target_topic];
-        let mut q_vec: Vec<f32> = center
-            .iter()
-            .map(|&x| x + rng.random_range(-0.10..0.10))
-            .collect();
-        let norm: f32 = q_vec.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-9);
-        q_vec.iter_mut().for_each(|x| *x /= norm);
-        queries.push(q_vec.clone());
-
-        // Grade relevance of top-100 cosine matches
-        let mut doc_scores: Vec<(usize, f32)> = raw_real_corpus
-            .iter()
-            .enumerate()
-            .map(|(d_idx, d_vec): (usize, &Vec<f32>)| {
-                let dot: f32 = q_vec.iter().zip(d_vec.iter()).map(|(a, b)| a * b).sum();
-                (d_idx, dot)
-            })
-            .collect();
-        doc_scores.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
-
-        let rel: Vec<(usize, u32)> = doc_scores
-            .iter()
-            .take(100)
-            .enumerate()
-            .map(|(rank, &(d_idx, score))| {
-                let grade = if rank < 3 && score > 0.85 {
-                    3
-                } else if rank < 10 && score > 0.70 {
-                    2
-                } else if score > 0.50 {
-                    1
-                } else {
-                    0
-                };
-                (d_idx, grade)
-            })
-            .collect();
-        relevance_ground_truth.push(rel);
-    }
-
-    let folded_corpus: Vec<VectorEmbedding> = raw_real_corpus
-        .par_iter()
-        .map(|v| ComplexWeaver::fold_llm_embedding(v))
-        .collect();
-
-    let folded_queries: Vec<VectorEmbedding> = queries
-        .par_iter()
-        .map(|v| ComplexWeaver::fold_llm_embedding(v))
-        .collect();
-
-    let complex_dim = real_dim.div_ceil(2);
-
-    TextRetrievalCorpus {
-        raw_real_corpus,
-        folded_corpus,
-        queries,
-        folded_queries,
-        relevance_ground_truth,
-        real_dim,
-        complex_dim,
-    }
-}
 
 // ════════════════════════════════════════════════════════════════════════════════
 // 1. METRIC & RETRIEVAL RELEVANCE COMPARISON
@@ -173,7 +59,7 @@ fn run_metric_relevance_comparison(corpus: &TextRetrievalCorpus) {
         "════════════════════════════════════════════════════════════════════════════════════════"
     );
 
-    let n_queries = corpus.queries.len();
+    let n_queries = corpus.queries_raw.len();
 
     struct MetricAccumulator {
         recall_1: f64,
@@ -198,12 +84,16 @@ fn run_metric_relevance_comparison(corpus: &TextRetrievalCorpus) {
         };
 
         for (q_idx, (q_real, q_folded)) in corpus
-            .queries
+            .queries_raw
             .iter()
             .zip(corpus.folded_queries.iter())
             .enumerate()
         {
-            let truth = &corpus.relevance_ground_truth[q_idx];
+            let truth = if q_idx < corpus.relevance_ground_truth.len() {
+                &corpus.relevance_ground_truth[q_idx]
+            } else {
+                continue;
+            };
             let top_truth_ids: Vec<usize> = truth
                 .iter()
                 .filter(|(_, g)| *g > 0)
@@ -214,7 +104,7 @@ fn run_metric_relevance_comparison(corpus: &TextRetrievalCorpus) {
             }
 
             let mut scored_docs: Vec<(usize, f32)> = corpus
-                .raw_real_corpus
+                .corpus_raw
                 .iter()
                 .zip(corpus.folded_corpus.iter())
                 .enumerate()
@@ -233,80 +123,78 @@ fn run_metric_relevance_comparison(corpus: &TextRetrievalCorpus) {
 
             let retrieved_100: Vec<usize> =
                 scored_docs.iter().take(100).map(|(idx, _)| *idx).collect();
-            let retrieved_10 = &retrieved_100[..10.min(retrieved_100.len())];
-            let retrieved_1 = &retrieved_100[..1.min(retrieved_100.len())];
 
-            // Recall
-            let r1 = retrieved_1
+            // Recall@1
+            if top_truth_ids.contains(&retrieved_100[0]) {
+                acc.recall_1 += 1.0;
+            }
+
+            // Recall@10
+            let r10_hits = retrieved_100[..10.min(retrieved_100.len())]
                 .iter()
                 .filter(|id| top_truth_ids.contains(id))
-                .count() as f64
-                / 1.0;
-            let r10 = retrieved_10
+                .count();
+            acc.recall_10 += (r10_hits as f64) / (top_truth_ids.len().min(10) as f64);
+
+            // Recall@100
+            let r100_hits = retrieved_100
                 .iter()
                 .filter(|id| top_truth_ids.contains(id))
-                .count() as f64
-                / top_truth_ids.len().min(10) as f64;
-            let r100 = retrieved_100
-                .iter()
-                .filter(|id| top_truth_ids.contains(id))
-                .count() as f64
-                / top_truth_ids.len().min(100) as f64;
+                .count();
+            acc.recall_100 += (r100_hits as f64) / (top_truth_ids.len().min(100) as f64);
 
             // MRR
-            let mut mrr = 0.0;
-            for (rank, doc_id) in retrieved_100.iter().enumerate() {
-                if top_truth_ids.contains(doc_id) {
-                    mrr = 1.0 / (rank as f64 + 1.0);
+            for (rank, &doc_id) in retrieved_100.iter().enumerate() {
+                if top_truth_ids.contains(&doc_id) {
+                    acc.mrr += 1.0 / (rank as f64 + 1.0);
                     break;
                 }
             }
 
             // NDCG@10 & NDCG@100
-            let compute_dcg = |docs: &[usize]| -> f64 {
-                docs.iter().enumerate().fold(0.0, |sum, (r, doc_id)| {
-                    let rel = truth
+            let dcg_at = |k: usize| -> f64 {
+                let mut dcg = 0.0;
+                for (rank, &doc_id) in retrieved_100.iter().take(k).enumerate() {
+                    let grade = truth
                         .iter()
-                        .find(|(id, _)| id == doc_id)
+                        .find(|(id, _)| *id == doc_id)
                         .map(|(_, g)| *g)
                         .unwrap_or(0);
-                    sum + ((1 << rel) - 1) as f64 / (r as f64 + 2.0).log2()
-                })
+                    if grade > 0 {
+                        dcg += (2.0f64.powi(grade as i32) - 1.0) / (rank as f64 + 2.0).log2();
+                    }
+                }
+                dcg
             };
-
-            let dcg_10 = compute_dcg(retrieved_10);
-            let dcg_100 = compute_dcg(&retrieved_100);
 
             let mut ideal_grades: Vec<u32> = truth.iter().map(|(_, g)| *g).collect();
             ideal_grades.sort_unstable_by(|a, b| b.cmp(a));
-            let idcg_10: f64 = ideal_grades
-                .iter()
-                .take(10)
-                .enumerate()
-                .fold(0.0, |sum, (r, &g)| {
-                    sum + ((1 << g) - 1) as f64 / (r as f64 + 2.0).log2()
-                });
-            let idcg_100: f64 = ideal_grades
-                .iter()
-                .take(100)
-                .enumerate()
-                .fold(0.0, |sum, (r, &g)| {
-                    sum + ((1 << g) - 1) as f64 / (r as f64 + 2.0).log2()
-                });
+            let idcg_at = |k: usize| -> f64 {
+                let mut idcg = 0.0;
+                for (rank, &grade) in ideal_grades.iter().take(k).enumerate() {
+                    if grade > 0 {
+                        idcg += (2.0f64.powi(grade as i32) - 1.0) / (rank as f64 + 2.0).log2();
+                    }
+                }
+                idcg
+            };
 
-            acc.recall_1 += r1.min(1.0);
-            acc.recall_10 += r10.min(1.0);
-            acc.recall_100 += r100.min(1.0);
-            acc.mrr += mrr;
-            acc.ndcg_10 += if idcg_10 > 0.0 { dcg_10 / idcg_10 } else { 1.0 };
+            let idcg_10 = idcg_at(10);
+            acc.ndcg_10 += if idcg_10 > 0.0 {
+                dcg_at(10) / idcg_10
+            } else {
+                1.0
+            };
+
+            let idcg_100 = idcg_at(100);
             acc.ndcg_100 += if idcg_100 > 0.0 {
-                dcg_100 / idcg_100
+                dcg_at(100) / idcg_100
             } else {
                 1.0
             };
         }
 
-        let n = n_queries as f64;
+        let n = n_queries.max(1) as f64;
         acc.recall_1 /= n;
         acc.recall_10 /= n;
         acc.recall_100 /= n;
@@ -318,7 +206,7 @@ fn run_metric_relevance_comparison(corpus: &TextRetrievalCorpus) {
 
     println!(
         "  Evaluating exact scoring metrics on N={} docs with ground-truth relevance labels...",
-        corpus.raw_real_corpus.len()
+        corpus.corpus_raw.len()
     );
 
     let cosine_res = evaluate_metric(&|q_real, d_real, _, _| {
@@ -352,16 +240,16 @@ fn run_metric_relevance_comparison(corpus: &TextRetrievalCorpus) {
     });
 
     println!(
-        "\n  ┌─────────────────────────┬──────────┬───────────┬────────────┬──────────┬───────────┬────────────┐"
+        "\n  ┌─────────────────────────────┬──────────┬──────────┬───────────┬──────────┬──────────┬───────────┐"
     );
     println!(
-        "  │ Metric Mode             │ Recall@1 │ Recall@10 │ Recall@100 │ MRR      │ NDCG@10   │ NDCG@100   │"
+        "  │ Metric / Mathematical Formulation │ Recall@1 │ Rec@10   │ Rec@100   │ MRR      │ NDCG@10  │ NDCG@100  │"
     );
     println!(
-        "  ├─────────────────────────┼──────────┼───────────┼────────────┼──────────┼───────────┼────────────┤"
+        "  ├─────────────────────────────┼──────────┼──────────┼───────────┼──────────┼──────────┼───────────┤"
     );
     println!(
-        "  │ Real Cosine             │ {:>8.4} │ {:>9.4} │ {:>10.4} │ {:>8.4} │ {:>9.4} │ {:>10.4} │",
+        "  │ Real Cosine <x, y>          │ {:>8.4} │ {:>8.4} │ {:>9.4} │ {:>8.4} │ {:>8.4} │ {:>9.4} │",
         cosine_res.recall_1,
         cosine_res.recall_10,
         cosine_res.recall_100,
@@ -370,7 +258,7 @@ fn run_metric_relevance_comparison(corpus: &TextRetrievalCorpus) {
         cosine_res.ndcg_100
     );
     println!(
-        "  │ Folded Hermitian Re(⟨z│w│) {:>8.4} │ {:>9.4} │ {:>10.4} │ {:>8.4} │ {:>9.4} │ {:>10.4} │",
+        "  │ Complex Hermitian Re<z, w>  │ {:>8.4} │ {:>8.4} │ {:>9.4} │ {:>8.4} │ {:>8.4} │ {:>9.4} │",
         hermitian_res.recall_1,
         hermitian_res.recall_10,
         hermitian_res.recall_100,
@@ -379,7 +267,7 @@ fn run_metric_relevance_comparison(corpus: &TextRetrievalCorpus) {
         hermitian_res.ndcg_100
     );
     println!(
-        "  │ Projective Overlap |⟨z│w⟩|²│ {:>8.4} │ {:>9.4} │ {:>10.4} │ {:>8.4} │ {:>9.4} │ {:>10.4} │",
+        "  │ Projective Overlap |<z, w>|²│ {:>8.4} │ {:>8.4} │ {:>9.4} │ {:>8.4} │ {:>8.4} │ {:>9.4} │",
         fidelity_res.recall_1,
         fidelity_res.recall_10,
         fidelity_res.recall_100,
@@ -388,7 +276,7 @@ fn run_metric_relevance_comparison(corpus: &TextRetrievalCorpus) {
         fidelity_res.ndcg_100
     );
     println!(
-        "  │ Hybrid (0.5F + 0.5Re)   │ {:>8.4} │ {:>9.4} │ {:>10.4} │ {:>8.4} │ {:>9.4} │ {:>10.4} │",
+        "  │ Hybrid α·CPO + (1-α)·Re     │ {:>8.4} │ {:>8.4} │ {:>9.4} │ {:>8.4} │ {:>8.4} │ {:>9.4} │",
         hybrid_res.recall_1,
         hybrid_res.recall_10,
         hybrid_res.recall_100,
@@ -397,37 +285,30 @@ fn run_metric_relevance_comparison(corpus: &TextRetrievalCorpus) {
         hybrid_res.ndcg_100
     );
     println!(
-        "  └─────────────────────────┴──────────┴───────────┴────────────┴──────────┴───────────┴────────────┘\n"
-    );
-
-    println!(
-        "  Key Finding: Folded Hermitian exactly matches Real Cosine down to machine epsilon (diff < 1e-7)."
-    );
-    println!(
-        "  Projective Overlap (CPO) provides symmetric phase-invariance, proving ideal for structural candidate routing.\n"
+        "  └─────────────────────────────┴──────────┴──────────┴───────────┴──────────┴──────────┴───────────┘\n"
     );
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
-// 2. GLOBAL PHASE INVARIANCE VS SEMANTIC COLLISION ATTACK TEST
+// 2. GLOBAL PHASE INVARIANCE VS REAL COORDINATE COLLISION ATTACK TEST
 // ════════════════════════════════════════════════════════════════════════════════
 
 fn run_global_phase_collision_attack(corpus: &TextRetrievalCorpus) {
     println!(
         "════════════════════════════════════════════════════════════════════════════════════════"
     );
-    println!(" EXPERIMENT 2: GLOBAL-PHASE INVARIANCE VS SEMANTIC COLLISION ATTACK TEST");
+    println!(" EXPERIMENT 2: GLOBAL PHASE ROTATION VS SEMANTIC COLLISION RISK TEST");
     println!(
         "════════════════════════════════════════════════════════════════════════════════════════"
     );
 
     let test_angles = [
         ("0", 0.0f32),
-        ("π/6", std::f32::consts::PI / 6.0),
-        ("π/4", std::f32::consts::PI / 4.0),
-        ("π/3", std::f32::consts::PI / 3.0),
-        ("π/2", std::f32::consts::PI / 2.0),
-        ("2π/3", 2.0 * std::f32::consts::PI / 3.0),
+        ("π/6", std::f32::consts::FRAC_PI_6),
+        ("π/4", std::f32::consts::FRAC_PI_4),
+        ("π/3", std::f32::consts::FRAC_PI_3),
+        ("π/2", std::f32::consts::FRAC_PI_2),
+        ("2π/3", 2.0 * std::f32::consts::FRAC_PI_3),
         ("π", std::f32::consts::PI),
     ];
 
@@ -444,7 +325,7 @@ fn run_global_phase_collision_attack(corpus: &TextRetrievalCorpus) {
         "  ├─────────┼──────────────┼──────────────┼──────────────────┼────────────────────────┤"
     );
 
-    let sample_indices = (0..50.min(corpus.raw_real_corpus.len())).collect::<Vec<_>>();
+    let sample_indices = (0..50.min(corpus.corpus_raw.len())).collect::<Vec<_>>();
 
     for &(angle_name, phi) in &test_angles {
         let rot = Complex32::from_polar(1.0, phi);
@@ -453,7 +334,7 @@ fn run_global_phase_collision_attack(corpus: &TextRetrievalCorpus) {
         let mut jaccard_sum = 0.0;
 
         for &i in &sample_indices {
-            let x = &corpus.raw_real_corpus[i];
+            let x = &corpus.corpus_raw[i];
             let z = &corpus.folded_corpus[i];
 
             // Rotate z' = e^(i*phi) * z
@@ -478,7 +359,7 @@ fn run_global_phase_collision_attack(corpus: &TextRetrievalCorpus) {
 
             // Semantic top-10 neighbors in real space
             let mut x_neighbors: Vec<(usize, f32)> = corpus
-                .raw_real_corpus
+                .corpus_raw
                 .iter()
                 .enumerate()
                 .map(|(idx, d)| {
@@ -490,7 +371,7 @@ fn run_global_phase_collision_attack(corpus: &TextRetrievalCorpus) {
             let x_top10: Vec<usize> = x_neighbors.iter().take(10).map(|(idx, _)| *idx).collect();
 
             let mut xp_neighbors: Vec<(usize, f32)> = corpus
-                .raw_real_corpus
+                .corpus_raw
                 .iter()
                 .enumerate()
                 .map(|(idx, d)| {
@@ -721,18 +602,12 @@ fn run_scalability_and_saturation_matrix() {
 
     for &n in &scale_points {
         let corpus = generate_realistic_text_corpus(n, 50, d * 2, SEED ^ (n as u64));
-
-        let builder = RiveroBulkBuilder::with_profile(RiveroProfile::Balanced).with_threads(16);
-        let built = builder.build(&corpus.folded_corpus).unwrap();
-
-        let mut config = HNSQRConfig::default();
-        config.max_elements = n.max(1000);
-        config.rivero_enabled = true;
-        let index = HNSQRIndex::new(config, d);
-        for (i, v) in corpus.folded_corpus.iter().enumerate() {
-            index.insert(format!("d-{i}"), v.clone()).unwrap();
-        }
-        index.install_rivero_state(built).unwrap();
+        let index = get_or_build_cached_index(
+            &format!("prod_val_scale_n{n}"),
+            &corpus.folded_corpus,
+            corpus.complex_dim,
+            RiveroProfile::Balanced,
+        );
 
         // Query execution
         let mut latencies_ms = Vec::with_capacity(corpus.folded_queries.len());
@@ -872,11 +747,11 @@ fn run_persistence_deep_dive(corpus: &TextRetrievalCorpus, index: &HNSQRIndex) {
 
     let snap_path = std::env::temp_dir().join(format!(
         "prod_val_snap_{}.hnsqr",
-        corpus.raw_real_corpus.len()
+        corpus.corpus_raw.len()
     ));
     let save_stats = index.save_snapshot_v2(&snap_path).unwrap();
 
-    let bytes_per_vec = save_stats.file_size_bytes as f64 / save_stats.vector_count as f64;
+    let bytes_per_vec = save_stats.file_size_bytes as f64 / save_stats.vector_count.max(corpus.corpus_raw.len() as u64).max(1) as f64;
     println!(
         "  * Snapshot File: {:.2} MB ({} bytes)",
         save_stats.file_size_bytes as f64 / (1024.0 * 1024.0),
@@ -1035,18 +910,13 @@ fn main() {
 
     let base_corpus = generate_realistic_text_corpus(25_000, 100, 64, SEED);
 
-    // Build base index
-    let builder = RiveroBulkBuilder::with_profile(RiveroProfile::Balanced).with_threads(16);
-    let built = builder.build(&base_corpus.folded_corpus).unwrap();
-
-    let mut config = HNSQRConfig::default();
-    config.max_elements = base_corpus.folded_corpus.len().max(1000);
-    config.rivero_enabled = true;
-    let index = Arc::new(HNSQRIndex::new(config, base_corpus.complex_dim));
-    for (i, v) in base_corpus.folded_corpus.iter().enumerate() {
-        index.insert(format!("doc-{i}"), v.clone()).unwrap();
-    }
-    index.install_rivero_state(built).unwrap();
+    // Build or attach cached base index
+    let index = Arc::new(get_or_build_cached_index(
+        "prod_val_base_25k",
+        &base_corpus.folded_corpus,
+        base_corpus.complex_dim,
+        RiveroProfile::Balanced,
+    ));
 
     // 1. Metric Comparison
     run_metric_relevance_comparison(&base_corpus);

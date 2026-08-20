@@ -145,6 +145,24 @@ impl AutonomousMemoryConsolidator {
     pub fn total_conflicts_resolved(&self) -> u64 {
         self.total_conflicts_resolved.load(Ordering::Relaxed)
     }
+
+    /// Captures an immutable point-in-time snapshot of agent memory.
+    pub fn snapshot(&self) -> AutonomousMemorySnapshot {
+        let profiles = self.profiles.read().clone();
+        AutonomousMemorySnapshot { profiles }
+    }
+}
+
+/// Immutable point-in-time snapshot of autonomous agent memory.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AutonomousMemorySnapshot {
+    pub profiles: HashMap<String, UserPersonaProfile>,
+}
+
+impl AutonomousMemorySnapshot {
+    pub fn get_profile(&self, user_id: &str) -> Option<&UserPersonaProfile> {
+        self.profiles.get(user_id)
+    }
 }
 
 impl Default for AutonomousMemoryConsolidator {

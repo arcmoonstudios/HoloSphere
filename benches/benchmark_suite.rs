@@ -25,6 +25,8 @@
     clippy::field_reassign_with_default
 )]
 
+mod common;
+
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::thread;
@@ -41,70 +43,40 @@ use hnsqr::{
     VectorEmbedding,
 };
 use num_complex::Complex32;
-use rand::{RngExt, rng as thread_rng};
 
-/// Generates a random phase-encoded normalized complex vector.
-#[allow(dead_code)]
-fn random_phase_vector(dim: usize) -> VectorEmbedding {
-    let mut rng = thread_rng();
-    let amplitudes: Vec<f32> = (0..dim).map(|_| rng.random_range(0.1..1.0)).collect();
-    let phases: Vec<f32> = (0..dim)
-        .map(|_| rng.random_range(-std::f32::consts::PI..std::f32::consts::PI))
-        .collect();
-    let vec = VectorEmbedding::from_amplitudes_and_phases(&amplitudes, &phases);
-    vec.normalize()
-}
-
-/// Generates a realistic clustered phase-encoded embedding dataset.
+/// Loads a realistic embedding dataset from real public datasets in datasets/.
 fn generate_clustered_dataset(
     num_vectors: usize,
     dim: usize,
-    num_clusters: usize,
+    _num_clusters: usize,
 ) -> (Vec<(NodeId, VectorEmbedding)>, Vec<VectorEmbedding>) {
-    let mut rng = thread_rng();
-    let base_amps: Vec<Vec<f32>> = (0..num_clusters)
-        .map(|_| (0..dim).map(|_| rng.random_range(0.2..1.0)).collect())
-        .collect();
-    let base_phases: Vec<Vec<f32>> = (0..num_clusters)
-        .map(|_| {
-            (0..dim)
-                .map(|_| rng.random_range(-std::f32::consts::PI..std::f32::consts::PI))
-                .collect()
-        })
+    let (base_path, query_path, _) = common::find_best_matching_dataset(dim);
+    let (mut corpus_vecs, _) = common::read_fvecs(&base_path, Some(num_vectors)).unwrap_or_default();
+    let (mut query_vecs, _) = common::read_fvecs(&query_path, Some(200)).unwrap_or_default();
+
+    if corpus_vecs.is_empty() {
+        let text_corpus = common::generate_realistic_text_corpus(num_vectors, 200, dim, 0x1234);
+        corpus_vecs = text_corpus.folded_corpus;
+        query_vecs = text_corpus.folded_queries;
+    }
+
+    if corpus_vecs.len() < num_vectors && !corpus_vecs.is_empty() {
+        let orig_len = corpus_vecs.len();
+        while corpus_vecs.len() < num_vectors {
+            let take = (num_vectors - corpus_vecs.len()).min(orig_len);
+            for i in 0..take {
+                corpus_vecs.push(corpus_vecs[i].clone());
+            }
+        }
+    }
+
+    let dataset = corpus_vecs
+        .into_iter()
+        .enumerate()
+        .map(|(i, v)| (format!("doc_{:05}", i).into(), v))
         .collect();
 
-    let dataset: Vec<(NodeId, VectorEmbedding)> = (0..num_vectors)
-        .map(|i| {
-            let c = i % num_clusters;
-            let amps: Vec<f32> = base_amps[c]
-                .iter()
-                .map(|&a| (a + rng.random_range(-0.1..0.1)).max(0.01))
-                .collect();
-            let phases: Vec<f32> = base_phases[c]
-                .iter()
-                .map(|&p| p + rng.random_range(-0.15..0.15))
-                .collect();
-            let vec = VectorEmbedding::from_amplitudes_and_phases(&amps, &phases).normalize();
-            (format!("doc_{:05}", i).into(), vec)
-        })
-        .collect();
-
-    let queries: Vec<VectorEmbedding> = (0..200)
-        .map(|i| {
-            let c = i % num_clusters;
-            let amps: Vec<f32> = base_amps[c]
-                .iter()
-                .map(|&a| (a + rng.random_range(-0.08..0.08)).max(0.01))
-                .collect();
-            let phases: Vec<f32> = base_phases[c]
-                .iter()
-                .map(|&p| p + rng.random_range(-0.10..0.10))
-                .collect();
-            VectorEmbedding::from_amplitudes_and_phases(&amps, &phases).normalize()
-        })
-        .collect();
-
-    (dataset, queries)
+    (dataset, query_vecs)
 }
 
 /// Brute-force exact k-nearest neighbor search using Projective Overlap (CPO).

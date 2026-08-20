@@ -4,8 +4,7 @@ use std::time::Instant;
 
 use common::generate_realistic_text_corpus;
 use hnsqr::rivero::{AdaptivePolicy, RiveroProfile};
-use hnsqr::rivero::bulk::RiveroBulkBuilder;
-use hnsqr::{DistanceFunction, HNSQRConfig, HNSQRIndex, NodeIndex, SearchPlan};
+use hnsqr::NodeIndex;
 
 fn percentile(mut latencies: Vec<f64>, p: f64) -> f64 {
     if latencies.is_empty() {
@@ -68,21 +67,13 @@ fn main() {
             ground_truth.push(scored.iter().take(10).map(|s| s.0).collect());
         }
 
-        // Build Index
-        let mut config = HNSQRConfig::default();
-        config.max_elements = n;
-        config.distance_function = DistanceFunction::Cosine;
-        config.rivero_enabled = true;
-        config.search_plan = SearchPlan::Rivero;
-
-        let index = HNSQRIndex::new(config, dim);
-        for (i, vec) in dataset.folded_corpus.iter().enumerate() {
-            index.insert(format!("doc-{i}"), vec.clone()).unwrap();
-        }
-
-        let builder = RiveroBulkBuilder::with_profile(RiveroProfile::Balanced).with_threads(16);
-        let rivero_state = builder.build(&dataset.folded_corpus).unwrap();
-        index.install_rivero_state(rivero_state).unwrap();
+        // Build or load cached Snapshot Index
+        let index = common::get_or_build_cached_index(
+            &format!("crossover_sweep_n{n}"),
+            &dataset.folded_corpus,
+            dim,
+            RiveroProfile::Balanced,
+        );
 
         // 1. Exact Scan
         let mut exact_lats = Vec::with_capacity(num_queries);

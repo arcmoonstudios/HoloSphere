@@ -12,7 +12,7 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::sync::Arc;
+use hnsqr::VectorEmbedding;
 use hnsqr::cluster::DistributedCoordinator;
 use hnsqr::consensus::raft::RaftRole;
 use hnsqr::proof::lutz::SemanticRerankPlan;
@@ -20,12 +20,13 @@ use hnsqr::security::auth::AccessRole;
 use hnsqr::service::{
     ClusterService, MutationService, ReadSnapshot, RequestContext, SearchService, UpsertRequest,
 };
-use hnsqr::VectorEmbedding;
 use num_complex::Complex32;
+use std::sync::Arc;
 
 #[tokio::test]
 async fn test_live_cluster_end_to_end_mutation_pipeline_and_recovery() {
-    let tmp_base = std::env::temp_dir().join(format!("hnsqr_live_cluster_{:x}", rand::random::<u64>()));
+    let tmp_base =
+        std::env::temp_dir().join(format!("hnsqr_live_cluster_{:x}", rand::random::<u64>()));
     let node1_dir = tmp_base.join("node_1");
     let node2_dir = tmp_base.join("node_2");
     let node3_dir = tmp_base.join("node_3");
@@ -64,7 +65,10 @@ async fn test_live_cluster_end_to_end_mutation_pipeline_and_recovery() {
         };
 
         let receipt = service.upsert(&ctx_admin, req).await.unwrap();
-        assert_eq!(receipt.durability, hnsqr::consensus::pending::DurabilityLevel::QuorumReplicated);
+        assert_eq!(
+            receipt.durability,
+            hnsqr::consensus::pending::DurabilityLevel::QuorumReplicated
+        );
     }
 
     // 3. Verify Raft leader quorum commit advanced
@@ -78,9 +82,14 @@ async fn test_live_cluster_end_to_end_mutation_pipeline_and_recovery() {
         .collect();
     let query = VectorEmbedding::from_complex(query_coords).into_normalized();
 
-    let results = service.search(&ctx_admin, &query, 3, SemanticRerankPlan::ExactSimd).unwrap();
+    let results = service
+        .search(&ctx_admin, &query, 3, SemanticRerankPlan::ExactSimd)
+        .unwrap();
     assert_eq!(results[0].0.as_ref(), "live_doc_42");
-    assert!((results[0].1 - 1.0).abs() < 1e-4, "Top-1 score must match ground truth exactly");
+    assert!(
+        (results[0].1 - 1.0).abs() < 1e-4,
+        "Top-1 score must match ground truth exactly"
+    );
 
     // 5. Test Reader RBAC rejection
     let ctx_reader = RequestContext {
@@ -97,7 +106,10 @@ async fn test_live_cluster_end_to_end_mutation_pipeline_and_recovery() {
         vector: query.clone(),
         metadata: None,
     };
-    assert!(service.upsert(&ctx_reader, forbidden_req).await.is_err(), "Reader role must be rejected for mutations");
+    assert!(
+        service.upsert(&ctx_reader, forbidden_req).await.is_err(),
+        "Reader role must be rejected for mutations"
+    );
 
     let _ = std::fs::remove_dir_all(&tmp_base);
 }

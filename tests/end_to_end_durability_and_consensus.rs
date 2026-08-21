@@ -13,7 +13,6 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::sync::Arc;
 use hnsqr::cluster::DistributedCoordinator;
 use hnsqr::consensus::raft::{RaftCommand, RaftRole};
 use hnsqr::proof::lutz::SemanticRerankPlan;
@@ -21,6 +20,7 @@ use hnsqr::storage::segment::SegmentedEngine;
 use hnsqr::storage::wal::{DurabilityPolicy, WalManager};
 use hnsqr::{HNSQRConfig, HNSQRIndex, VectorEmbedding};
 use num_complex::Complex32;
+use std::sync::Arc;
 
 #[test]
 fn test_single_node_wal_crash_recovery_preserves_exact_search() {
@@ -93,7 +93,9 @@ fn test_segmented_engine_wal_persistence_and_replay() {
         let engine = SegmentedEngine::new(dim, 10).with_wal(wal.clone(), DurabilityPolicy::WalSync);
 
         for i in 0..15 {
-            let coords: Vec<Complex32> = (0..dim).map(|d| Complex32::new((i + d) as f32, 0.0)).collect();
+            let coords: Vec<Complex32> = (0..dim)
+                .map(|d| Complex32::new((i + d) as f32, 0.0))
+                .collect();
             let vec = VectorEmbedding::from_complex(coords).into_normalized();
             engine.insert(format!("seg_{i}"), vec).unwrap();
         }
@@ -105,7 +107,9 @@ fn test_segmented_engine_wal_persistence_and_replay() {
         let replayed = new_engine.recover_from_wal().unwrap();
         assert_eq!(replayed, 15);
 
-        let query_coords: Vec<Complex32> = (0..dim).map(|d| Complex32::new((3 + d) as f32, 0.0)).collect();
+        let query_coords: Vec<Complex32> = (0..dim)
+            .map(|d| Complex32::new((3 + d) as f32, 0.0))
+            .collect();
         let query = VectorEmbedding::from_complex(query_coords).into_normalized();
 
         let topk = new_engine.search(&query, 1, SemanticRerankPlan::ExactSimd);
@@ -129,18 +133,24 @@ fn test_distributed_coordinator_raft_replicated_ingest() {
             .map(|d| Complex32::new((i * 3 + d) as f32, (i * 5 + d) as f32))
             .collect();
         let vec = VectorEmbedding::from_complex(coords).into_normalized();
-        coord.insert_fenced_blocking(format!("cluster_doc_{i}"), vec, Some(1)).unwrap();
+        coord
+            .insert_fenced_blocking(format!("cluster_doc_{i}"), vec, Some(1))
+            .unwrap();
     }
 
     // Verify Raft leader proposed and committed mutations containing vector data
     let log = leader.log.read();
     assert!(log.len() >= 10);
     let has_reified_mutations = log.iter().any(|entry| {
-        matches!(&entry.command,
+        matches!(
+            &entry.command,
             RaftCommand::Data(hnsqr::cluster::state_machine::DataMutation::Upsert { .. })
         )
     });
-    assert!(has_reified_mutations, "Raft log entries must contain actual vector data payloads");
+    assert!(
+        has_reified_mutations,
+        "Raft log entries must contain actual vector data payloads"
+    );
 
     // Query cluster
     let query_coords: Vec<Complex32> = (0..dim)

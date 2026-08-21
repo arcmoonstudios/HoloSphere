@@ -82,7 +82,10 @@ impl ComplexWeaver {
 
     /// Ingests token embeddings directly from an in-process neural model with zero intermediate copies.
     #[inline(always)]
-    pub fn fold_token_embeddings_in_place(token_floats: &[f32], target_dim: usize) -> VectorEmbedding {
+    pub fn fold_token_embeddings_in_place(
+        token_floats: &[f32],
+        target_dim: usize,
+    ) -> VectorEmbedding {
         let complex_dim = target_dim.div_ceil(2);
         let mut complex_data = Vec::with_capacity(complex_dim);
         let mut pairs = token_floats.chunks_exact(2);
@@ -303,13 +306,15 @@ impl GatewayRouter {
 
         records
             .par_iter()
-            .map(|(id, vector, metadata): &(String, &[f32], HashMap<String, MetadataValue>)| {
-                target_index.insert_with_metadata_ref(
-                    id.as_str(),
-                    ComplexWeaver::fold_llm_embedding(vector),
-                    metadata,
-                )
-            })
+            .map(
+                |(id, vector, metadata): &(String, &[f32], HashMap<String, MetadataValue>)| {
+                    target_index.insert_with_metadata_ref(
+                        id.as_str(),
+                        ComplexWeaver::fold_llm_embedding(vector),
+                        metadata,
+                    )
+                },
+            )
             .collect()
     }
 
@@ -338,7 +343,8 @@ impl GatewayRouter {
         k: usize,
         filter: Option<FilterExpr>,
     ) -> HNSQRResult<Vec<(String, SimilarityScore)>> {
-        let (results, _, _) = self.search_llm_vector_with_contract(collection, llm_query, k, filter, false)?;
+        let (results, _, _) =
+            self.search_llm_vector_with_contract(collection, llm_query, k, filter, false)?;
         Ok(results)
     }
 
@@ -356,16 +362,34 @@ impl GatewayRouter {
         let filter_mask = filter.and_then(|f| target_index.compile_filter_mask(&f).ok());
 
         if certified_exact {
-            let (results, proof) = target_index.search_indices_with_proof(&complex_query, k, filter_mask.as_ref())?;
-            let mapped = results.into_iter().filter_map(|(idx, score)| {
-                target_index.arena.get_node(idx).map(|n| (n.external_id.to_string(), score))
-            }).collect();
-            Ok((mapped, proof.globally_exact, Some(proof.max_remaining_upper_bound as f32)))
+            let (results, proof) =
+                target_index.search_indices_with_proof(&complex_query, k, filter_mask.as_ref())?;
+            let mapped = results
+                .into_iter()
+                .filter_map(|(idx, score)| {
+                    target_index
+                        .arena
+                        .get_node(idx)
+                        .map(|n| (n.external_id.to_string(), score))
+                })
+                .collect();
+            Ok((
+                mapped,
+                proof.globally_exact,
+                Some(proof.max_remaining_upper_bound as f32),
+            ))
         } else {
-            let results = target_index.search_indices_filtered(&complex_query, k, filter_mask.as_ref())?;
-            let mapped = results.into_iter().filter_map(|(idx, score)| {
-                target_index.arena.get_node(idx).map(|n| (n.external_id.to_string(), score))
-            }).collect();
+            let results =
+                target_index.search_indices_filtered(&complex_query, k, filter_mask.as_ref())?;
+            let mapped = results
+                .into_iter()
+                .filter_map(|(idx, score)| {
+                    target_index
+                        .arena
+                        .get_node(idx)
+                        .map(|n| (n.external_id.to_string(), score))
+                })
+                .collect();
             Ok((mapped, false, None))
         }
     }
@@ -463,11 +487,17 @@ pub fn create_http_router(router: Arc<GatewayRouter>) -> Router {
             post(batch_search_handler),
         )
         .route("/v1/collections/{name}/stats", get(stats_handler))
-        .route("/dashboard", get(crate::transport::web_console::console_handler))
+        .route(
+            "/dashboard",
+            get(crate::transport::web_console::console_handler),
+        )
         .route("/ui", get(crate::transport::web_console::console_handler))
         .route("/docs", get(crate::transport::swagger::swagger_handler))
         .route("/swagger", get(crate::transport::swagger::swagger_handler))
-        .route("/openapi.json", get(crate::transport::swagger::openapi_spec_handler))
+        .route(
+            "/openapi.json",
+            get(crate::transport::swagger::openapi_spec_handler),
+        )
         .layer(CorsLayer::permissive())
         .with_state(router)
 }
@@ -500,7 +530,13 @@ async fn metrics_handler(State(router): State<Arc<GatewayRouter>>) -> impl IntoR
         .store(total_inserts, std::sync::atomic::Ordering::Relaxed);
 
     let export = crate::telemetry::metrics::PrometheusExporter::format(&metrics);
-    ([(axum::http::header::CONTENT_TYPE, "text/plain; version=0.0.4")], export)
+    (
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; version=0.0.4",
+        )],
+        export,
+    )
 }
 
 async fn insert_handler(

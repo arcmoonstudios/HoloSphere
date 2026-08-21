@@ -43,7 +43,8 @@ impl MutationId {
     }
 
     pub fn generate() -> Self {
-        let id = format!("mut_{:016x}_{:08x}",
+        let id = format!(
+            "mut_{:016x}_{:08x}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_nanos())
@@ -102,7 +103,10 @@ impl CommitReceipt {
         topology_epoch: u64,
         durability: DurabilityLevel,
     ) -> Self {
-        assert!(applied_index > 0, "State machine must apply before generating ACK");
+        assert!(
+            applied_index > 0,
+            "State machine must apply before generating ACK"
+        );
         Self {
             mutation_id,
             term,
@@ -158,14 +162,32 @@ pub enum ApplyError {
 impl fmt::Display for ApplyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::LeadershipLost { mutation_id, term, log_index, commit_status } => {
-                write!(f, "Leadership lost for mutation {mutation_id} at term {term}, index {log_index} (commit status: {commit_status:?})")
+            Self::LeadershipLost {
+                mutation_id,
+                term,
+                log_index,
+                commit_status,
+            } => {
+                write!(
+                    f,
+                    "Leadership lost for mutation {mutation_id} at term {term}, index {log_index} (commit status: {commit_status:?})"
+                )
             }
-            Self::StateApplyFailed { mutation_id, reason, log_index } => {
-                write!(f, "State machine apply failed for mutation {mutation_id} at index {log_index}: {reason}")
+            Self::StateApplyFailed {
+                mutation_id,
+                reason,
+                log_index,
+            } => {
+                write!(
+                    f,
+                    "State machine apply failed for mutation {mutation_id} at index {log_index}: {reason}"
+                )
             }
             Self::StateMachineUnavailable { log_index } => {
-                write!(f, "Authoritative state machine unavailable at log index {log_index}")
+                write!(
+                    f,
+                    "Authoritative state machine unavailable at log index {log_index}"
+                )
             }
             Self::SequenceViolation { reason } => {
                 write!(f, "Client sequence violation: {reason}")
@@ -174,10 +196,17 @@ impl fmt::Display for ApplyError {
                 write!(f, "Raft quorum unavailable in term {term}")
             }
             Self::ProposalTimedOut { proposal } => {
-                write!(f, "Proposal {proposal} timed out waiting for quorum commit and state application")
+                write!(
+                    f,
+                    "Proposal {proposal} timed out waiting for quorum commit and state application"
+                )
             }
             Self::Deduplicated { receipt } => {
-                write!(f, "Mutation {} already applied at index {}", receipt.mutation_id, receipt.applied_index)
+                write!(
+                    f,
+                    "Mutation {} already applied at index {}",
+                    receipt.mutation_id, receipt.applied_index
+                )
             }
         }
     }
@@ -188,15 +217,22 @@ impl std::error::Error for ApplyError {}
 impl From<ApplyError> for HNSQRError {
     fn from(err: ApplyError) -> Self {
         match err {
-            ApplyError::LeadershipLost { mutation_id, term, log_index, commit_status } => {
-                HNSQRError::Internal(format!("Leadership lost for {mutation_id} at term {term}, index {log_index} ({commit_status:?})"))
-            }
-            ApplyError::StateApplyFailed { mutation_id, reason, .. } => {
-                HNSQRError::Internal(format!("State apply failed for {mutation_id}: {reason}"))
-            }
-            ApplyError::StateMachineUnavailable { log_index } => {
-                HNSQRError::Internal(format!("State machine unavailable at log index {log_index}"))
-            }
+            ApplyError::LeadershipLost {
+                mutation_id,
+                term,
+                log_index,
+                commit_status,
+            } => HNSQRError::Internal(format!(
+                "Leadership lost for {mutation_id} at term {term}, index {log_index} ({commit_status:?})"
+            )),
+            ApplyError::StateApplyFailed {
+                mutation_id,
+                reason,
+                ..
+            } => HNSQRError::Internal(format!("State apply failed for {mutation_id}: {reason}")),
+            ApplyError::StateMachineUnavailable { log_index } => HNSQRError::Internal(format!(
+                "State machine unavailable at log index {log_index}"
+            )),
             ApplyError::SequenceViolation { reason } => {
                 HNSQRError::Internal(format!("Sequence violation: {reason}"))
             }
@@ -206,9 +242,10 @@ impl From<ApplyError> for HNSQRError {
             ApplyError::ProposalTimedOut { proposal } => {
                 HNSQRError::Internal(format!("Proposal {proposal} timed out"))
             }
-            ApplyError::Deduplicated { receipt } => {
-                HNSQRError::Internal(format!("Idempotent replay for mutation {}", receipt.mutation_id))
-            }
+            ApplyError::Deduplicated { receipt } => HNSQRError::Internal(format!(
+                "Idempotent replay for mutation {}",
+                receipt.mutation_id
+            )),
         }
     }
 }
@@ -341,12 +378,16 @@ impl PendingProposals {
                     keys.push(proposal);
                 }
             }
-            keys.into_iter().filter_map(|p| guard.remove(&p).map(|e| (p, e))).collect()
+            keys.into_iter()
+                .filter_map(|p| guard.remove(&p).map(|e| (p, e)))
+                .collect()
         };
 
         let count = timed_out_entries.len();
         for (proposal, entry) in timed_out_entries {
-            let _ = entry.sender.send(Err(ApplyError::ProposalTimedOut { proposal }));
+            let _ = entry
+                .sender
+                .send(Err(ApplyError::ProposalTimedOut { proposal }));
         }
         count
     }

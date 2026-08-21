@@ -88,9 +88,13 @@ pub fn encode_framed_record<T: Serialize>(record: &T) -> HNSQRResult<Vec<u8>> {
 }
 
 /// Decodes payload with strict CRC32 validation.
-pub fn decode_framed_record<T: for<'de> Deserialize<'de>>(buffer: &[u8]) -> HNSQRResult<(T, usize)> {
+pub fn decode_framed_record<T: for<'de> Deserialize<'de>>(
+    buffer: &[u8],
+) -> HNSQRResult<(T, usize)> {
     if buffer.len() < RAFT_FRAME_HEADER_SIZE {
-        return Err(HNSQRError::Internal("Buffer too small for Raft frame header".to_string()));
+        return Err(HNSQRError::Internal(
+            "Buffer too small for Raft frame header".to_string(),
+        ));
     }
 
     let magic = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
@@ -112,7 +116,9 @@ pub fn decode_framed_record<T: for<'de> Deserialize<'de>>(buffer: &[u8]) -> HNSQ
 
     let total_frame_len = RAFT_FRAME_HEADER_SIZE + payload_len;
     if buffer.len() < total_frame_len {
-        return Err(HNSQRError::Internal("Incomplete Raft frame payload (torn record)".to_string()));
+        return Err(HNSQRError::Internal(
+            "Incomplete Raft frame payload (torn record)".to_string(),
+        ));
     }
 
     let payload = &buffer[RAFT_FRAME_HEADER_SIZE..total_frame_len];
@@ -126,8 +132,9 @@ pub fn decode_framed_record<T: for<'de> Deserialize<'de>>(buffer: &[u8]) -> HNSQ
         )));
     }
 
-    let record: T = bincode::deserialize(payload)
-        .map_err(|e| HNSQRError::Internal(format!("Failed to deserialize Raft record payload: {e}")))?;
+    let record: T = bincode::deserialize(payload).map_err(|e| {
+        HNSQRError::Internal(format!("Failed to deserialize Raft record payload: {e}"))
+    })?;
 
     Ok((record, total_frame_len))
 }
@@ -190,11 +197,15 @@ impl MemoryRaftStorage {
 impl RaftStorage for MemoryRaftStorage {
     fn save_hard_state(&self, state: &RaftHardState) -> HNSQRResult<()> {
         if self.fail_before_vote_persist.load(Ordering::SeqCst) {
-            return Err(HNSQRError::Internal("Injected crash before vote persistence".to_string()));
+            return Err(HNSQRError::Internal(
+                "Injected crash before vote persistence".to_string(),
+            ));
         }
         *self.hard_state.write() = *state;
         if self.fail_after_vote_persist.load(Ordering::SeqCst) {
-            return Err(HNSQRError::Internal("Injected crash after vote persistence".to_string()));
+            return Err(HNSQRError::Internal(
+                "Injected crash after vote persistence".to_string(),
+            ));
         }
         Ok(())
     }
@@ -214,7 +225,9 @@ impl RaftStorage for MemoryRaftStorage {
 
     fn append_entries(&self, entries: &[RaftLogEntry]) -> HNSQRResult<()> {
         if self.fail_before_log_persist.load(Ordering::SeqCst) {
-            return Err(HNSQRError::Internal("Injected crash before log persistence".to_string()));
+            return Err(HNSQRError::Internal(
+                "Injected crash before log persistence".to_string(),
+            ));
         }
         let mut log = self.log.write();
         for entry in entries {
@@ -225,7 +238,9 @@ impl RaftStorage for MemoryRaftStorage {
             }
         }
         if self.fail_after_log_persist.load(Ordering::SeqCst) {
-            return Err(HNSQRError::Internal("Injected crash after log persistence".to_string()));
+            return Err(HNSQRError::Internal(
+                "Injected crash after log persistence".to_string(),
+            ));
         }
         Ok(())
     }
@@ -331,7 +346,9 @@ impl DurableRaftStorage {
             let mut offset = 0;
             let mut legacy_entries = Vec::new();
             while offset < buffer.len() {
-                if let Ok((entry, frame_len)) = decode_framed_record::<RaftLogEntry>(&buffer[offset..]) {
+                if let Ok((entry, frame_len)) =
+                    decode_framed_record::<RaftLogEntry>(&buffer[offset..])
+                {
                     legacy_entries.push(entry);
                     offset += frame_len;
                 } else {
@@ -382,7 +399,9 @@ impl DurableRaftStorage {
                     }
                     Err(e) => {
                         // Tolerate torn tail record on the last segment; truncate off cleanly
-                        if seg_path == segment_paths.last().unwrap() && offset + RAFT_FRAME_HEADER_SIZE > buffer.len() {
+                        if seg_path == segment_paths.last().unwrap()
+                            && offset + RAFT_FRAME_HEADER_SIZE > buffer.len()
+                        {
                             let f = OpenOptions::new().write(true).open(seg_path)?;
                             f.set_len(last_valid_offset as u64)?;
                             break;
@@ -465,9 +484,13 @@ impl DurableRaftStorage {
         }
 
         let mut segments = self.segments.write();
-        let need_rotation = segments.last().map(|s| {
-            s.entry_count >= self.max_entries_per_segment as u64 || s.byte_size >= self.max_segment_bytes
-        }).unwrap_or(true);
+        let need_rotation = segments
+            .last()
+            .map(|s| {
+                s.entry_count >= self.max_entries_per_segment as u64
+                    || s.byte_size >= self.max_segment_bytes
+            })
+            .unwrap_or(true);
 
         if need_rotation {
             let start_idx = entries[0].index;

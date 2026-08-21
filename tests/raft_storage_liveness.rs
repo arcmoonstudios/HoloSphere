@@ -24,10 +24,7 @@ fn test_heartbeats_immune_to_fsync_stalls() {
     assert!(leader.is_leader());
 
     // Propose batch
-    let batch = vec![
-        RaftCommand::NoOp,
-        RaftCommand::NoOp,
-    ];
+    let batch = vec![RaftCommand::NoOp, RaftCommand::NoOp];
     let indices = leader.propose_batch(batch).unwrap();
 
     // Replicate via decoupled heartbeat lane

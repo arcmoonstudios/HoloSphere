@@ -10,9 +10,9 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::collections::HashMap;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 use crate::{HNSQRError, HNSQRResult};
 
@@ -73,11 +73,15 @@ impl DBaaSControlPlane {
     }
 
     pub fn set_desired_state(&self, desired: DesiredClusterState) {
-        self.desired_clusters.write().insert(desired.cluster_id.clone(), desired);
+        self.desired_clusters
+            .write()
+            .insert(desired.cluster_id.clone(), desired);
     }
 
     pub fn report_observed_state(&self, observed: ObservedClusterState) {
-        self.observed_clusters.write().insert(observed.cluster_id.clone(), observed);
+        self.observed_clusters
+            .write()
+            .insert(observed.cluster_id.clone(), observed);
     }
 
     /// Reconciles desired against observed state idempotently.
@@ -109,7 +113,9 @@ impl DBaaSControlPlane {
         }
 
         // 3. Image tag rolling upgrade
-        if !observed.current_image_tag.is_empty() && desired.target_image_tag != observed.current_image_tag {
+        if !observed.current_image_tag.is_empty()
+            && desired.target_image_tag != observed.current_image_tag
+        {
             actions.push(format!(
                 "Upgrade image from {} to {}",
                 observed.current_image_tag, desired.target_image_tag
@@ -187,10 +193,29 @@ impl UsageBillingMeter {
     }
 
     /// Computes monthly billing summary ($0.05 / 1K queries + $0.25 / GB storage / mo).
-    pub fn generate_monthly_report(&self, tenant_id: &str, elapsed_hours: f64) -> TenantUsageReport {
-        let queries = self.query_counters.read().get(tenant_id).copied().unwrap_or(0);
-        let storage = self.storage_gb.read().get(tenant_id).copied().unwrap_or(0.0);
-        let egress = self.egress_bytes.read().get(tenant_id).copied().unwrap_or(0);
+    pub fn generate_monthly_report(
+        &self,
+        tenant_id: &str,
+        elapsed_hours: f64,
+    ) -> TenantUsageReport {
+        let queries = self
+            .query_counters
+            .read()
+            .get(tenant_id)
+            .copied()
+            .unwrap_or(0);
+        let storage = self
+            .storage_gb
+            .read()
+            .get(tenant_id)
+            .copied()
+            .unwrap_or(0.0);
+        let egress = self
+            .egress_bytes
+            .read()
+            .get(tenant_id)
+            .copied()
+            .unwrap_or(0);
 
         let storage_gb_hours = storage * elapsed_hours;
         let egress_gb = egress as f64 / (1024.0 * 1024.0 * 1024.0);
@@ -255,4 +280,3 @@ mod tests {
         assert!(report.estimated_cost_usd > 0.0);
     }
 }
-

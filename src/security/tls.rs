@@ -10,9 +10,9 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
-use serde::{Deserialize, Serialize};
 
 use crate::{HNSQRError, HNSQRResult};
 
@@ -36,7 +36,10 @@ pub struct TlsConfig {
 impl Default for TlsConfig {
     fn default() -> Self {
         // Default 90-day cert validity simulation
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
         Self {
             enabled: false,
             cert_path: None,
@@ -56,7 +59,10 @@ impl TlsConfig {
         key_path: impl AsRef<Path>,
         ca_cert_path: impl AsRef<Path>,
     ) -> Self {
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
         Self {
             enabled: true,
             cert_path: Some(cert_path.as_ref().to_path_buf()),
@@ -70,7 +76,10 @@ impl TlsConfig {
 
     /// Verifies if certificate is valid and not expired.
     pub fn verify_certificate_freshness(&self) -> HNSQRResult<u64> {
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
         if now >= self.cert_expires_at {
             return Err(HNSQRError::Internal(format!(
                 "TLS certificate expired at timestamp {}",

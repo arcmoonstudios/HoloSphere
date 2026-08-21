@@ -25,8 +25,8 @@
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
-use crate::graph::analytics::projection::GraphProjection;
 use crate::NodeIndex;
+use crate::graph::analytics::projection::GraphProjection;
 
 /// Shortest-path result.
 #[derive(Debug)]
@@ -50,7 +50,10 @@ impl Eq for State {}
 impl Ord for State {
     fn cmp(&self, other: &Self) -> Ordering {
         // Min-heap: lower cost has higher priority.
-        other.cost.total_cmp(&self.cost).then_with(|| self.node.cmp(&other.node))
+        other
+            .cost
+            .total_cmp(&self.cost)
+            .then_with(|| self.node.cmp(&other.node))
     }
 }
 
@@ -74,11 +77,17 @@ impl PathfindingEngine {
         target: NodeIndex,
     ) -> ShortestPath {
         if source == target {
-            return ShortestPath { cost: Some(0.0), hops: Some(0) };
+            return ShortestPath {
+                cost: Some(0.0),
+                hops: Some(0),
+            };
         }
         let n = projection.node_count();
         if (source as usize) >= n || (target as usize) >= n {
-            return ShortestPath { cost: None, hops: None };
+            return ShortestPath {
+                cost: None,
+                hops: None,
+            };
         }
 
         let mut dist_fwd = vec![u32::MAX; n];
@@ -96,8 +105,7 @@ impl PathfindingEngine {
         while !frontier_fwd.is_empty() || !frontier_rev.is_empty() {
             // Expand the smaller frontier for balance.
             if !frontier_fwd.is_empty()
-                && (frontier_rev.is_empty()
-                    || frontier_fwd.len() <= frontier_rev.len())
+                && (frontier_rev.is_empty() || frontier_fwd.len() <= frontier_rev.len())
             {
                 if let Some(u) = frontier_fwd.pop_front() {
                     let d = dist_fwd[u as usize];
@@ -138,10 +146,12 @@ impl PathfindingEngine {
             }
 
             // Stopping criterion: minimum frontier distances exceed best.
-            let min_fwd = frontier_fwd.front()
+            let min_fwd = frontier_fwd
+                .front()
                 .map(|&u| dist_fwd[u as usize])
                 .unwrap_or(u32::MAX);
-            let min_rev = frontier_rev.front()
+            let min_rev = frontier_rev
+                .front()
                 .map(|&u| dist_rev[u as usize])
                 .unwrap_or(u32::MAX);
             if min_fwd.saturating_add(min_rev) >= best {
@@ -150,9 +160,15 @@ impl PathfindingEngine {
         }
 
         if best == u32::MAX {
-            ShortestPath { cost: None, hops: None }
+            ShortestPath {
+                cost: None,
+                hops: None,
+            }
         } else {
-            ShortestPath { cost: Some(best as f32), hops: Some(best) }
+            ShortestPath {
+                cost: Some(best as f32),
+                hops: Some(best),
+            }
         }
     }
 
@@ -167,11 +183,17 @@ impl PathfindingEngine {
         target: NodeIndex,
     ) -> ShortestPath {
         if source == target {
-            return ShortestPath { cost: Some(0.0), hops: None };
+            return ShortestPath {
+                cost: Some(0.0),
+                hops: None,
+            };
         }
         let n = projection.node_count();
         if (source as usize) >= n || (target as usize) >= n {
-            return ShortestPath { cost: None, hops: None };
+            return ShortestPath {
+                cost: None,
+                hops: None,
+            };
         }
 
         let mut dist_fwd = vec![f32::INFINITY; n];
@@ -183,8 +205,14 @@ impl PathfindingEngine {
 
         dist_fwd[source as usize] = 0.0;
         dist_rev[target as usize] = 0.0;
-        pq_fwd.push(State { cost: 0.0, node: source });
-        pq_rev.push(State { cost: 0.0, node: target });
+        pq_fwd.push(State {
+            cost: 0.0,
+            node: source,
+        });
+        pq_rev.push(State {
+            cost: 0.0,
+            node: target,
+        });
 
         let mut mu = f32::INFINITY; // best complete-path cost found so far
 
@@ -212,7 +240,10 @@ impl PathfindingEngine {
                     let weights = projection.out_weights(u);
                     for (i, &v) in neighbors.iter().enumerate() {
                         let w = if weights.is_empty() { 1.0 } else { weights[i] };
-                        debug_assert!(w >= 0.0, "Negative edge weight violates Dijkstra precondition");
+                        debug_assert!(
+                            w >= 0.0,
+                            "Negative edge weight violates Dijkstra precondition"
+                        );
                         let nd = cost + w;
                         if nd < dist_fwd[v as usize] {
                             dist_fwd[v as usize] = nd;
@@ -262,9 +293,15 @@ impl PathfindingEngine {
         }
 
         if mu.is_finite() {
-            ShortestPath { cost: Some(mu), hops: None }
+            ShortestPath {
+                cost: Some(mu),
+                hops: None,
+            }
         } else {
-            ShortestPath { cost: None, hops: None }
+            ShortestPath {
+                cost: None,
+                hops: None,
+            }
         }
     }
 }

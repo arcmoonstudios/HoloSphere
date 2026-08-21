@@ -98,7 +98,10 @@ fn test_gate_b_identical_vectors_and_tie_breaking() {
     );
 
     assert_eq!(res.len(), k);
-    assert_eq!(res, gt, "Identical vectors must tie-break deterministically (slot ASC)");
+    assert_eq!(
+        res, gt,
+        "Identical vectors must tie-break deterministically (slot ASC)"
+    );
     assert!(proof.globally_exact);
 }
 
@@ -136,14 +139,7 @@ fn test_gate_b_near_identical_ulp_separated_vectors() {
         tombstones: None,
     };
 
-    let (res, proof) = GlobalExactProofSearch::search(
-        &query,
-        k,
-        &[seg_view],
-        &[],
-        &[],
-        None,
-    );
+    let (res, proof) = GlobalExactProofSearch::search(&query, k, &[seg_view], &[], &[], None);
 
     assert_eq!(res.len(), k);
     for i in 0..k {
@@ -189,14 +185,7 @@ fn test_gate_b_antipodal_and_orthogonal_vectors() {
         tombstones: None,
     };
 
-    let (res, proof) = GlobalExactProofSearch::search(
-        &query,
-        k,
-        &[seg_view],
-        &[],
-        &[],
-        None,
-    );
+    let (res, proof) = GlobalExactProofSearch::search(&query, k, &[seg_view], &[], &[], None);
 
     assert_eq!(res, gt);
     assert_eq!(res[0].0, 2); // v1 must be rank 0
@@ -245,18 +234,12 @@ fn test_gate_b_high_dimensional_exactness_sweep() {
             tombstones: None,
         };
 
-        let (res, proof) = GlobalExactProofSearch::search(
-            &query,
-            k,
-            &[seg_view],
-            &[],
-            &[],
-            None,
-        );
+        let (res, proof) = GlobalExactProofSearch::search(&query, k, &[seg_view], &[], &[], None);
 
         assert_eq!(res.len(), k);
         assert_eq!(
-            res, gt,
+            res,
+            gt,
             "Failed exactness match for dimension {} ({} real)",
             dim,
             dim * 2
@@ -304,16 +287,12 @@ fn test_gate_b_adversarial_zero_and_missing_seed() {
         tombstones: None,
     };
 
-    let (res, proof) = GlobalExactProofSearch::search(
-        &query,
-        k,
-        &[seg_view],
-        &[],
-        &bad_seed,
-        None,
-    );
+    let (res, proof) = GlobalExactProofSearch::search(&query, k, &[seg_view], &[], &bad_seed, None);
 
-    assert_eq!(res, gt, "Adversarial bad seed must still produce 100% exact top-K");
+    assert_eq!(
+        res, gt,
+        "Adversarial bad seed must still produce 100% exact top-K"
+    );
     assert!(proof.globally_exact);
 }
 
@@ -327,7 +306,9 @@ fn test_gate_b_filter_mask_and_tombstone_oracle() {
         .map(|seed| {
             VectorEmbedding::from_complex(
                 (0..dim)
-                    .map(|i| Complex32::new(((seed * 3 + i) % 23) as f32, ((seed * 5 + i) % 29) as f32))
+                    .map(|i| {
+                        Complex32::new(((seed * 3 + i) % 23) as f32, ((seed * 5 + i) % 29) as f32)
+                    })
                     .collect(),
             )
             .into_normalized()
@@ -363,16 +344,13 @@ fn test_gate_b_filter_mask_and_tombstone_oracle() {
         tombstones: Some(&tombstones),
     };
 
-    let (res, proof) = GlobalExactProofSearch::search(
-        &query,
-        k,
-        &[seg_view],
-        &[],
-        &[],
-        Some(&mask),
-    );
+    let (res, proof) =
+        GlobalExactProofSearch::search(&query, k, &[seg_view], &[], &[], Some(&mask));
 
-    assert_eq!(res, gt, "Filter mask and tombstones must produce exact match");
+    assert_eq!(
+        res, gt,
+        "Filter mask and tombstones must produce exact match"
+    );
     assert!(proof.globally_exact);
 }
 
@@ -403,9 +381,7 @@ fn test_gate_b_index_end_to_end_certified_contract() {
     let gt = brute_force_exact(&query, &corpus, k, None, |_| true);
 
     // Query via certified contract
-    let (res, proof) = index
-        .search_indices_with_proof(&query, k, None)
-        .unwrap();
+    let (res, proof) = index.search_indices_with_proof(&query, k, None).unwrap();
 
     assert_eq!(res.len(), k);
     for i in 0..k {
@@ -417,7 +393,8 @@ fn test_gate_b_index_end_to_end_certified_contract() {
         assert!(
             (res[i].1 - gt[i].1).abs() < 1e-5,
             "Score drift at rank {i}: certified={}, gt={}",
-            res[i].1, gt[i].1
+            res[i].1,
+            gt[i].1
         );
     }
     assert!(proof.globally_exact);
@@ -463,35 +440,76 @@ fn test_gate_b_certified_deadline_abort_sets_globally_exact_false() {
     let query = corpus[0].clone();
 
     // ── Path A: no deadline → complete proof ─────────────────────────────────
-    let seg_a = SegmentProofView { tree: &tree, vectors: &corpus, lutz_codes: None, tombstones: None };
-    let (res_full, proof_full) = GlobalExactProofSearch::search(&query, k, &[seg_a], &[], &[], None);
+    let seg_a = SegmentProofView {
+        tree: &tree,
+        vectors: &corpus,
+        lutz_codes: None,
+        tombstones: None,
+    };
+    let (res_full, proof_full) =
+        GlobalExactProofSearch::search(&query, k, &[seg_a], &[], &[], None);
 
-    assert!(proof_full.globally_exact,  "Path A: globally_exact must be true");
-    assert!(!proof_full.deadline_exceeded, "Path A: deadline_exceeded must be false");
-    assert!(proof_full.elapsed_us > 0,  "Path A: elapsed_us must be non-zero");
-    assert!(proof_full.region_prune_ratio >= 0.0 && proof_full.region_prune_ratio <= 1.0,
-        "Path A: region_prune_ratio must be in [0,1]");
+    assert!(
+        proof_full.globally_exact,
+        "Path A: globally_exact must be true"
+    );
+    assert!(
+        !proof_full.deadline_exceeded,
+        "Path A: deadline_exceeded must be false"
+    );
+    assert!(
+        proof_full.elapsed_us > 0,
+        "Path A: elapsed_us must be non-zero"
+    );
+    assert!(
+        proof_full.region_prune_ratio >= 0.0 && proof_full.region_prune_ratio <= 1.0,
+        "Path A: region_prune_ratio must be in [0,1]"
+    );
     assert_eq!(res_full.len(), k);
 
     // ── Path B: pre-expired deadline via low-level API ────────────────────────
     let deadline = std::time::Instant::now() + std::time::Duration::from_micros(1);
     std::thread::sleep(std::time::Duration::from_micros(100)); // guarantee expiry
 
-    let seg_b = SegmentProofView { tree: &tree, vectors: &corpus, lutz_codes: None, tombstones: None };
+    let seg_b = SegmentProofView {
+        tree: &tree,
+        vectors: &corpus,
+        lutz_codes: None,
+        tombstones: None,
+    };
     let (res_aborted, proof_aborted) = GlobalExactProofSearch::search_with_deadline(
-        &query, k, &[seg_b], &[], &[], None, Some(deadline),
+        &query,
+        k,
+        &[seg_b],
+        &[],
+        &[],
+        None,
+        Some(deadline),
     );
 
-    assert!(!proof_aborted.globally_exact,    "Path B: globally_exact must be false on abort");
-    assert!(proof_aborted.deadline_exceeded,  "Path B: deadline_exceeded must be true");
-    assert!(proof_aborted.elapsed_us > 0,     "Path B: elapsed_us must be populated");
+    assert!(
+        !proof_aborted.globally_exact,
+        "Path B: globally_exact must be false on abort"
+    );
+    assert!(
+        proof_aborted.deadline_exceeded,
+        "Path B: deadline_exceeded must be true"
+    );
+    assert!(
+        proof_aborted.elapsed_us > 0,
+        "Path B: elapsed_us must be populated"
+    );
     // frontier_nodes_remaining may be 0 if the deadline fired before the first pop
     // (checked at stage boundaries) — that's correct behaviour.
-    assert!(proof_aborted.region_prune_ratio >= 0.0 && proof_aborted.region_prune_ratio <= 1.0,
-        "Path B: region_prune_ratio must be in [0,1]");
+    assert!(
+        proof_aborted.region_prune_ratio >= 0.0 && proof_aborted.region_prune_ratio <= 1.0,
+        "Path B: region_prune_ratio must be in [0,1]"
+    );
     for (_, score) in &res_aborted {
-        assert!(*score >= -1.0 - 1e-5 && *score <= 1.0 + 1e-5,
-            "Path B: aborted search returned out-of-range score: {score}");
+        assert!(
+            *score >= -1.0 - 1e-5 && *score <= 1.0 + 1e-5,
+            "Path B: aborted search returned out-of-range score: {score}"
+        );
     }
 
     // ── Path C: HNSQRIndex::certified_search — typed outcome ─────────────────
@@ -508,15 +526,20 @@ fn test_gate_b_certified_deadline_abort_sets_globally_exact_false() {
         index_tight.insert(format!("d{i}"), v.clone()).unwrap();
     }
 
-    let outcome = index_tight.certified_search(&query, k, None)
+    let outcome = index_tight
+        .certified_search(&query, k, None)
         .expect("certified_search must not return Err on deadline abort");
 
     match outcome {
         CertifiedSearchOutcome::DeadlineExceeded { ref proof, .. } => {
-            assert!(proof.deadline_exceeded,
-                "Path C: DeadlineExceeded variant must have deadline_exceeded=true in proof");
-            assert!(!proof.globally_exact,
-                "Path C: DeadlineExceeded variant must have globally_exact=false");
+            assert!(
+                proof.deadline_exceeded,
+                "Path C: DeadlineExceeded variant must have deadline_exceeded=true in proof"
+            );
+            assert!(
+                !proof.globally_exact,
+                "Path C: DeadlineExceeded variant must have globally_exact=false"
+            );
         }
         CertifiedSearchOutcome::Exact { .. } => {
             // On extremely fast hardware a 0 ms budget may still complete before the
@@ -538,7 +561,16 @@ fn test_gate_b_certified_deadline_abort_sets_globally_exact_false() {
     let (_, proof_gen) = index_gen
         .search_indices_with_proof(&query, k, None)
         .expect("search_indices_with_proof must succeed with generous budget");
-    assert!(proof_gen.globally_exact, "Path D: generous budget must produce complete proof");
-    assert!(!proof_gen.deadline_exceeded, "Path D: generous budget must not fire deadline");
-    assert!(proof_gen.elapsed_us > 0, "Path D: elapsed_us must be populated");
+    assert!(
+        proof_gen.globally_exact,
+        "Path D: generous budget must produce complete proof"
+    );
+    assert!(
+        !proof_gen.deadline_exceeded,
+        "Path D: generous budget must not fire deadline"
+    );
+    assert!(
+        proof_gen.elapsed_us > 0,
+        "Path D: elapsed_us must be populated"
+    );
 }

@@ -23,12 +23,12 @@ use std::sync::Arc;
 
 use parking_lot::RwLock;
 
+use crate::NodeIndex;
 use crate::graph::storage::adjacency_block::AdjacencyBlock;
 use crate::graph::storage::csr::{CscAdjacency, CsrAdjacency};
 use crate::graph::storage::edge_delta::EdgeDelta;
 use crate::graph::storage::node_arena::NodeArena;
 use crate::graph::storage::properties::GraphPropertyStore;
-use crate::NodeIndex;
 
 /// The physical adjacency form for a sealed generation.
 pub enum SealedAdjacency {
@@ -111,7 +111,10 @@ impl GraphGeneration {
                 incoming: incoming.clone(),
             },
             None => {
-                let delta = self.edge_delta.as_ref().expect("no edge delta on mutable generation");
+                let delta = self
+                    .edge_delta
+                    .as_ref()
+                    .expect("no edge delta on mutable generation");
                 AdjacencyBlock::Delta {
                     nodes: self.nodes.clone(),
                     edges: delta.clone(),
@@ -148,7 +151,10 @@ pub struct GraphReadGeneration {
 
 impl GraphReadGeneration {
     pub fn new(generation: Arc<RwLock<GraphGeneration>>, id: u64) -> Self {
-        Self { generation, generation_id: id }
+        Self {
+            generation,
+            generation_id: id,
+        }
     }
 
     /// Convenience: expand outgoing neighbours of `node` via the pinned generation.

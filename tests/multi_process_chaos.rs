@@ -25,15 +25,15 @@ use num_complex::Complex32;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 
-use hnsqr::cluster::state_machine::ShardStateMachine;
+use hnsqr::VectorEmbedding;
 use hnsqr::cluster::DistributedCoordinator;
+use hnsqr::cluster::state_machine::ShardStateMachine;
 use hnsqr::consensus::raft::{RaftCluster, RaftNode};
 use hnsqr::consensus::read_index::LinearizableReadMode;
 use hnsqr::consensus::storage::{DurableRaftStorage, RaftStorage};
 use hnsqr::proof::lutz::SemanticRerankPlan;
 use hnsqr::service::{ClusterService, MutationService, RequestContext, UpsertRequest};
 use hnsqr::storage::segment::SegmentedEngine;
-use hnsqr::VectorEmbedding;
 
 // ────────────────────────────────────────────────────────────────────────
 // 1. History Checker & Linearizability Model
@@ -78,7 +78,10 @@ impl LinearizabilityHistoryChecker {
     }
 
     /// Verifies strict linearizability: no acknowledged write lost, no minority ACKs, no stale reads.
-    pub fn verify_invariants(&self, oracle_state: &HashMap<String, VectorEmbedding>) -> Result<(), String> {
+    pub fn verify_invariants(
+        &self,
+        oracle_state: &HashMap<String, VectorEmbedding>,
+    ) -> Result<(), String> {
         let history = self.history.read();
         let mut acknowledged_writes: HashMap<String, u64> = HashMap::new();
         let mut acknowledged_deletes: HashMap<String, u64> = HashMap::new();
@@ -103,13 +106,17 @@ impl LinearizabilityHistoryChecker {
         // Verify oracle matches acknowledged writes
         for (k, _) in &acknowledged_writes {
             if !oracle_state.contains_key(k) {
-                return Err(format!("Acknowledged write for key {k} missing from final oracle state!"));
+                return Err(format!(
+                    "Acknowledged write for key {k} missing from final oracle state!"
+                ));
             }
         }
 
         for (k, _) in &acknowledged_deletes {
             if oracle_state.contains_key(k) {
-                return Err(format!("Acknowledged deleted key {k} still present in final oracle state!"));
+                return Err(format!(
+                    "Acknowledged deleted key {k} still present in final oracle state!"
+                ));
             }
         }
 
@@ -152,15 +159,27 @@ async fn test_phase5_2_canonical_multi_process_chaos_and_linearizability() {
 
     let engine1 = Arc::new(SegmentedEngine::new(dim, 1000));
     let sm1 = Arc::new(ShardStateMachine::new(0, engine1.clone()));
-    raft_cluster.nodes.get(&1).unwrap().set_replicated_sm(sm1.clone());
+    raft_cluster
+        .nodes
+        .get(&1)
+        .unwrap()
+        .set_replicated_sm(sm1.clone());
 
     let engine2 = Arc::new(SegmentedEngine::new(dim, 1000));
     let sm2 = Arc::new(ShardStateMachine::new(0, engine2.clone()));
-    raft_cluster.nodes.get(&2).unwrap().set_replicated_sm(sm2.clone());
+    raft_cluster
+        .nodes
+        .get(&2)
+        .unwrap()
+        .set_replicated_sm(sm2.clone());
 
     let engine3 = Arc::new(SegmentedEngine::new(dim, 1000));
     let sm3 = Arc::new(ShardStateMachine::new(0, engine3.clone()));
-    raft_cluster.nodes.get(&3).unwrap().set_replicated_sm(sm3.clone());
+    raft_cluster
+        .nodes
+        .get(&3)
+        .unwrap()
+        .set_replicated_sm(sm3.clone());
 
     // STEP 2: Establish leader (Node 1)
     assert!(raft_cluster.trigger_election(1));
@@ -186,7 +205,9 @@ async fn test_phase5_2_canonical_multi_process_chaos_and_linearizability() {
         let theta = 2.0 * std::f32::consts::PI * i as f32 / 200.0;
         let vec = VectorEmbedding::from_complex(
             (0..dim)
-                .map(|d| Complex32::new(theta.cos() + d as f32 * 0.05, theta.sin() + d as f32 * 0.05))
+                .map(|d| {
+                    Complex32::new(theta.cos() + d as f32 * 0.05, theta.sin() + d as f32 * 0.05)
+                })
                 .collect(),
         )
         .into_normalized();
@@ -201,10 +222,17 @@ async fn test_phase5_2_canonical_multi_process_chaos_and_linearizability() {
         let res = cluster_service.upsert(&req_ctx, upsert_req).await;
         let comp = now_ns();
 
-        assert!(res.is_ok(), "Public upsert failed at iteration {i}: {:?}", res.err());
+        assert!(
+            res.is_ok(),
+            "Public upsert failed at iteration {i}: {:?}",
+            res.err()
+        );
         let receipt = res.unwrap();
-        assert!(receipt.durability == hnsqr::consensus::pending::DurabilityLevel::QuorumReplicated
-            || receipt.durability == hnsqr::consensus::pending::DurabilityLevel::QuorumDurableFsylog);
+        assert!(
+            receipt.durability == hnsqr::consensus::pending::DurabilityLevel::QuorumReplicated
+                || receipt.durability
+                    == hnsqr::consensus::pending::DurabilityLevel::QuorumDurableFsylog
+        );
 
         checker.record(HistoryOperation {
             client_id: 1,
@@ -220,19 +248,26 @@ async fn test_phase5_2_canonical_multi_process_chaos_and_linearizability() {
     // STEP 4 & 5: Partition leader from majority, verify 0 minority write ACKs
     let leader_node = raft_cluster.nodes.get(&1).unwrap();
     // Simulate partition by proposing without majority heartbeat
-    let uncommitted_vec = VectorEmbedding::from_complex(vec![Complex32::new(99.0, 99.0); dim]).into_normalized();
-    let uncommitted_mut = hnsqr::cluster::state_machine::DataMutation::new_upsert("minority_key", uncommitted_vec);
+    let uncommitted_vec =
+        VectorEmbedding::from_complex(vec![Complex32::new(99.0, 99.0); dim]).into_normalized();
+    let uncommitted_mut =
+        hnsqr::cluster::state_machine::DataMutation::new_upsert("minority_key", uncommitted_vec);
     let rx_minority = leader_node.propose_data_mutation(uncommitted_mut).unwrap();
 
     // No heartbeat broadcast → cannot reach quorum commit
     let timeout_res = tokio::time::timeout(Duration::from_millis(50), rx_minority).await;
-    assert!(timeout_res.is_err(), "Minority partition write MUST NOT achieve quorum commit!");
+    assert!(
+        timeout_res.is_err(),
+        "Minority partition write MUST NOT achieve quorum commit!"
+    );
 
     checker.record(HistoryOperation {
         client_id: 1,
         invocation_ns: now_ns(),
         completion_ns: now_ns(),
-        operation: Operation::Upsert { key: "minority_key".to_string() },
+        operation: Operation::Upsert {
+            key: "minority_key".to_string(),
+        },
         outcome: Outcome::MinorityRejected,
     });
 
@@ -253,7 +288,8 @@ async fn test_phase5_2_canonical_multi_process_chaos_and_linearizability() {
         .into_normalized();
 
         let inv = now_ns();
-        let mutation = hnsqr::cluster::state_machine::DataMutation::new_upsert(key.clone(), vec.clone());
+        let mutation =
+            hnsqr::cluster::state_machine::DataMutation::new_upsert(key.clone(), vec.clone());
         let rx = raft_cluster.propose_data_mutation(mutation).unwrap();
         let receipt = rx.await.unwrap().unwrap();
         let comp = now_ns();
@@ -279,8 +315,13 @@ async fn test_phase5_2_canonical_multi_process_chaos_and_linearizability() {
     // STEP 12: Perform Linearizable ReadIndex query
     // All 150 mutations (100 via ClusterService + 50 direct) plus election NoOps
     // flow through the shared raft_cluster, so commit_index > 150.
-    let read_idx = raft_cluster.linearizable_read_index_with_mode(LinearizableReadMode::ReadIndex).unwrap();
-    assert!(read_idx >= 150, "ReadIndex must reflect all committed mutations");
+    let read_idx = raft_cluster
+        .linearizable_read_index_with_mode(LinearizableReadMode::ReadIndex)
+        .unwrap();
+    assert!(
+        read_idx >= 150,
+        "ReadIndex must reflect all committed mutations"
+    );
 
     // STEP 13 & 14: Cold restart all nodes from durable disk storage
     let recovered_storage1 = Arc::new(DurableRaftStorage::open(tmp_dir1.path()).unwrap());
@@ -290,16 +331,25 @@ async fn test_phase5_2_canonical_multi_process_chaos_and_linearizability() {
         Arc::new(ShardStateMachine::new(0, rec_engine1.clone()));
 
     let applied_count = rec_node1.recover_node_state(&rec_sm1).unwrap();
-    assert!(applied_count > 0, "Durable recovery must replay committed entries");
+    assert!(
+        applied_count > 0,
+        "Durable recovery must replay committed entries"
+    );
 
     // STEP 15-21: History verification & Cauchy-Schwarz exact oracle recall
-    checker.verify_invariants(&sequential_oracle).expect("Linearizability invariants must hold");
+    checker
+        .verify_invariants(&sequential_oracle)
+        .expect("Linearizability invariants must hold");
 
     // Exact recall test on recovered state machine
     for (k, expected_vec) in &sequential_oracle {
         let results = rec_engine1.search(expected_vec, 1, SemanticRerankPlan::ExactSimd);
         if !results.is_empty() {
-            assert_eq!(results[0].0.as_ref(), k, "Exact vector recall must match for key {k}");
+            assert_eq!(
+                results[0].0.as_ref(),
+                k,
+                "Exact vector recall must match for key {k}"
+            );
         }
     }
 

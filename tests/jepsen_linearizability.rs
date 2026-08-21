@@ -14,12 +14,14 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
+use hnsqr::VectorEmbedding;
+use hnsqr::cluster::state_machine::{DataMutation, ShardStateMachine};
+use hnsqr::consensus::raft::{
+    MembershipMutation, RaftCluster, RaftCommand, RaftRole, ReadConsistency, TopologyMutation,
+};
+use hnsqr::storage::segment::SegmentedEngine;
 use std::collections::HashMap;
 use std::sync::Arc;
-use hnsqr::cluster::state_machine::{DataMutation, ShardStateMachine};
-use hnsqr::consensus::raft::{MembershipMutation, RaftCluster, RaftCommand, RaftRole, ReadConsistency, TopologyMutation};
-use hnsqr::storage::segment::SegmentedEngine;
-use hnsqr::VectorEmbedding;
 
 #[test]
 fn test_raft_election_and_log_replication_quorum() {
@@ -36,10 +38,12 @@ fn test_raft_election_and_log_replication_quorum() {
     shard_owners.insert(0, 1);
     shard_owners.insert(1, 2);
 
-    let entry_idx = leader.propose(RaftCommand::Topology(TopologyMutation {
-        epoch: 2,
-        shard_owners,
-    })).unwrap();
+    let entry_idx = leader
+        .propose(RaftCommand::Topology(TopologyMutation {
+            epoch: 2,
+            shard_owners,
+        }))
+        .unwrap();
 
     // Before heartbeats, commit index has not advanced past election NoOp
     assert_eq!(*leader.commit_index.read(), 1);
@@ -133,10 +137,12 @@ fn test_learner_replica_scaling_and_consistency() {
     let v2 = VectorEmbedding::from_reals(&[0.0, 1.0, 0.0, 0.0]);
 
     // Propose batch
-    let batch_indices = leader.propose_batch(vec![
-        RaftCommand::Data(DataMutation::new_upsert("doc_50", v1)),
-        RaftCommand::Data(DataMutation::new_upsert("doc_51", v2)),
-    ]).unwrap();
+    let batch_indices = leader
+        .propose_batch(vec![
+            RaftCommand::Data(DataMutation::new_upsert("doc_50", v1)),
+            RaftCommand::Data(DataMutation::new_upsert("doc_51", v2)),
+        ])
+        .unwrap();
 
     cluster.broadcast_heartbeats(1);
     assert_eq!(*leader.commit_index.read(), *batch_indices.last().unwrap());
@@ -149,9 +155,25 @@ fn test_learner_replica_scaling_and_consistency() {
     assert_eq!(*learner.commit_index.read(), *batch_indices.last().unwrap());
 
     // Test read consistency contracts
-    assert!(learner.validate_read_consistency(ReadConsistency::Committed).is_ok());
-    assert!(learner.validate_read_consistency(ReadConsistency::BoundedStaleness { max_lag_entries: 5, max_age_ms: 100 }).is_ok());
-    assert!(learner.validate_read_consistency(ReadConsistency::Linearizable).is_err(), "Learner cannot serve Linearizable read");
+    assert!(
+        learner
+            .validate_read_consistency(ReadConsistency::Committed)
+            .is_ok()
+    );
+    assert!(
+        learner
+            .validate_read_consistency(ReadConsistency::BoundedStaleness {
+                max_lag_entries: 5,
+                max_age_ms: 100
+            })
+            .is_ok()
+    );
+    assert!(
+        learner
+            .validate_read_consistency(ReadConsistency::Linearizable)
+            .is_err(),
+        "Learner cannot serve Linearizable read"
+    );
 }
 
 #[test]
@@ -161,9 +183,11 @@ fn test_joint_consensus_dynamic_membership_change() {
     let leader = cluster.nodes.get(&1).unwrap();
 
     let new_membership = vec![1, 2, 3, 4, 5];
-    let change_idx = leader.propose(RaftCommand::Membership(MembershipMutation {
-        new_peers: new_membership.clone(),
-    })).unwrap();
+    let change_idx = leader
+        .propose(RaftCommand::Membership(MembershipMutation {
+            new_peers: new_membership.clone(),
+        }))
+        .unwrap();
 
     cluster.broadcast_heartbeats(1);
     assert_eq!(*leader.commit_index.read(), change_idx);

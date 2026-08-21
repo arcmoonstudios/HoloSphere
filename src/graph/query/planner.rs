@@ -26,12 +26,10 @@
 
 use crate::graph::catalog::labels::LabelCatalog;
 use crate::graph::catalog::relationships::RelTypeCatalog;
-use crate::graph::query::ast::{
-    GraphPattern, QueryAst, ReturnItem,
-};
+use crate::graph::query::ast::{GraphPattern, QueryAst, ReturnItem};
 use crate::graph::query::logical::LogicalPlan;
 use crate::graph::query::optimizer::Optimizer;
-use crate::graph::query::parser::{parse_query, ParseError};
+use crate::graph::query::parser::{ParseError, parse_query};
 use crate::graph::query::physical::PhysicalPlan;
 use crate::graph::query::semantic::{SemanticAnalyzer, SemanticError};
 use crate::graph::query::symbols::{SymbolId, SymbolTable};
@@ -93,8 +91,7 @@ impl QueryPlanner {
         let ast = parse_query(src, label_catalog, rel_catalog).map_err(CompileError::Parse)?;
 
         // 2. Semantic analysis → SymbolTable
-        let symbols =
-            SemanticAnalyzer::analyse(&ast).map_err(CompileError::Semantic)?;
+        let symbols = SemanticAnalyzer::analyse(&ast).map_err(CompileError::Semantic)?;
 
         // 3. Lower AST → LogicalPlan
         let logical = Self::build_logical_plan(&ast, &symbols);
@@ -116,7 +113,12 @@ impl QueryPlanner {
             })
             .collect();
 
-        Ok(CompiledQuery { plan, symbols, ast, column_names })
+        Ok(CompiledQuery {
+            plan,
+            symbols,
+            ast,
+            column_names,
+        })
     }
 
     // ── AST → LogicalPlan ─────────────────────────────────────────────────
@@ -145,13 +147,26 @@ impl QueryPlanner {
                 Some((alias, label)) => {
                     let binding = symbols.get(&alias).unwrap_or(SymbolId(0));
                     // Collect predicates associated with this node.
-                    let preds = ast.patterns.iter().find_map(|p| {
-                        if let GraphPattern::NodePattern { alias: a, predicates, .. } = p {
-                            if a == &alias { Some(predicates.clone()) } else { None }
-                        } else {
-                            None
-                        }
-                    }).unwrap_or_default();
+                    let preds = ast
+                        .patterns
+                        .iter()
+                        .find_map(|p| {
+                            if let GraphPattern::NodePattern {
+                                alias: a,
+                                predicates,
+                                ..
+                            } = p
+                            {
+                                if a == &alias {
+                                    Some(predicates.clone())
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or_default();
                     LogicalPlan::NodeScan {
                         binding,
                         label_filter: label,
@@ -255,7 +270,10 @@ impl QueryPlanner {
 
         // LIMIT.
         if let Some(limit) = ast.return_clause.limit {
-            plan = LogicalPlan::Limit { input: Box::new(plan), count: limit };
+            plan = LogicalPlan::Limit {
+                input: Box::new(plan),
+                count: limit,
+            };
         }
 
         plan

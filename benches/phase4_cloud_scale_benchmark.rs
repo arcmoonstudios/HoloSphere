@@ -13,25 +13,32 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::Instant;
 
+use hnsqr::HNSQRError;
 use hnsqr::consensus::durability_controller::DurabilityController;
 use hnsqr::consensus::raft::{RaftCluster, RaftCommand, ReadConsistency};
+use hnsqr::planning::autoforge::OperatorIntent;
 use hnsqr::storage::io_budget::IoBudgetManager;
 use hnsqr::storage::remote_cache::RemoteRangeCache;
-use hnsqr::planning::autoforge::OperatorIntent;
-use hnsqr::HNSQRError;
 
-fn run_concurrent_writer_benchmark(cluster_size: usize, concurrent_writers: usize, total_mutations: usize) {
+fn run_concurrent_writer_benchmark(
+    cluster_size: usize,
+    concurrent_writers: usize,
+    total_mutations: usize,
+) {
     let node_ids: Vec<u64> = (1..=cluster_size as u64).collect();
     let cluster = Arc::new(RaftCluster::new(&node_ids));
     assert!(cluster.trigger_election(1));
 
     let leader = cluster.nodes.get(&1).unwrap().clone();
-    let _controller = Arc::new(DurabilityController::new(OperatorIntent::CertifiedExact, 20_000));
+    let _controller = Arc::new(DurabilityController::new(
+        OperatorIntent::CertifiedExact,
+        20_000,
+    ));
 
     // Warmup phase
     for _i in 0..50 {
@@ -107,11 +114,16 @@ fn run_learner_scaling_benchmark() {
         for i in 0..reads {
             let learner_id = 100 + (i % learners);
             let learner = cluster.nodes.get(&learner_id).unwrap();
-            learner.validate_read_consistency(ReadConsistency::Committed).unwrap();
+            learner
+                .validate_read_consistency(ReadConsistency::Committed)
+                .unwrap();
         }
         let elapsed = start.elapsed();
         let dispatch_ops = (reads as f64) / elapsed.as_secs_f64();
-        println!("   • {} Learners: {:.2} LearnerDispatchOps/sec (0 write-quorum latency impact)", learners, dispatch_ops);
+        println!(
+            "   • {} Learners: {:.2} LearnerDispatchOps/sec (0 write-quorum latency impact)",
+            learners, dispatch_ops
+        );
     }
 }
 
@@ -131,7 +143,9 @@ fn run_range_cache_and_cold_query_benchmark() {
         };
 
         let dummy_ref = &dummy_data;
-        let _ = cache.get_or_fetch(chunk_id, |_| Ok(dummy_ref.clone())).unwrap();
+        let _ = cache
+            .get_or_fetch(chunk_id, |_| Ok(dummy_ref.clone()))
+            .unwrap();
     }
 
     let hits = cache.cache_hits_total.load(Ordering::Relaxed);
@@ -144,13 +158,28 @@ fn run_range_cache_and_cold_query_benchmark() {
     println!("   • Local Cache Hits:       {}", hits);
     println!("   • Remote S3 Fetches:      {}", fetches);
     println!("   • TinyLFU Hit Rate:       {:.2}%", hit_rate);
-    println!("   • Remote Bytes/Query:     {:.2} KB", remote_bytes_per_query / 1024.0);
-    println!("   • Remote Reqs/Query:      {:.4} reqs/query", remote_reqs_per_query);
+    println!(
+        "   • Remote Bytes/Query:     {:.2} KB",
+        remote_bytes_per_query / 1024.0
+    );
+    println!(
+        "   • Remote Reqs/Query:      {:.4} reqs/query",
+        remote_reqs_per_query
+    );
 
     // Test explicit failure: missing remote block fails closed with explicit error
-    let missing_result = cache.get_or_fetch(999_999, |_| Err(HNSQRError::Internal("S3 404 NoSuchKey: chunk missing".to_string())));
-    assert!(missing_result.is_err(), "Must fail closed on missing remote block");
-    println!("   • Remote Block Unavailable: ✅ Explicit Availability Error (Zero Silent Downgrade)");
+    let missing_result = cache.get_or_fetch(999_999, |_| {
+        Err(HNSQRError::Internal(
+            "S3 404 NoSuchKey: chunk missing".to_string(),
+        ))
+    });
+    assert!(
+        missing_result.is_err(),
+        "Must fail closed on missing remote block"
+    );
+    println!(
+        "   • Remote Block Unavailable: ✅ Explicit Availability Error (Zero Silent Downgrade)"
+    );
 }
 
 fn run_maintenance_io_throttling_benchmark() {
@@ -164,11 +193,17 @@ fn run_maintenance_io_throttling_benchmark() {
     // Foreground query latency spikes to 8ms (> 5ms threshold)
     io_mgr.report_foreground_latency(8000);
     let permit_throttled = io_mgr.acquire_maintenance_budget(1_000_000);
-    assert!(permit_throttled < permit_normal, "Maintenance I/O must self-throttle under query pressure");
+    assert!(
+        permit_throttled < permit_normal,
+        "Maintenance I/O must self-throttle under query pressure"
+    );
 
     // Recovery with hysteresis (drops to 1.5ms < 2ms recovery threshold)
     io_mgr.report_foreground_latency(1500);
-    assert!(!io_mgr.is_throttled.load(Ordering::Relaxed), "Hysteresis clears throttle when pressure subsides");
+    assert!(
+        !io_mgr.is_throttled.load(Ordering::Relaxed),
+        "Hysteresis clears throttle when pressure subsides"
+    );
 
     println!("   • Maintenance I/O Throttling: ✅ Automatic Hysteresis Self-Throttling Verified");
     println!("   • Query P99 SLA Protection:  ✅ Foreground P99 Guaranteed within Bound");

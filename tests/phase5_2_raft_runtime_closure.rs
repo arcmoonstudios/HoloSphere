@@ -50,14 +50,12 @@ use num_complex::Complex32;
 
 use hnsqr::cluster::state_machine::{DataMutation, ReplicatedStateMachine, ShardStateMachine};
 use hnsqr::consensus::pending::{DurabilityLevel, MutationId};
+use hnsqr::consensus::raft::RaftLogEntry;
 use hnsqr::consensus::raft::{RaftCluster, RaftRole};
-use hnsqr::consensus::read_index::{
-    LinearizableReadMode, ReadIndexConfirmation, ReadIndexEngine,
-};
+use hnsqr::consensus::read_index::{LinearizableReadMode, ReadIndexConfirmation, ReadIndexEngine};
 use hnsqr::consensus::storage::{
     DurableRaftStorage, RaftStorage, decode_framed_record, encode_framed_record,
 };
-use hnsqr::consensus::raft::RaftLogEntry;
 use hnsqr::proof::lutz::SemanticRerankPlan;
 use hnsqr::storage::segment::SegmentedEngine;
 use hnsqr::{DistributedCoordinator, VectorEmbedding};
@@ -75,10 +73,7 @@ fn unit_vec(dim: usize, seed: usize) -> VectorEmbedding {
 }
 
 fn tmp_dir(label: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!(
-        "hnsqr_p52_{label}_{:x}",
-        rand::random::<u64>()
-    ));
+    let d = std::env::temp_dir().join(format!("hnsqr_p52_{label}_{:x}", rand::random::<u64>()));
     std::fs::create_dir_all(&d).unwrap();
     d
 }
@@ -99,12 +94,8 @@ fn p0_14_a_readindex_unique_context_per_request() {
     let leader = cluster.nodes.get(&1).unwrap();
     let term = *leader.current_term.read();
 
-    let (ctx_a, _req_a) = leader
-        .read_index_engine
-        .start_read_index_round(term, 1);
-    let (ctx_b, _req_b) = leader
-        .read_index_engine
-        .start_read_index_round(term, 1);
+    let (ctx_a, _req_a) = leader.read_index_engine.start_read_index_round(term, 1);
+    let (ctx_b, _req_b) = leader.read_index_engine.start_read_index_round(term, 1);
 
     assert_ne!(
         ctx_a, ctx_b,
@@ -130,7 +121,10 @@ fn p0_14_b_readindex_term_change_invalidation() {
     };
 
     let result = engine.handle_confirmation(&stale_conf, term, 2);
-    assert!(result.is_err(), "Confirmation with wrong term must be rejected");
+    assert!(
+        result.is_err(),
+        "Confirmation with wrong term must be rejected"
+    );
     assert_eq!(
         engine
             .readindex_term_invalidations
@@ -208,7 +202,10 @@ fn p0_14_e_unsafe_leaseread_config_rejected() {
 
     // Boundary: exactly equal must be rejected (>= not >)
     let result_eq = ReadIndexEngine::validate_lease_contract(500, 500, 1000);
-    assert!(result_eq.is_err(), "lease + drift == election_timeout must be rejected");
+    assert!(
+        result_eq.is_err(),
+        "lease + drift == election_timeout must be rejected"
+    );
 
     // Safe: 400 + 400 = 800 < 1000 → must pass
     let result_safe = ReadIndexEngine::validate_lease_contract(400, 400, 1000);
@@ -242,7 +239,11 @@ fn p0_17_a_append_cost_proportional_to_batch_size() {
     }
 
     let batch: Vec<RaftLogEntry> = (101u64..=120)
-        .map(|i| RaftLogEntry { term: 1, index: i, command: RaftCommand::NoOp })
+        .map(|i| RaftLogEntry {
+            term: 1,
+            index: i,
+            command: RaftCommand::NoOp,
+        })
         .collect();
 
     let t0 = Instant::now();
@@ -253,7 +254,11 @@ fn p0_17_a_append_cost_proportional_to_batch_size() {
     let dir2 = tmp_dir("p17a2");
     let storage2 = DurableRaftStorage::open(&dir2).unwrap();
     let batch2: Vec<RaftLogEntry> = (1u64..=20)
-        .map(|i| RaftLogEntry { term: 1, index: i, command: RaftCommand::NoOp })
+        .map(|i| RaftLogEntry {
+            term: 1,
+            index: i,
+            command: RaftCommand::NoOp,
+        })
         .collect();
 
     let t1 = Instant::now();
@@ -279,7 +284,11 @@ fn p0_17_a_append_cost_proportional_to_batch_size() {
 fn p0_17_b_crc_framed_entries_detected() {
     use hnsqr::consensus::raft::RaftCommand;
 
-    let entry = RaftLogEntry { term: 1, index: 1, command: RaftCommand::NoOp };
+    let entry = RaftLogEntry {
+        term: 1,
+        index: 1,
+        command: RaftCommand::NoOp,
+    };
     let mut frame = encode_framed_record(&entry).unwrap();
 
     // Flip a byte in the payload region (beyond the 14-byte header)
@@ -301,7 +310,11 @@ fn p0_17_c_torn_tail_recovery() {
 
     for i in 1u64..=5 {
         storage
-            .append_entries(&[RaftLogEntry { term: 1, index: i, command: RaftCommand::NoOp }])
+            .append_entries(&[RaftLogEntry {
+                term: 1,
+                index: i,
+                command: RaftCommand::NoOp,
+            }])
             .unwrap();
     }
     drop(storage);
@@ -319,7 +332,7 @@ fn p0_17_c_torn_tail_recovery() {
         let mut f = OpenOptions::new().append(true).open(&tail_path).unwrap();
         // Write magic (4) + version (2) = 6 bytes — not a complete header (14 bytes)
         f.write_all(&0x5241_4654u32.to_le_bytes()).unwrap(); // RAFT magic
-        f.write_all(&1u16.to_le_bytes()).unwrap();            // version 1
+        f.write_all(&1u16.to_le_bytes()).unwrap(); // version 1
     }
 
     // Recovery must succeed and return all 5 valid entries
@@ -349,14 +362,22 @@ fn p0_17_d_mid_log_corruption_fails_closed() {
         let storage = DurableRaftStorage::open(&dir).unwrap();
         // Write 10_001 entries to exceed the 10_000-entry rotation threshold
         let first_batch: Vec<RaftLogEntry> = (1u64..=10_001)
-            .map(|i| RaftLogEntry { term: 1, index: i, command: RaftCommand::NoOp })
+            .map(|i| RaftLogEntry {
+                term: 1,
+                index: i,
+                command: RaftCommand::NoOp,
+            })
             .collect();
         for chunk in first_batch.chunks(512) {
             storage.append_entries(chunk).unwrap();
         }
         // Write a few more entries into the second segment
         let second_batch: Vec<RaftLogEntry> = (10_002u64..=10_010)
-            .map(|i| RaftLogEntry { term: 1, index: i, command: RaftCommand::NoOp })
+            .map(|i| RaftLogEntry {
+                term: 1,
+                index: i,
+                command: RaftCommand::NoOp,
+            })
             .collect();
         storage.append_entries(&second_batch).unwrap();
     }
@@ -406,7 +427,11 @@ fn p0_17_e_suffix_truncation_without_whole_log_rewrite() {
 
     // Write 20 entries (indices 1..=20)
     let entries: Vec<RaftLogEntry> = (1u64..=20)
-        .map(|i| RaftLogEntry { term: 1, index: i, command: RaftCommand::NoOp })
+        .map(|i| RaftLogEntry {
+            term: 1,
+            index: i,
+            command: RaftCommand::NoOp,
+        })
         .collect();
     storage.append_entries(&entries).unwrap();
 
@@ -443,13 +468,21 @@ fn p0_17_f_snapshot_prefix_compaction() {
 
         // Write enough entries to rotate into two segments
         let batch1: Vec<RaftLogEntry> = (1u64..=10_001)
-            .map(|i| RaftLogEntry { term: 1, index: i, command: RaftCommand::NoOp })
+            .map(|i| RaftLogEntry {
+                term: 1,
+                index: i,
+                command: RaftCommand::NoOp,
+            })
             .collect();
         for chunk in batch1.chunks(512) {
             storage.append_entries(chunk).unwrap();
         }
         let batch2: Vec<RaftLogEntry> = (10_002u64..=10_050)
-            .map(|i| RaftLogEntry { term: 1, index: i, command: RaftCommand::NoOp })
+            .map(|i| RaftLogEntry {
+                term: 1,
+                index: i,
+                command: RaftCommand::NoOp,
+            })
             .collect();
         storage.append_entries(&batch2).unwrap();
 
@@ -482,7 +515,9 @@ fn p0_17_f_snapshot_prefix_compaction() {
 /// async: they `await` the proposal receiver without blocking a thread.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn p0_19_a_async_cluster_mutation_path() {
-    use hnsqr::service::{ClusterService, DeleteRequest, MutationService, RequestContext, UpsertRequest};
+    use hnsqr::service::{
+        ClusterService, DeleteRequest, MutationService, RequestContext, UpsertRequest,
+    };
 
     let dim = 8;
     let coord = Arc::new(DistributedCoordinator::new(dim, 1, 500));
@@ -505,7 +540,12 @@ async fn p0_19_a_async_cluster_mutation_path() {
     assert!(receipt.log_index >= 1);
 
     let del_receipt = svc
-        .delete(&ctx, DeleteRequest { id: "async_doc_1".to_string() })
+        .delete(
+            &ctx,
+            DeleteRequest {
+                id: "async_doc_1".to_string(),
+            },
+        )
         .await
         .expect("async delete must succeed");
 
@@ -571,14 +611,23 @@ fn p0_19_c_pending_proposal_queue_bounded() {
 
     for i in 0u64..4 {
         let rx = registry
-            .register(ProposalId { term: 1, log_index: i }, MutationId::new(format!("m{i}")))
+            .register(
+                ProposalId {
+                    term: 1,
+                    log_index: i,
+                },
+                MutationId::new(format!("m{i}")),
+            )
             .unwrap();
         receivers.push(rx);
     }
 
     // The 5th registration must be rejected
     let overflow = registry.register(
-        ProposalId { term: 1, log_index: 99 },
+        ProposalId {
+            term: 1,
+            log_index: 99,
+        },
         MutationId::new("overflow"),
     );
     assert!(
@@ -617,7 +666,10 @@ fn p0_19_d_cancellation_safety_leadership_lost() {
     // The original proposal receiver must receive LeadershipLost
     let result = rx1.blocking_recv().unwrap();
     assert!(
-        matches!(result, Err(hnsqr::consensus::pending::ApplyError::LeadershipLost { .. })),
+        matches!(
+            result,
+            Err(hnsqr::consensus::pending::ApplyError::LeadershipLost { .. })
+        ),
         "Pending proposal must be failed with LeadershipLost on term change"
     );
 
@@ -698,15 +750,27 @@ async fn p0_20_process_chaos_full_history_all_hard_invariants() {
 
     let engine1 = Arc::new(SegmentedEngine::new(dim, 5000));
     let sm1 = Arc::new(ShardStateMachine::new(0, engine1.clone()));
-    cluster.nodes.get(&1).unwrap().set_replicated_sm(sm1.clone());
+    cluster
+        .nodes
+        .get(&1)
+        .unwrap()
+        .set_replicated_sm(sm1.clone());
 
     let engine2 = Arc::new(SegmentedEngine::new(dim, 5000));
     let sm2 = Arc::new(ShardStateMachine::new(0, engine2.clone()));
-    cluster.nodes.get(&2).unwrap().set_replicated_sm(sm2.clone());
+    cluster
+        .nodes
+        .get(&2)
+        .unwrap()
+        .set_replicated_sm(sm2.clone());
 
     let engine3 = Arc::new(SegmentedEngine::new(dim, 5000));
     let sm3 = Arc::new(ShardStateMachine::new(0, engine3.clone()));
-    cluster.nodes.get(&3).unwrap().set_replicated_sm(sm3.clone());
+    cluster
+        .nodes
+        .get(&3)
+        .unwrap()
+        .set_replicated_sm(sm3.clone());
 
     // ── Step 2: Establish leader ───────────────────────────────────────────────
     assert!(cluster.trigger_election(1));
@@ -715,7 +779,10 @@ async fn p0_20_process_chaos_full_history_all_hard_invariants() {
     // ── Step 3: Write 100 mutations via ClusterService; record all ACKed IDs ──
     let coord = Arc::new(
         hnsqr::cluster::coordinator::DistributedCoordinator::new_with_cluster(
-            dim, 1, 5000, cluster.clone(),
+            dim,
+            1,
+            5000,
+            cluster.clone(),
         ),
     );
     let svc = Arc::new(ClusterService::new(coord.clone()));
@@ -805,8 +872,7 @@ async fn p0_20_process_chaos_full_history_all_hard_invariants() {
     let rec_engine1 = Arc::new(SegmentedEngine::new(dim, 5000));
     let rec_sm1: Arc<dyn ReplicatedStateMachine> =
         Arc::new(ShardStateMachine::new(0, rec_engine1.clone()));
-    let rec_node1 =
-        hnsqr::consensus::raft::RaftNode::with_storage(1, vec![1, 2, 3], rec_storage1);
+    let rec_node1 = hnsqr::consensus::raft::RaftNode::with_storage(1, vec![1, 2, 3], rec_storage1);
     let replayed = rec_node1
         .recover_node_state(&rec_sm1)
         .expect("P0-20-B full-cluster restart must replay committed entries");

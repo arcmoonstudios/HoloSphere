@@ -11,8 +11,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::security::audit::{AuditLogger, AuditRecord};
 use crate::HNSQRResult;
+use crate::security::audit::{AuditLogger, AuditRecord};
 
 /// Supported SIEM export formats.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

@@ -30,7 +30,9 @@ impl GeoPoint {
         let d_lon = (other.lon - self.lon).to_radians();
 
         let a = (d_lat / 2.0).sin().powi(2)
-            + self.lat.to_radians().cos() * other.lat.to_radians().cos() * (d_lon / 2.0).sin().powi(2);
+            + self.lat.to_radians().cos()
+                * other.lat.to_radians().cos()
+                * (d_lon / 2.0).sin().powi(2);
         let c = 2.0 * a.sqrt().atan2((1.0 - a).sqrt());
         earth_radius_km * c
     }
@@ -109,7 +111,8 @@ impl GeoPolygon {
             let pj = &self.exterior_ring[j];
 
             if ((pi.lon > point.lon) != (pj.lon > point.lon))
-                && (point.lat < (pj.lat - pi.lat) * (point.lon - pi.lon) / (pj.lon - pi.lon) + pi.lat)
+                && (point.lat
+                    < (pj.lat - pi.lat) * (point.lon - pi.lon) / (pj.lon - pi.lon) + pi.lat)
             {
                 inside = !inside;
             }

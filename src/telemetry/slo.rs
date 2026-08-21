@@ -13,14 +13,14 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::collections::VecDeque;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 
 /// Target SLO definitions.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SloTargetConfig {
-    pub availability_target: f64, // e.g. 0.9999 (99.99%)
+    pub availability_target: f64,  // e.g. 0.9999 (99.99%)
     pub certified_p99_max_ms: f64, // e.g. 10.0 ms
     pub write_ack_p99_max_ms: f64, // e.g. 15.0 ms
     pub max_replication_lag: u64,  // e.g. 50 entries
@@ -121,10 +121,14 @@ impl SloManager {
 
         let mut violations = Vec::new();
         let alert_severity = if burn_rate >= 14.4 {
-            violations.push(format!("High 1h Burn Rate ({burn_rate:.1}x): Rapid budget depletion"));
+            violations.push(format!(
+                "High 1h Burn Rate ({burn_rate:.1}x): Rapid budget depletion"
+            ));
             SloAlertSeverity::Critical
         } else if burn_rate >= 6.0 {
-            violations.push(format!("Elevated 6h Burn Rate ({burn_rate:.1}x): Slow budget erosion"));
+            violations.push(format!(
+                "Elevated 6h Burn Rate ({burn_rate:.1}x): Slow budget erosion"
+            ));
             SloAlertSeverity::Warning
         } else {
             SloAlertSeverity::None

@@ -18,9 +18,7 @@ pub mod tree;
 pub use bounds::{
     PROOF_BLOCK_COMPLEX_DIM, ProofCentroidCode, ProofQuery, evaluate_node_upper_bound_f64,
 };
-pub use lutz::{
-    LutzCertifier, LutzCode, LutzGlobalCertified, LutzQueryTable, SemanticRerankPlan,
-};
+pub use lutz::{LutzCertifier, LutzCode, LutzGlobalCertified, LutzQueryTable, SemanticRerankPlan};
 pub use search::{
     DenseExactProof, Finalist, GlobalExactProofSearch, GlobalPacProofSearch, ProofFrontierEntry,
     SegmentProofView, TopKAccumulator,

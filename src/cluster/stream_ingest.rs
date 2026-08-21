@@ -10,11 +10,11 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
+use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
-use parking_lot::Mutex;
-use serde::{Deserialize, Serialize};
 
 use crate::HNSQRResult;
 use crate::cluster::state_machine::DataMutation;
@@ -161,23 +161,25 @@ mod tests {
     #[test]
     fn test_async_stream_ingestor_batching() {
         let ingestor = AsyncLogStreamIngestor::new(1000, 32, Duration::from_millis(50));
-        
+
         for i in 0..100 {
             let mut_id = i + 1;
-            let success = ingestor.submit_mutation(
-                "tenant-1",
-                mut_id,
-                DataMutation::Delete {
-                    mutation_id: MutationId(mut_id.to_string()),
-                    key: format!("doc-{i}"),
-                    client: Some(ClientIdentity {
-                        tenant_id: "tenant-1".into(),
-                        client_id: "client-1".into(),
-                    }),
-                    client_seq: i,
-                    retry_semantics: RetrySemantics::Idempotent,
-                },
-            ).unwrap();
+            let success = ingestor
+                .submit_mutation(
+                    "tenant-1",
+                    mut_id,
+                    DataMutation::Delete {
+                        mutation_id: MutationId(mut_id.to_string()),
+                        key: format!("doc-{i}"),
+                        client: Some(ClientIdentity {
+                            tenant_id: "tenant-1".into(),
+                            client_id: "client-1".into(),
+                        }),
+                        client_seq: i,
+                        retry_semantics: RetrySemantics::Idempotent,
+                    },
+                )
+                .unwrap();
             assert!(success);
         }
 

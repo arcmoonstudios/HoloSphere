@@ -334,12 +334,14 @@ impl Optimizer {
         max_hops: u8,
     ) -> f64 {
         let mut degree = match rel_type_filter {
-            Some(rel_type) if stats.nodes > 0 => stats
-                .relationship_cardinality
-                .get(&rel_type)
-                .copied()
-                .unwrap_or(0) as f64
-                / stats.nodes as f64,
+            Some(rel_type) if stats.nodes > 0 => {
+                stats
+                    .relationship_cardinality
+                    .get(&rel_type)
+                    .copied()
+                    .unwrap_or(0) as f64
+                    / stats.nodes as f64
+            }
             _ => stats.average_out_degree,
         };
 

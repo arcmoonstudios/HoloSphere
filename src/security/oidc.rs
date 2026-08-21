@@ -9,11 +9,11 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
+use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::AtomicU64;
 use std::time::{SystemTime, UNIX_EPOCH};
-use parking_lot::RwLock;
-use serde::{Deserialize, Serialize};
 
 use crate::security::auth::AccessRole;
 use crate::{HNSQRError, HNSQRResult};
@@ -72,7 +72,10 @@ impl OidcValidator {
         &self,
         claims: &OidcClaims,
     ) -> HNSQRResult<(AccessRole, Option<String>)> {
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
         if claims.exp < now {
             return Err(HNSQRError::Internal("OIDC Token expired".to_string()));
         }
@@ -84,9 +87,17 @@ impl OidcValidator {
             )));
         }
 
-        let role = if claims.roles.iter().any(|r| r == "admin" || r == "cluster-admin") {
+        let role = if claims
+            .roles
+            .iter()
+            .any(|r| r == "admin" || r == "cluster-admin")
+        {
             AccessRole::Admin
-        } else if claims.roles.iter().any(|r| r == "writer" || r == "readwrite") {
+        } else if claims
+            .roles
+            .iter()
+            .any(|r| r == "writer" || r == "readwrite")
+        {
             AccessRole::ReadWrite
         } else {
             AccessRole::ReadOnly

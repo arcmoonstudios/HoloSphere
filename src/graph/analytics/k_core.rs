@@ -3,8 +3,8 @@
 //! # K-Core Decomposition — Iterative Degree Peeling
 //!▫~•◦-------------------------------------------------------------------‣
 
-use crate::graph::analytics::projection::GraphProjection;
 use crate::NodeIndex;
+use crate::graph::analytics::projection::GraphProjection;
 
 /// K-core decomposition result.
 #[derive(Debug, Default)]
@@ -75,6 +75,9 @@ impl KCoreDecomposition {
         }
 
         let max_coreness = coreness.iter().copied().max().unwrap_or(0);
-        Self { coreness, max_coreness }
+        Self {
+            coreness,
+            max_coreness,
+        }
     }
 }

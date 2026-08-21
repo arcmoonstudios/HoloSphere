@@ -24,14 +24,14 @@ use std::io::{BufWriter, Write};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use memmap2::Mmap;
-use roaring::RoaringBitmap;
-use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use crate::metadata::index::MetadataValue;
 use crate::proof::lutz::LutzCode;
 use crate::proof::tree::SemanticProofTree;
 use crate::{HNSQRError, HNSQRResult, VectorEmbedding};
+use memmap2::Mmap;
+use roaring::RoaringBitmap;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 pub const MANIFEST_MAGIC: [u8; 8] = *b"HNSQSMF1";
 pub const MANIFEST_VERSION: u32 = 1;
@@ -75,12 +75,7 @@ pub struct SnapshotManifest {
 }
 
 impl SnapshotManifest {
-    pub fn new(
-        generation: u64,
-        snapshot_lsn: u64,
-        dimension: usize,
-        total_vectors: usize,
-    ) -> Self {
+    pub fn new(generation: u64, snapshot_lsn: u64, dimension: usize, total_vectors: usize) -> Self {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
@@ -160,12 +155,8 @@ impl UnifiedSnapshotEngine {
             snapshot_dir.join(format!("snapshot_gen_{generation:016}.manifest"));
         let current_pointer_path = snapshot_dir.join("current_manifest.json");
 
-        let mut manifest = SnapshotManifest::new(
-            generation,
-            snapshot_lsn,
-            dimension,
-            vectors.len(),
-        );
+        let mut manifest =
+            SnapshotManifest::new(generation, snapshot_lsn, dimension, vectors.len());
 
         let mut file = BufWriter::new(
             OpenOptions::new()
@@ -186,7 +177,11 @@ impl UnifiedSnapshotEngine {
 
                 let mut sha = Sha256::new();
                 sha.update(data);
-                let sha256_hex = sha.finalize().iter().map(|b| format!("{b:02x}")).collect::<String>();
+                let sha256_hex = sha
+                    .finalize()
+                    .iter()
+                    .map(|b| format!("{b:02x}"))
+                    .collect::<String>();
 
                 file.write_all(data)?;
                 let length = data.len() as u64;
@@ -234,11 +229,7 @@ impl UnifiedSnapshotEngine {
             tb.serialize_into(&mut tb_bytes).map_err(|e| {
                 HNSQRError::CorruptedSnapshot(format!("Tombstone serialize error: {e}"))
             })?;
-            let sec_tb = write_section(
-                SectionKind::TombstoneBitmap,
-                &tb_bytes,
-                tb.len(),
-            )?;
+            let sec_tb = write_section(SectionKind::TombstoneBitmap, &tb_bytes, tb.len())?;
             manifest.add_section(sec_tb);
         }
 
@@ -257,20 +248,17 @@ impl UnifiedSnapshotEngine {
 
         // 6. LUTz Codes Section
         if let Some(codes) = lutz_codes {
-            let lutz_bytes = bincode::serialize(codes).map_err(|e| {
-                HNSQRError::CorruptedSnapshot(format!("LUTz serialize error: {e}"))
-            })?;
-            let sec_lutz = write_section(
-                SectionKind::LutzCodes,
-                &lutz_bytes,
-                codes.len() as u64,
-            )?;
+            let lutz_bytes = bincode::serialize(codes)
+                .map_err(|e| HNSQRError::CorruptedSnapshot(format!("LUTz serialize error: {e}")))?;
+            let sec_lutz = write_section(SectionKind::LutzCodes, &lutz_bytes, codes.len() as u64)?;
             manifest.add_section(sec_lutz);
         }
 
         // Flush and sync data file
         file.flush()?;
-        let data_file = file.into_inner().map_err(|e| HNSQRError::IoError(e.to_string()))?;
+        let data_file = file
+            .into_inner()
+            .map_err(|e| HNSQRError::IoError(e.to_string()))?;
         data_file.sync_all()?;
 
         // Write and sync manifest file

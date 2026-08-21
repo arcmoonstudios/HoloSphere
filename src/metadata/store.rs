@@ -175,7 +175,8 @@ impl MetadataStore {
                 MetadataValue::String(s) => {
                     let term_id = self.interner.intern(s, &self.tracker)?;
                     let mut cat_guard = self.categorical_postings.write();
-                    let key_map: &mut HashMap<TermId, RoaringBitmap> = cat_guard.entry(key.to_owned()).or_default();
+                    let key_map: &mut HashMap<TermId, RoaringBitmap> =
+                        cat_guard.entry(key.to_owned()).or_default();
                     let bitmap = key_map.entry(term_id).or_default();
 
                     let prev_serialized_bytes = bitmap.serialized_size();
@@ -189,7 +190,8 @@ impl MetadataStore {
                 }
                 MetadataValue::Integer(i) => {
                     let mut num_guard = self.numeric_postings.write();
-                    let key_map: &mut BTreeMap<i64, RoaringBitmap> = num_guard.entry(key.to_owned()).or_default();
+                    let key_map: &mut BTreeMap<i64, RoaringBitmap> =
+                        num_guard.entry(key.to_owned()).or_default();
                     let bitmap = key_map.entry(*i).or_default();
 
                     let prev_serialized_bytes = bitmap.serialized_size();

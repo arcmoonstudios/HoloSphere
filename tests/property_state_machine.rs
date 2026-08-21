@@ -14,12 +14,12 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::collections::HashMap;
 use num_complex::Complex32;
 use rand::{RngExt, SeedableRng, rngs::StdRng};
+use std::collections::HashMap;
 
-use hnsqr::cluster::DistributedCoordinator;
 use hnsqr::VectorEmbedding;
+use hnsqr::cluster::DistributedCoordinator;
 
 #[test]
 fn test_replicated_state_machine_sequential_model_equivalence() {
@@ -44,13 +44,22 @@ fn test_replicated_state_machine_sequential_model_equivalence() {
             // Upsert — replicate through Raft, await quorum commit.
             let v = VectorEmbedding::from_complex(
                 (0..dim)
-                    .map(|d| Complex32::new(rng.random_range(0.0f32..1.0) + d as f32, rng.random_range(0.0f32..1.0)))
+                    .map(|d| {
+                        Complex32::new(
+                            rng.random_range(0.0f32..1.0) + d as f32,
+                            rng.random_range(0.0f32..1.0),
+                        )
+                    })
                     .collect(),
             )
             .into_normalized();
 
             let res = coord.insert_fenced_blocking(key.clone(), v.clone(), None);
-            assert!(res.is_ok(), "insert_fenced failed at op {op_idx}: {:?}", res.err());
+            assert!(
+                res.is_ok(),
+                "insert_fenced failed at op {op_idx}: {:?}",
+                res.err()
+            );
             sequential_oracle.insert(key, v);
         } else if op_type < 9 {
             // Delete — replicate through Raft, await quorum commit.
@@ -65,10 +74,17 @@ fn test_replicated_state_machine_sequential_model_equivalence() {
             let engine = &shards[0].engine;
 
             if let Some(expected_vec) = sequential_oracle.get(&key) {
-                let search_res = engine.search(expected_vec, 1, hnsqr::proof::lutz::SemanticRerankPlan::ExactSimd);
+                let search_res = engine.search(
+                    expected_vec,
+                    1,
+                    hnsqr::proof::lutz::SemanticRerankPlan::ExactSimd,
+                );
                 // The exact key must appear as the nearest neighbour.
                 let found = search_res.iter().any(|r| r.0.as_ref() == key);
-                assert!(found, "Key {key} should exist in state machine at op {op_idx}");
+                assert!(
+                    found,
+                    "Key {key} should exist in state machine at op {op_idx}"
+                );
             }
             // For non-existing keys we can't probe negation easily without a direct
             // get; we skip false-negative assertions here (covered by other tests).

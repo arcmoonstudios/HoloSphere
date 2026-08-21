@@ -13,11 +13,11 @@
 
 use std::sync::Arc;
 
+use crate::NodeIndex;
 use crate::graph::catalog::RelTypeId;
 use crate::graph::storage::csr::{CscAdjacency, CsrAdjacency};
 use crate::graph::storage::edge_delta::EdgeDelta;
 use crate::graph::storage::node_arena::NodeArena;
-use crate::NodeIndex;
 
 /// A borrowed slice of neighbour IDs alongside optional weights.
 pub struct NeighborSlice<'a> {
@@ -62,7 +62,11 @@ impl AdjacencyBlock {
                 let neighbors = outgoing.out_neighbors(node);
                 let weights = outgoing.out_weights(node);
                 // CSR has no per-edge rel_type filter inline yet; scan is still O(deg).
-                let row_start = outgoing.row_offsets.get(node as usize).copied().unwrap_or(0) as usize;
+                let row_start = outgoing
+                    .row_offsets
+                    .get(node as usize)
+                    .copied()
+                    .unwrap_or(0) as usize;
                 for (i, &dst) in neighbors.iter().enumerate() {
                     let rt = outgoing.rel_types.get(row_start + i).copied().unwrap_or(0);
                     if rel_type_filter.is_none_or(|t| t == rt) {
@@ -93,7 +97,11 @@ impl AdjacencyBlock {
             AdjacencyBlock::Immutable { incoming, .. } => {
                 let sources = incoming.in_neighbors(node);
                 let weights = incoming.in_weights(node);
-                let col_start = incoming.col_offsets.get(node as usize).copied().unwrap_or(0) as usize;
+                let col_start = incoming
+                    .col_offsets
+                    .get(node as usize)
+                    .copied()
+                    .unwrap_or(0) as usize;
                 for (i, &src) in sources.iter().enumerate() {
                     let rt = incoming.rel_types.get(col_start + i).copied().unwrap_or(0);
                     if rel_type_filter.is_none_or(|t| t == rt) {

@@ -101,49 +101,91 @@ pub use capacity::{
 pub use cluster::{
     ApplyReceipt, ClientIdentity, ClusterId, ClusterTopology, ConsistentHashRing,
     ControlPlaneReconciliationPlan, DBaaSControlPlane, DataMutation, DeduplicationHorizon,
-    DesiredClusterState, DisasterRecoveryCoordinator, DisasterRecoverySla,
-    DistributedCoordinator, LocalShard, MigrationPhase, MigrationTask, NodeAddress,
-    ObservedClusterState, OrganizationId, ReplicatedStateMachine, RetrySemantics,
-    ShardId, ShardReplica, ShardRole, ShardStateMachine,
+    DesiredClusterState, DisasterRecoveryCoordinator, DisasterRecoverySla, DistributedCoordinator,
+    LocalShard, MigrationPhase, MigrationTask, NodeAddress, ObservedClusterState, OrganizationId,
+    ReplicatedStateMachine, RetrySemantics, ShardId, ShardReplica, ShardRole, ShardStateMachine,
 };
 pub use consensus::{
     AdaptiveMicrobatcher, AppendEntriesArgs, AppendEntriesReply, ApplyError, CommitReceipt,
     CommitStatus, DurabilityBatchPlan, DurabilityController, DurabilityLevel, DurableRaftStorage,
-    LinearizableReadMode, LogLocation, LogSegmentMeta, MembershipMutation, MemoryRaftStorage, MutationId, PendingProposals,
-    ProposalId, RaftCluster, RaftCommand, RaftHardState, RaftLogEntry, RaftNode,
-    RaftPersistentProgress, RaftPipelineTelemetry, RaftRole, RaftSnapshotMeta, RaftStorage,
-    ReadConsistency, ReadContextId, ReadIndexConfirmation, ReadIndexEngine, ReadIndexRequest,
-    ReadIndexTelemetry, RequestVoteArgs, RequestVoteReply,
+    LinearizableReadMode, LogLocation, LogSegmentMeta, MembershipMutation, MemoryRaftStorage,
+    MutationId, PendingProposals, ProposalId, RaftCluster, RaftCommand, RaftHardState,
+    RaftLogEntry, RaftNode, RaftPersistentProgress, RaftPipelineTelemetry, RaftRole,
+    RaftSnapshotMeta, RaftStorage, ReadConsistency, ReadContextId, ReadIndexConfirmation,
+    ReadIndexEngine, ReadIndexRequest, ReadIndexTelemetry, RequestVoteArgs, RequestVoteReply,
     StorageHealthMetrics, StorageTelemetry, TopologyMutation,
 };
 pub use ecosystem::{
-    ClientSearchResult, FrameworkDocument, HNSQRClientConfig, HNSQRClientRouter,
-    HNSQRVectorStore, HaystackAdapter, LangChainAdapter, LlamaIndexAdapter,
-};
-pub use graph::{
-    // Catalog
-    LabelCatalog, LabelId, LabelResolution, PropertyKey, PropertyKeyCatalog,
-    RelTypeCatalog, RelTypeId, RelTypeResolution,
-    // Mutation
-    GraphMutation, GraphMutationApplier, GraphProperties, RelationshipId as GraphRelationshipId,
-    // Storage
-    AdjacencyBlock, CscAdjacency, CsrAdjacency, EdgeDelta, EdgeDeltaStats,
-    GraphGeneration, GraphNodeRecord, GraphPropertyStore, GraphPropertyValue,
-    GraphReadGeneration, GraphSnapshot, NeighborSlice, NodeArena, NULL_OVERFLOW_REF,
-    // Analytics
-    BfsResult, ConnectedComponents, CsrProjection, DegreeCentrality,
-    GraphProjection, KCoreDecomposition, LouvainEngine, LouvainResult,
-    PageRankEngine, PathfindingEngine, ShortestPath, TriangleCount,
-    // Stats
-    DegreeStats, GraphCardinalityStats,
-    // Query
-    BindingColumn, Direction, ExecutionContext as GraphExecutionContext, ExplainOutput,
-    GraphPattern, LogicalPlan, Morsel, PhysicalPlan, QueryAst, QueryResult as GraphQueryResult,
-    ReturnClause, SemanticAnalyzer, SemanticError, SymbolId, SymbolTable, WhereClause,
+    ClientSearchResult, FrameworkDocument, HNSQRClientConfig, HNSQRClientRouter, HNSQRVectorStore,
+    HaystackAdapter, LangChainAdapter, LlamaIndexAdapter,
 };
 pub use federation::{
-    ClusterProofResponse, ClusterRegionId, FederatedProofCoordinator, FederatedQueryResult,
-    FederatedProofStatus,
+    ClusterProofResponse, ClusterRegionId, FederatedProofCoordinator, FederatedProofStatus,
+    FederatedQueryResult,
+};
+pub use graph::{
+    // Storage
+    AdjacencyBlock,
+    // Analytics
+    BfsResult,
+    // Query
+    BindingColumn,
+    ConnectedComponents,
+    CscAdjacency,
+    CsrAdjacency,
+    CsrProjection,
+    DegreeCentrality,
+    // Stats
+    DegreeStats,
+    Direction,
+    EdgeDelta,
+    EdgeDeltaStats,
+    ExecutionContext as GraphExecutionContext,
+    ExplainOutput,
+    GraphCardinalityStats,
+    GraphGeneration,
+    // Mutation
+    GraphMutation,
+    GraphMutationApplier,
+    GraphNodeRecord,
+    GraphPattern,
+    GraphProjection,
+    GraphProperties,
+    GraphPropertyStore,
+    GraphPropertyValue,
+    GraphReadGeneration,
+    GraphSnapshot,
+    KCoreDecomposition,
+    // Catalog
+    LabelCatalog,
+    LabelId,
+    LabelResolution,
+    LogicalPlan,
+    LouvainEngine,
+    LouvainResult,
+    Morsel,
+    NULL_OVERFLOW_REF,
+    NeighborSlice,
+    NodeArena,
+    PageRankEngine,
+    PathfindingEngine,
+    PhysicalPlan,
+    PropertyKey,
+    PropertyKeyCatalog,
+    QueryAst,
+    QueryResult as GraphQueryResult,
+    RelTypeCatalog,
+    RelTypeId,
+    RelTypeResolution,
+    RelationshipId as GraphRelationshipId,
+    ReturnClause,
+    SemanticAnalyzer,
+    SemanticError,
+    ShortestPath,
+    SymbolId,
+    SymbolTable,
+    TriangleCount,
+    WhereClause,
 };
 pub use kubernetes::{
     AutoscalerMetrics, AutoscalerRecommendation, HNSQRClusterSpec, HNSQRClusterStatus,
@@ -161,14 +203,16 @@ pub use planning::planner::{
     ExecutionPlan, ExecutionProof, QueryModality, RetrievalContract, UniversalPlanner,
 };
 pub use proof::lutz::{
-    LutzCandidateThreat, LutzCertificationDiagnostics, LutzCertifier, LutzCode, LutzGlobalCertified,
-    LutzQueryTable, SemanticRerankPlan, exact_rerank_locality_sorted,
+    LutzCandidateThreat, LutzCertificationDiagnostics, LutzCertifier, LutzCode,
+    LutzGlobalCertified, LutzQueryTable, SemanticRerankPlan, exact_rerank_locality_sorted,
 };
 pub use proof::{
     DenseExactProof, GlobalExactProofSearch, ProofCentroidCode, ProofNode, ProofQuery,
     SegmentProofView, SemanticProofTree,
 };
-pub use retrieval::hybrid::{HybridFusionEngine, HybridFusionMethod, ModalityRankings, RRF_DEFAULT_K};
+pub use retrieval::hybrid::{
+    HybridFusionEngine, HybridFusionMethod, ModalityRankings, RRF_DEFAULT_K,
+};
 pub use retrieval::multivector::{MultiVectorEmbedding, MultiVectorIndex};
 pub use retrieval::sparse::{InvertedPostingList, SparseInvertedIndex, SparseVector};
 pub use rivero::{
@@ -179,15 +223,15 @@ pub use rivero::{
     RIVERO_WITNESS_DEFAULT_SEEDS, RIVERO_WITNESS_INLINE_DEGREE, RIVERO_WITNESS_MAX_DEGREE,
     RIVERO_WITNESS_MAX_SEEDS, RiveroAddress, RiveroAddressConfig, RiveroBulkBuilder,
     RiveroCompiler, RiveroConfidence, RiveroConfig, RiveroProfile, RiveroProjectionMode,
-    RiveroRouteDiagnostics, RiveroSearchMode, RiveroTerritoryIndex, ScoredWitness,
-    VotedCandidate, select_top, witness_edge_scan_bound, witness_two_hop_edge_scan_bound,
+    RiveroRouteDiagnostics, RiveroSearchMode, RiveroTerritoryIndex, ScoredWitness, VotedCandidate,
+    select_top, witness_edge_scan_bound, witness_two_hop_edge_scan_bound,
 };
 pub use security::{
     AccessRole, ActiveCertificate, AuditAction, AuditLogger, AuditRecord, AuthCredential,
     AuthRegistry, AuthenticatedSubject, CertificateManager, ComplianceEvidenceGenerator,
-    KmsProvider, LocalKmsProvider, ProtocolFuzzSummary, ProtocolFuzzer, SecurityReportDocument,
-    SiemExporter, SiemFormat, TenantContext, TenantManager, TenantNamespace, TenantQuota,
-    TlsConfig, DEFAULT_MAX_FRAME_BYTES,
+    DEFAULT_MAX_FRAME_BYTES, KmsProvider, LocalKmsProvider, ProtocolFuzzSummary, ProtocolFuzzer,
+    SecurityReportDocument, SiemExporter, SiemFormat, TenantContext, TenantManager,
+    TenantNamespace, TenantQuota, TlsConfig,
 };
 pub use service::{
     ClusterService, DeleteRequest, HNSQRService, MutationReceipt, MutationService,
@@ -204,7 +248,8 @@ pub use storage::segment::{
     ImmutableSegment, MutableSegment, SegmentId, SegmentState, SegmentStats, SegmentedEngine,
 };
 pub use storage::segment_store::{
-    ImmutableSegmentStore, LocalSegmentStore, S3SegmentStore, SegmentObjectId, SegmentObjectMetadata,
+    ImmutableSegmentStore, LocalSegmentStore, S3SegmentStore, SegmentObjectId,
+    SegmentObjectMetadata,
 };
 pub use storage::snapshot::{
     PrefaultMode, SectionDescriptor, SectionKind, SnapshotAttachBreakdown, SnapshotHeaderV2,
@@ -767,7 +812,7 @@ fn dot_product_complex_scalar_unrolled(a: &[Complex32], b: &[Complex32]) -> Comp
 pub fn prefetch_vector(data: &[Complex32]) {
     #[cfg(target_arch = "x86_64")]
     unsafe {
-        use core::arch::x86_64::{_mm_prefetch, _MM_HINT_T0};
+        use core::arch::x86_64::{_MM_HINT_T0, _mm_prefetch};
         let ptr = data.as_ptr() as *const i8;
         let bytes = data.len() * std::mem::size_of::<Complex32>();
         let lines = (bytes + 63) / 64;
@@ -962,7 +1007,6 @@ impl VectorEmbedding {
         let p = self.projective_overlap(other);
         (2.0 * (1.0 - p.sqrt())).max(0.0).sqrt()
     }
-
 
     /// Computes the Euclidean distance over complex vector components.
     #[inline]
@@ -1714,7 +1758,11 @@ impl HNSQRIndex {
             let count = std::sync::atomic::AtomicUsize::new(0);
             wal.replay(0, |_lsn, mutation| {
                 match mutation {
-                    crate::storage::wal::WalMutation::Upsert { external_id, vector, metadata } => {
+                    crate::storage::wal::WalMutation::Upsert {
+                        external_id,
+                        vector,
+                        metadata,
+                    } => {
                         let _ = self.remove(&external_id);
                         if let Some(meta) = metadata {
                             let _ = self.insert_with_metadata(external_id.as_str(), vector, meta);
@@ -1799,7 +1847,8 @@ impl HNSQRIndex {
             layers.push(RwLock::new(Vec::new()));
         }
 
-        let rivero_compiler = rivero::RiveroCompiler::with_config(dim, config.rivero_address_config);
+        let rivero_compiler =
+            rivero::RiveroCompiler::with_config(dim, config.rivero_address_config);
 
         Ok(Self {
             config: RwLock::new(config),
@@ -2391,8 +2440,10 @@ impl HNSQRIndex {
                 node_index,
             );
         }
-        let lutz_code =
-            crate::proof::lutz::LutzCode::encode(&VectorEmbedding::from_complex(data.to_vec()), true);
+        let lutz_code = crate::proof::lutz::LutzCode::encode(
+            &VectorEmbedding::from_complex(data.to_vec()),
+            true,
+        );
         {
             let mut lutz_guard = self.lutz_codes.write();
             if lutz_guard.len() <= node_index as usize {
@@ -2986,7 +3037,10 @@ impl HNSQRIndex {
                 if let Some(v) = slot_to_vec.get(&slot) {
                     v.clone()
                 } else {
-                    VectorEmbedding::from_complex(vec![num_complex::Complex32::default(); self.dimension])
+                    VectorEmbedding::from_complex(vec![
+                        num_complex::Complex32::default();
+                        self.dimension
+                    ])
                 }
             })
             .collect();
@@ -3047,9 +3101,10 @@ impl HNSQRIndex {
         let rivero_cfg = RiveroProfile::Strict.config();
         let addr = self.rivero_compiler.read().compile(q_norm.complex_data());
         let mut seed_slots = Vec::new();
-        self.rivero_index.with_candidates_config(&addr, &rivero_cfg, |cands, _| {
-            seed_slots.extend_from_slice(cands);
-        });
+        self.rivero_index
+            .with_candidates_config(&addr, &rivero_cfg, |cands, _| {
+                seed_slots.extend_from_slice(cands);
+            });
 
         let normalized_vectors: Vec<VectorEmbedding> = (0..self.arena.len() as NodeIndex)
             .map(|slot| {
@@ -3120,9 +3175,10 @@ impl HNSQRIndex {
         // then flatten the typed outcome back to the legacy tuple form.
         match self.certified_search(query, k, filter_mask)? {
             CertifiedSearchOutcome::Exact { results, proof } => Ok((results, proof)),
-            CertifiedSearchOutcome::DeadlineExceeded { partial_results, proof } => {
-                Ok((partial_results, proof))
-            }
+            CertifiedSearchOutcome::DeadlineExceeded {
+                partial_results,
+                proof,
+            } => Ok((partial_results, proof)),
         }
     }
 
@@ -3158,30 +3214,37 @@ impl HNSQRIndex {
             crate::planning::planner::ExecutionPlan::ExactScan { .. } => {
                 self.search_indices_exact(query, k, filter_mask)
             }
-            crate::planning::planner::ExecutionPlan::LutzGlobalCertified { initial_seed_cap: _ } => {
-                match self.certified_search(query, k, filter_mask)? {
-                    CertifiedSearchOutcome::Exact { results, .. } => Ok(results),
-                    CertifiedSearchOutcome::DeadlineExceeded { proof, .. } => {
-                        let total_regions = proof.proof_regions_pruned + proof.proof_regions_expanded;
-                        let ppm = if total_regions > 0 {
-                            ((proof.proof_regions_pruned as f64 / total_regions as f64) * 1_000_000.0) as u32
-                        } else {
-                            0
-                        };
-                        let budget_us = self.config.read().certified_query_timeout_ms.unwrap_or(0) * 1000;
-                        Err(HNSQRError::CertifiedDeadlineExceeded {
-                            elapsed_us: proof.elapsed_us,
-                            budget_us,
-                            frontier_nodes_remaining: proof.frontier_nodes_remaining,
-                            region_prune_ratio_ppm: ppm,
-                        })
-                    }
+            crate::planning::planner::ExecutionPlan::LutzGlobalCertified {
+                initial_seed_cap: _,
+            } => match self.certified_search(query, k, filter_mask)? {
+                CertifiedSearchOutcome::Exact { results, .. } => Ok(results),
+                CertifiedSearchOutcome::DeadlineExceeded { proof, .. } => {
+                    let total_regions = proof.proof_regions_pruned + proof.proof_regions_expanded;
+                    let ppm = if total_regions > 0 {
+                        ((proof.proof_regions_pruned as f64 / total_regions as f64) * 1_000_000.0)
+                            as u32
+                    } else {
+                        0
+                    };
+                    let budget_us =
+                        self.config.read().certified_query_timeout_ms.unwrap_or(0) * 1000;
+                    Err(HNSQRError::CertifiedDeadlineExceeded {
+                        elapsed_us: proof.elapsed_us,
+                        budget_us,
+                        frontier_nodes_remaining: proof.frontier_nodes_remaining,
+                        region_prune_ratio_ppm: ppm,
+                    })
                 }
-            }
-            crate::planning::planner::ExecutionPlan::LutzPacRelaxed { epsilon, delta, initial_seed_cap: _ } => {
+            },
+            crate::planning::planner::ExecutionPlan::LutzPacRelaxed {
+                epsilon,
+                delta,
+                initial_seed_cap: _,
+            } => {
                 let q_norm = query.clone().into_normalized();
                 let tree = self.build_proof_tree();
-                let seed_slots: Vec<NodeIndex> = (0..self.arena.live_len() as NodeIndex).take(256).collect();
+                let seed_slots: Vec<NodeIndex> =
+                    (0..self.arena.live_len() as NodeIndex).take(256).collect();
                 let normalized_vectors: Vec<VectorEmbedding> = (0..self.arena.len())
                     .map(|i| {
                         let slice = self.arena.get_vector_slice(i as NodeIndex);
@@ -3308,8 +3371,8 @@ impl HNSQRIndex {
         k: usize,
         method: crate::retrieval::hybrid::HybridFusionMethod,
     ) -> HNSQRResult<Vec<(Arc<str>, SimilarityScore)>> {
-        use std::sync::Arc;
         use crate::retrieval::hybrid::{HybridFusionEngine, ModalityRankings};
+        use std::sync::Arc;
 
         let dense_results = self.search(dense_query, k * 2)?;
 
@@ -3597,11 +3660,17 @@ impl HNSQRIndex {
                     [(NodeIndex, SimilarityScore);
                         RIVERO_WITNESS_MAX_DEGREE * RIVERO_WITNESS_MAX_SEEDS],
                 > = SmallVec::new();
-                let mut connections: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_DEGREE]> = SmallVec::new();
+                let mut connections: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_DEGREE]> =
+                    SmallVec::new();
                 let mut witness_edges_scanned = 0usize;
 
                 for &seed in &seeds {
-                    self.copy_rivero_witness_connections(seed, true, stage_degree, &mut connections);
+                    self.copy_rivero_witness_connections(
+                        seed,
+                        true,
+                        stage_degree,
+                        &mut connections,
+                    );
                     for &index in &connections {
                         witness_edges_scanned += 1;
                         if visited.is_visited(index, epoch) {
@@ -3636,7 +3705,8 @@ impl HNSQRIndex {
                     rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
                 });
 
-                let mut second_seeds: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_SEEDS]> = SmallVec::new();
+                let mut second_seeds: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_SEEDS]> =
+                    SmallVec::new();
                 second_seeds.extend(
                     first_hop_scored
                         .iter()
@@ -3645,7 +3715,12 @@ impl HNSQRIndex {
                 );
 
                 for &seed in &second_seeds {
-                    self.copy_rivero_witness_connections(seed, true, stage_degree, &mut connections);
+                    self.copy_rivero_witness_connections(
+                        seed,
+                        true,
+                        stage_degree,
+                        &mut connections,
+                    );
                     for &index in &connections {
                         witness_edges_scanned += 1;
                         if visited.is_visited(index, epoch) {
@@ -3769,7 +3844,8 @@ impl HNSQRIndex {
             for (idx, score) in graph_results {
                 combined_map.entry(idx).or_insert(score);
             }
-            let mut combined: Vec<(NodeIndex, SimilarityScore)> = combined_map.into_iter().collect();
+            let mut combined: Vec<(NodeIndex, SimilarityScore)> =
+                combined_map.into_iter().collect();
             combined.sort_unstable_by(|lhs, rhs| {
                 rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
             });
@@ -4155,8 +4231,7 @@ impl HNSQRIndex {
             if descriptor.distance_function != cfg.distance_function {
                 return Err(HNSQRError::InvalidConfig(format!(
                     "Rivero state metric mismatch: index={:?}, built={:?}",
-                    cfg.distance_function,
-                    descriptor.distance_function
+                    cfg.distance_function, descriptor.distance_function
                 )));
             }
             if descriptor.address_config != cfg.rivero_address_config {
@@ -4266,18 +4341,23 @@ impl HNSQRIndex {
         let (witness_degree, witness_seed_limit, witness_second_seed_limit, strict_rivero, dist_fn) = {
             let config = self.config.read();
             (
-                rivero_witness::bounded_degree(config.rivero_witness_degree).min(profile.witness_degree()),
-                rivero_witness::bounded_seeds(config.rivero_witness_seeds).min(profile.witness_seeds()),
-                rivero_witness::bounded_seeds(config.rivero_witness_second_seeds).min(profile.witness_second_seeds()),
+                rivero_witness::bounded_degree(config.rivero_witness_degree)
+                    .min(profile.witness_degree()),
+                rivero_witness::bounded_seeds(config.rivero_witness_seeds)
+                    .min(profile.witness_seeds()),
+                rivero_witness::bounded_seeds(config.rivero_witness_second_seeds)
+                    .min(profile.witness_second_seeds()),
                 !config.rivero_fallback_on_underfill,
                 config.distance_function,
             )
         };
 
-        Ok(self
-            .rivero_index
-            .with_candidates_config(address, &rivero_config, |candidates, route| {
-                let mut scored = Vec::with_capacity(candidates.len() + witness_seed_limit * witness_degree * 2);
+        Ok(self.rivero_index.with_candidates_config(
+            address,
+            &rivero_config,
+            |candidates, route| {
+                let mut scored =
+                    Vec::with_capacity(candidates.len() + witness_seed_limit * witness_degree * 2);
                 let mut diagnostics = RiveroSearchDiagnostics {
                     cells_probed: route.cells_probed,
                     resident_reads: route.resident_reads,
@@ -4338,7 +4418,8 @@ impl HNSQRIndex {
                     scored.sort_unstable_by(|lhs, rhs| {
                         rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
                     });
-                    let mut seeds: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_SEEDS]> = SmallVec::new();
+                    let mut seeds: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_SEEDS]> =
+                        SmallVec::new();
                     seeds.extend(
                         scored
                             .iter()
@@ -4451,7 +4532,8 @@ impl HNSQRIndex {
                     diagnostics.results_returned = scored.len();
                     (scored, diagnostics)
                 })
-            }))
+            },
+        ))
     }
 
     fn resolve_rivero_candidates_config(
@@ -4479,7 +4561,8 @@ impl HNSQRIndex {
         Ok(self
             .rivero_index
             .with_candidates_config(address, rivero_config, |candidates, route| {
-                let mut scored = Vec::with_capacity(candidates.len() + witness_seed_limit * witness_degree * 2);
+                let mut scored =
+                    Vec::with_capacity(candidates.len() + witness_seed_limit * witness_degree * 2);
                 let mut diagnostics = RiveroSearchDiagnostics {
                     cells_probed: route.cells_probed,
                     resident_reads: route.resident_reads,
@@ -4540,7 +4623,8 @@ impl HNSQRIndex {
                     scored.sort_unstable_by(|lhs, rhs| {
                         rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
                     });
-                    let mut seeds: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_SEEDS]> = SmallVec::new();
+                    let mut seeds: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_SEEDS]> =
+                        SmallVec::new();
                     seeds.extend(
                         scored
                             .iter()

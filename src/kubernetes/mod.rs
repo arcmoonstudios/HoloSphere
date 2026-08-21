@@ -15,4 +15,3 @@ pub use autoscaler::{AutoscalerMetrics, AutoscalerRecommendation, NativeAutoscal
 pub use operator::{
     HNSQRClusterSpec, HNSQRClusterStatus, KubernetesOperator, OperatorLifecyclePhase,
 };
-

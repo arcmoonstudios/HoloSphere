@@ -50,7 +50,11 @@ impl ComplianceEvidenceGenerator {
             tls_version: "TLS 1.3 (Cipher: TLS_AES_256_GCM_SHA384)".to_string(),
             certificate_days_remaining,
             oidc_issuer: oidc_issuer.to_string(),
-            rbac_roles_configured: vec!["Admin".to_string(), "ReadWrite".to_string(), "ReadOnly".to_string()],
+            rbac_roles_configured: vec![
+                "Admin".to_string(),
+                "ReadWrite".to_string(),
+                "ReadOnly".to_string(),
+            ],
             kms_key_provider: "AWS KMS / Local AES-256-GCM Envelope".to_string(),
             encryption_at_rest_verified: true,
             audit_chain_verified: audit_verified,

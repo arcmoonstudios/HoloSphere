@@ -97,9 +97,11 @@ impl CapacityPlanner {
         // Shards & Learners
         let recommended_shards = ((req.total_vectors as f64 / 10_000_000.0).ceil() as u32).max(1);
         let qps_per_learner = (telemetry.rivero_candidates_per_us * 15.0).max(1000.0);
-        let recommended_learners = ((req.target_query_qps as f64 / qps_per_learner).ceil() as u32).max(1);
+        let recommended_learners =
+            ((req.target_query_qps as f64 / qps_per_learner).ceil() as u32).max(1);
 
-        let expected_p99_latency_ms = 1.5 + telemetry.nvme_fsync_p99_ms * 0.2 + telemetry.network_rtt_ms;
+        let expected_p99_latency_ms =
+            1.5 + telemetry.nvme_fsync_p99_ms * 0.2 + telemetry.network_rtt_ms;
 
         ClusterCapacityPlan {
             total_vector_storage_gb,
@@ -115,4 +117,3 @@ impl CapacityPlanner {
         }
     }
 }
-

@@ -12,26 +12,30 @@
 use bytes::Bytes;
 use num_complex::Complex32;
 
+use hnsqr::VectorEmbedding;
 use hnsqr::capacity::planner::{CapacityPlanner, CapacityRequirements, MachineTelemetryProfile};
 use hnsqr::cluster::control_plane::{DBaaSControlPlane, DesiredClusterState, ObservedClusterState};
 use hnsqr::cluster::disaster_recovery::DisasterRecoveryCoordinator;
 use hnsqr::consensus::raft::{RaftCluster, StorageHealthMetrics};
-use hnsqr::federation::cluster::{ClusterProofResponse, FederatedProofCoordinator, FederatedProofStatus};
+use hnsqr::federation::cluster::{
+    ClusterProofResponse, FederatedProofCoordinator, FederatedProofStatus,
+};
 use hnsqr::kubernetes::autoscaler::{AutoscalerMetrics, NativeAutoscaler};
-use hnsqr::kubernetes::operator::{HNSQRClusterSpec, HNSQRClusterStatus, KubernetesOperator, OperatorLifecyclePhase};
+use hnsqr::kubernetes::operator::{
+    HNSQRClusterSpec, HNSQRClusterStatus, KubernetesOperator, OperatorLifecyclePhase,
+};
 use hnsqr::planning::autoforge::{AutoForge, OperatorIntentConfig};
 use hnsqr::proof::tree::SemanticProofTree;
+use hnsqr::security::audit::{AuditAction, AuditLogger};
 use hnsqr::security::compliance::ComplianceEvidenceGenerator;
 use hnsqr::security::fuzzing::ProtocolFuzzer;
 use hnsqr::security::siem::{SiemExporter, SiemFormat};
-use hnsqr::security::audit::{AuditAction, AuditLogger};
 use hnsqr::service::ReadSnapshot;
 use hnsqr::storage::predictive_warming::PredictiveWarmer;
 use hnsqr::storage::remote_layout::{ProofAwareLayoutBuilder, RemoteChunkSize};
 use hnsqr::storage::segment_store::{ImmutableSegmentStore, LocalSegmentStore, SegmentObjectId};
 use hnsqr::storage::two_tier_cache::TwoTierCache;
 use hnsqr::telemetry::slo::{SloManager, SloTargetConfig};
-use hnsqr::VectorEmbedding;
 
 #[tokio::test]
 async fn test_phase5_reference_architecture_full_acceptance() {
@@ -44,14 +48,17 @@ async fn test_phase5_reference_architecture_full_acceptance() {
     cluster.trigger_election(1);
     // Set simulated degraded health on leader node 1
     *cluster.nodes[&1].storage_health.write() = StorageHealthMetrics {
-        fsync_latency_p99_us: 12500,   // high latency → degraded
+        fsync_latency_p99_us: 12500, // high latency → degraded
         disk_write_stall_count: 250,
         io_error_count: 40,
         free_disk_bytes: 5_000_000_000,
         is_read_only: false,
     };
     let healthiest = cluster.get_healthiest_candidate(1);
-    assert!(healthiest.is_some() && healthiest != Some(1), "Leader placement should not select degraded node 1");
+    assert!(
+        healthiest.is_some() && healthiest != Some(1),
+        "Leader placement should not select degraded node 1"
+    );
     let transferred = cluster.transfer_leadership_to_healthiest(1);
     assert!(transferred.is_ok(), "Transfer leadership should succeed");
 
@@ -62,12 +69,21 @@ async fn test_phase5_reference_architecture_full_acceptance() {
     let payload = Bytes::from_static(b"HNSQR_DISAGGREGATED_EXACT_VECTORS");
     let put_res = store.put_segment(&obj_id, payload.clone()).await;
     assert!(put_res.is_ok(), "Put segment must succeed");
-    let read_back = store.read_range(&obj_id, 0, payload.len()).await.expect("Read range");
+    let read_back = store
+        .read_range(&obj_id, 0, payload.len())
+        .await
+        .expect("Read range");
     assert_eq!(read_back, payload);
 
     let dim = 8;
     let sample_vectors: Vec<VectorEmbedding> = (0..64)
-        .map(|i| VectorEmbedding::from_complex((0..dim).map(|d| Complex32::new(i as f32 + d as f32, 0.0)).collect()))
+        .map(|i| {
+            VectorEmbedding::from_complex(
+                (0..dim)
+                    .map(|d| Complex32::new(i as f32 + d as f32, 0.0))
+                    .collect(),
+            )
+        })
         .collect();
     let slots: Vec<u32> = (0..64).collect();
     let proof_tree = SemanticProofTree::build(&sample_vectors, &slots, dim);
@@ -81,8 +97,12 @@ async fn test_phase5_reference_architecture_full_acceptance() {
 
     // 8 & 9. Two-Tier Cache & Predictive Warming
     let cache = TwoTierCache::new(1024 * 1024, 1024 * 1024, 512 * 1024);
-    cache.put_tier_0(1001, vec![1, 2, 3, 4]).expect("Put Tier 0");
-    let fetched = cache.get_or_fetch_tier_1("tenant_prod", 2001, |_| Ok(vec![5, 6, 7, 8])).expect("Get Tier 1");
+    cache
+        .put_tier_0(1001, vec![1, 2, 3, 4])
+        .expect("Put Tier 0");
+    let fetched = cache
+        .get_or_fetch_tier_1("tenant_prod", 2001, |_| Ok(vec![5, 6, 7, 8]))
+        .expect("Get Tier 1");
     assert_eq!(fetched, vec![5, 6, 7, 8]);
     assert!(cache.hit_rate() >= 0.0);
 
@@ -99,7 +119,8 @@ async fn test_phase5_reference_architecture_full_acceptance() {
         current_image_tag: "v0.5.0".to_string(),
         ..Default::default()
     };
-    let (phase, actions) = KubernetesOperator::reconcile_lifecycle(&spec, &status, None).expect("Reconcile");
+    let (phase, actions) =
+        KubernetesOperator::reconcile_lifecycle(&spec, &status, None).expect("Reconcile");
     assert_eq!(phase, OperatorLifecyclePhase::ProvisioningLearners);
     assert!(!actions.is_empty());
 
@@ -118,7 +139,10 @@ async fn test_phase5_reference_architecture_full_acceptance() {
         current_shards: 1,
     };
     let rec = autoscaler.evaluate(&auto_metrics);
-    assert_eq!(rec.desired_learners, 3, "Autoscaler should scale out learners");
+    assert_eq!(
+        rec.desired_learners, 3,
+        "Autoscaler should scale out learners"
+    );
 
     // 12. AutoForge & Explain-Config
     let intent = OperatorIntentConfig::default();
@@ -187,7 +211,9 @@ async fn test_phase5_reference_architecture_full_acceptance() {
     );
     assert_eq!(
         fed_res.proof_status,
-        FederatedProofStatus::IncompleteGlobalProof { missing_regions: vec!["eu-central".to_string()] },
+        FederatedProofStatus::IncompleteGlobalProof {
+            missing_regions: vec!["eu-central".to_string()]
+        },
         "Partitioned region must yield IncompleteGlobalProof status"
     );
 
@@ -202,13 +228,21 @@ async fn test_phase5_reference_architecture_full_acceptance() {
     // 21 & 22. SIEM & Compliance Generator
     let audit_dir = tempfile::tempdir().expect("Create audit temp dir");
     let logger = AuditLogger::open(audit_dir.path()).expect("Open audit logger");
-    let rec = logger.log("usr_sec", AuditAction::ApiKeyRevocation { key_id: "key_sec".to_string() }).expect("Log action");
+    let rec = logger
+        .log(
+            "usr_sec",
+            AuditAction::ApiKeyRevocation {
+                key_id: "key_sec".to_string(),
+            },
+        )
+        .expect("Log action");
     let syslog_str = SiemExporter::format_record(&rec, SiemFormat::Rfc5424Syslog);
     assert!(syslog_str.contains("usr_sec"));
     let chain_ok = SiemExporter::verify_audit_chain(&logger, "").expect("Verify audit chain");
     assert!(chain_ok);
 
-    let sec_report = ComplianceEvidenceGenerator::generate_report(180, "https://auth.hnsqr.io", true, true);
+    let sec_report =
+        ComplianceEvidenceGenerator::generate_report(180, "https://auth.hnsqr.io", true, true);
     assert_eq!(sec_report.critical_vulnerabilities_count, 0);
     assert!(sec_report.encryption_at_rest_verified);
 
@@ -216,11 +250,13 @@ async fn test_phase5_reference_architecture_full_acceptance() {
     let fuzz_payloads = vec![
         vec![],
         vec![0x48, 0x4E, 0x53, 0x51], // truncated
-        vec![0xFF; 64],                // garbage
+        vec![0xFF; 64],               // garbage
     ];
     let fuzz_summary = ProtocolFuzzer::fuzz_qir0_parser(&fuzz_payloads);
-    assert_eq!(fuzz_summary.panics_detected, 0, "Parsers must never panic under fuzz input");
+    assert_eq!(
+        fuzz_summary.panics_detected, 0,
+        "Parsers must never panic under fuzz input"
+    );
 
     println!("✨ ALL PHASE 5 REFERENCE ARCHITECTURE CRITERIA VERIFIED AND PASSED.");
 }
-

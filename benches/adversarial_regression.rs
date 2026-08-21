@@ -2,8 +2,8 @@ mod common;
 
 use common::generate_adversarial_regression_corpus;
 use hnsqr::metadata::index::{FilterExpr, MetadataValue};
-use hnsqr::rivero::{AdaptivePolicy, RiveroProfile};
 use hnsqr::rivero::bulk::RiveroBulkBuilder;
+use hnsqr::rivero::{AdaptivePolicy, RiveroProfile};
 use hnsqr::{HNSQRConfig, HNSQRIndex, NodeIndex, VectorEmbedding};
 use sha2::{Digest, Sha256};
 
@@ -45,7 +45,11 @@ fn main() {
             h1.update(w.similarity.to_le_bytes());
         }
     }
-    let fp_1 = h1.finalize().iter().map(|b| format!("{:02x}", b)).collect::<String>();
+    let fp_1 = h1
+        .finalize()
+        .iter()
+        .map(|b| format!("{:02x}", b))
+        .collect::<String>();
 
     let mut h4 = Sha256::new();
     for list in &state_4t.witnesses {
@@ -54,7 +58,11 @@ fn main() {
             h4.update(w.similarity.to_le_bytes());
         }
     }
-    let fp_4 = h4.finalize().iter().map(|b| format!("{:02x}", b)).collect::<String>();
+    let fp_4 = h4
+        .finalize()
+        .iter()
+        .map(|b| format!("{:02x}", b))
+        .collect::<String>();
 
     let mut h16 = Sha256::new();
     for list in &state_16t.witnesses {
@@ -63,7 +71,11 @@ fn main() {
             h16.update(w.similarity.to_le_bytes());
         }
     }
-    let fp_16 = h16.finalize().iter().map(|b| format!("{:02x}", b)).collect::<String>();
+    let fp_16 = h16
+        .finalize()
+        .iter()
+        .map(|b| format!("{:02x}", b))
+        .collect::<String>();
 
     assert_eq!(fp_1, fp_4, "1T and 4T build fingerprints diverged!");
     assert_eq!(fp_4, fp_16, "4T and 16T build fingerprints diverged!");
@@ -194,7 +206,8 @@ fn main() {
         let (_, diag) = index
             .search_indices_adaptive(q, 10, None, AdaptivePolicy::AllowGraphFallback)
             .unwrap();
-        if diag.graph_fallback_used || diag.escalated || diag.final_profile == RiveroProfile::Strict {
+        if diag.graph_fallback_used || diag.escalated || diag.final_profile == RiveroProfile::Strict
+        {
             ood_fallback_count += 1;
         }
     }
@@ -222,7 +235,9 @@ fn main() {
         let (adv_res, adv_diag) = index.search_indices_strict(adv_q, 10, None).unwrap();
 
         // Rivero territorial candidate generation must be consistent under phase rotation
-        let diff = (orig_diag.route_candidates_selected as i64 - adv_diag.route_candidates_selected as i64).abs();
+        let diff = (orig_diag.route_candidates_selected as i64
+            - adv_diag.route_candidates_selected as i64)
+            .abs();
         assert!(
             diff <= (orig_diag.route_candidates_selected.max(1) as f64 * 0.15) as i64 + 150,
             "Rivero route candidates diverged under phase rotation: orig={}, adv={}",

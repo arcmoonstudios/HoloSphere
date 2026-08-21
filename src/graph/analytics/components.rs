@@ -13,8 +13,8 @@
 
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use crate::graph::analytics::projection::GraphProjection;
 use crate::NodeIndex;
+use crate::graph::analytics::projection::GraphProjection;
 
 /// Result of connected-component computation.
 #[derive(Debug, Default)]
@@ -49,7 +49,10 @@ impl UnionFind {
             // Path compression (best-effort, not guaranteed under concurrency).
             let gpx = self.parent[px as usize].load(Ordering::Relaxed);
             let _ = self.parent[x as usize].compare_exchange(
-                px, gpx, Ordering::Relaxed, Ordering::Relaxed,
+                px,
+                gpx,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
             );
             x = px;
         }
@@ -116,6 +119,10 @@ impl ConnectedComponents {
             component_sizes[c as usize] += 1;
         }
 
-        Self { component, num_components, component_sizes }
+        Self {
+            component,
+            num_components,
+            component_sizes,
+        }
     }
 }

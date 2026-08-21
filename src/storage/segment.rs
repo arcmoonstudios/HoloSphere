@@ -25,6 +25,7 @@ use parking_lot::RwLock as PlRwLock;
 use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};
 
+use crate::metadata::index::MetadataValue;
 use crate::planning::planner::RetrievalContract;
 use crate::proof::lutz::{
     LutzCertifier, LutzCode, LutzGlobalCertified, LutzQueryTable, SemanticRerankPlan,
@@ -32,7 +33,6 @@ use crate::proof::lutz::{
 use crate::proof::{GlobalExactProofSearch, SegmentProofView, SemanticProofTree};
 use crate::rivero::{RiveroCompiler, RiveroProfile, RiveroTerritoryIndex};
 use crate::storage::wal::{DurabilityPolicy, WalManager, WalMutation};
-use crate::metadata::index::MetadataValue;
 use crate::{HNSQRError, HNSQRResult, NodeId, NodeIndex, SimilarityScore, VectorEmbedding};
 
 pub type SegmentId = u64;
@@ -498,7 +498,8 @@ impl ImmutableSegment {
                 let mut seed_cands: Vec<NodeIndex> = Vec::new();
                 self.territories
                     .with_candidates_config(&q_addr, &config, |cands, _| {
-                        seed_cands.extend(cands.iter().copied().filter(|&s| !tombstones.contains(s)));
+                        seed_cands
+                            .extend(cands.iter().copied().filter(|&s| !tombstones.contains(s)));
                     });
 
                 let seg_view = SegmentProofView {
@@ -508,14 +509,8 @@ impl ImmutableSegment {
                     tombstones: Some(&tombstones),
                 };
 
-                let (certified, _) = GlobalExactProofSearch::search(
-                    &q_norm,
-                    k,
-                    &[seg_view],
-                    &[],
-                    &seed_cands,
-                    None,
-                );
+                let (certified, _) =
+                    GlobalExactProofSearch::search(&q_norm, k, &[seg_view], &[], &seed_cands, None);
 
                 certified
                     .into_iter()
@@ -585,7 +580,10 @@ impl SegmentedEngine {
         let node_id: Arc<str> = id.into();
         self.apply_upsert_unlogged(node_id.clone(), vector)?;
         if let Some(meta) = metadata {
-            self.metadata_store.write().unwrap().insert(node_id, meta.clone());
+            self.metadata_store
+                .write()
+                .unwrap()
+                .insert(node_id, meta.clone());
         }
         Ok(())
     }
@@ -597,7 +595,8 @@ impl SegmentedEngine {
         patch: &HashMap<String, MetadataValue>,
     ) -> HNSQRResult<()> {
         let mut store = self.metadata_store.write().unwrap();
-        let entry: &mut HashMap<String, MetadataValue> = store.entry(Arc::from(id)).or_insert_with(HashMap::new);
+        let entry: &mut HashMap<String, MetadataValue> =
+            store.entry(Arc::from(id)).or_insert_with(HashMap::new);
         for (k, v) in patch {
             entry.insert(k.clone(), v.clone());
         }
@@ -612,7 +611,11 @@ impl SegmentedEngine {
     /// Applies a replicated or replayed WAL mutation directly to the memory segments.
     pub fn apply_wal_mutation(&self, mutation: &WalMutation) -> HNSQRResult<()> {
         match mutation {
-            WalMutation::Upsert { external_id, vector, metadata } => {
+            WalMutation::Upsert {
+                external_id,
+                vector,
+                metadata,
+            } => {
                 self.apply_committed_upsert(external_id.as_str(), vector.clone(), metadata.as_ref())
             }
             WalMutation::Delete { external_id } => {
@@ -624,7 +627,11 @@ impl SegmentedEngine {
     }
 
     /// Low-level unlogged upsert primitive for replicated state-machine application.
-    pub(crate) fn apply_upsert_unlogged(&self, id: impl Into<NodeId>, vector: VectorEmbedding) -> HNSQRResult<()> {
+    pub(crate) fn apply_upsert_unlogged(
+        &self,
+        id: impl Into<NodeId>,
+        vector: VectorEmbedding,
+    ) -> HNSQRResult<()> {
         let node_id: Arc<str> = id.into();
         self.delete_internal(&node_id);
         let active = { self.active_mutable.read().unwrap().clone() };
@@ -964,7 +971,8 @@ impl SegmentedEngine {
             all_results.extend(imm.search(query, k, rerank_plan));
         }
         all_results.extend(active.search(query, k, rerank_plan));
-        all_results.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        all_results
+            .sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         all_results.truncate(k);
         all_results
     }
@@ -1022,7 +1030,10 @@ impl ImmutableVectorSnapshot {
         for seg in &self.immutable_segments {
             all_results.extend(seg.search_with_contract(query, k, contract));
         }
-        all_results.extend(self.active_snapshot.search_with_contract(query, k, contract));
+        all_results.extend(
+            self.active_snapshot
+                .search_with_contract(query, k, contract),
+        );
 
         all_results.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
         let mut unique_results = Vec::with_capacity(k);

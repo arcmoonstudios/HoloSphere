@@ -15,7 +15,9 @@
  *///•------------------------------------------------------------------------------------‣
 
 use hnsqr::planning::{RetrievalContract, UniversalPlanner};
-use hnsqr::{DistanceFunction, HNSQRConfig, HNSQRIndex, RiveroSearchMode, SearchPlan, VectorEmbedding};
+use hnsqr::{
+    DistanceFunction, HNSQRConfig, HNSQRIndex, RiveroSearchMode, SearchPlan, VectorEmbedding,
+};
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
@@ -82,7 +84,10 @@ impl ExecMode {
     }
 }
 
-fn read_fvecs_limited(path: impl AsRef<Path>, max_vectors: Option<usize>) -> io::Result<Vec<VectorEmbedding>> {
+fn read_fvecs_limited(
+    path: impl AsRef<Path>,
+    max_vectors: Option<usize>,
+) -> io::Result<Vec<VectorEmbedding>> {
     let mut file = File::open(path)?;
     let mut vectors = Vec::new();
     let mut dim_buf = [0u8; 4];
@@ -177,7 +182,12 @@ fn run_mode(
     if let Some(first_query) = queries.first() {
         match mode {
             ExecMode::PlannerDefault => {
-                let _ = index.search_indices_with_contract(first_query, k, None, RetrievalContract::Certified);
+                let _ = index.search_indices_with_contract(
+                    first_query,
+                    k,
+                    None,
+                    RetrievalContract::Certified,
+                );
             }
             _ => {
                 let _ = index.search_indices(first_query, k);
@@ -292,7 +302,8 @@ fn print_dataset(r: &DatasetResult) {
         format!(
             " [LABEL MISMATCH: loaded {} vectors but declared {}]",
             r.corpus_n,
-            r.declared_n.map_or_else(|| "unknown".to_string(), |n| n.to_string())
+            r.declared_n
+                .map_or_else(|| "unknown".to_string(), |n| n.to_string())
         )
     };
     println!(
@@ -301,7 +312,11 @@ fn print_dataset(r: &DatasetResult) {
         r.dim,
         r.corpus_n,
         r.predicted_crossover_n,
-        if crosses_naturally { "corpus exceeds crossover: PlannerDefault SHOULD route to graph" } else { "corpus under crossover: PlannerDefault WILL route to ExactScan" },
+        if crosses_naturally {
+            "corpus exceeds crossover: PlannerDefault SHOULD route to graph"
+        } else {
+            "corpus under crossover: PlannerDefault WILL route to ExactScan"
+        },
         label_suffix
     );
     println!(
@@ -310,7 +325,11 @@ fn print_dataset(r: &DatasetResult) {
     );
     for m in &r.modes {
         if !m.ran {
-            println!("  {:<24} SKIPPED — {}", m.mode.label(), m.skip_reason.as_deref().unwrap_or("unknown"));
+            println!(
+                "  {:<24} SKIPPED — {}",
+                m.mode.label(),
+                m.skip_reason.as_deref().unwrap_or("unknown")
+            );
             continue;
         }
         let status = if m.passed { "PASS" } else { "FAIL" };
@@ -318,7 +337,10 @@ fn print_dataset(r: &DatasetResult) {
             "  {:<24} {:<8} {:<15} {:<12.2?} {:<12.2?}",
             m.mode.label(),
             MAX_QUERIES_PER_DATASET,
-            format!("{:.1}%/{:.1}% [{status}]", m.mean_recall_pct, m.min_recall_pct),
+            format!(
+                "{:.1}%/{:.1}% [{status}]",
+                m.mean_recall_pct, m.min_recall_pct
+            ),
             m.p50_latency,
             m.p95_latency,
         );
@@ -326,30 +348,82 @@ fn print_dataset(r: &DatasetResult) {
 }
 
 fn main() {
-    println!("╔═════════════════════════════════════════════════════════════════════════════════════════════════════════════╗");
-    println!("║   HOLOSPHERE PATH-EXPLICIT AUDIT — every dataset run under every search mode, no assumed routing            ║");
-    println!("╚═════════════════════════════════════════════════════════════════════════════════════════════════════════════╝");
+    println!(
+        "╔═════════════════════════════════════════════════════════════════════════════════════════════════════════════╗"
+    );
+    println!(
+        "║   HOLOSPHERE PATH-EXPLICIT AUDIT — every dataset run under every search mode, no assumed routing            ║"
+    );
+    println!(
+        "╚═════════════════════════════════════════════════════════════════════════════════════════════════════════════╝"
+    );
 
     let k = 10;
     let mut results: Vec<DatasetResult> = Vec::new();
 
     let public_datasets: [(&str, PathBuf, PathBuf, Option<usize>); 8] = [
-        ("GloVe-25 (Real Public)", PathBuf::from("datasets/glove_25/glove25_base.fvecs"), PathBuf::from("datasets/glove_25/glove25_query.fvecs"), Some(2_500)),
-        ("GloVe-50 (Real Public)", PathBuf::from("datasets/glove_50/glove50_base.fvecs"), PathBuf::from("datasets/glove_50/glove50_query.fvecs"), Some(2_500)),
-        ("GloVe-100 (Real Public)", PathBuf::from("datasets/glove_100/glove100_base.fvecs"), PathBuf::from("datasets/glove_100/glove100_query.fvecs"), Some(2_500)),
-        ("Texmex SIFT10K (Real Public, Full)", PathBuf::from("datasets/siftsmall/siftsmall_base.fvecs"), PathBuf::from("datasets/siftsmall/siftsmall_query.fvecs"), None),
-        ("Texmex SIFT1M (Real Public)", PathBuf::from("datasets/sift_1m/sift1m_base.fvecs"), PathBuf::from("datasets/sift_1m/sift1m_query.fvecs"), Some(5_000)),
-        ("CLIP ViT-B/32 512 (Real Public, Full — only 1K vectors exist on disk)", PathBuf::from("datasets/clip_512/clip_base.fvecs"), PathBuf::from("datasets/clip_512/clip_query.fvecs"), None),
-        ("Cohere Wikipedia 768 (Real Public, Full — only 1K vectors exist on disk)", PathBuf::from("datasets/cohere_768/cohere_base.fvecs"), PathBuf::from("datasets/cohere_768/cohere_query.fvecs"), None),
-        ("OpenAI text-embedding-1536 (Real Public, Full — only 1K vectors exist on disk)", PathBuf::from("datasets/openai_1536/openai_base.fvecs"), PathBuf::from("datasets/openai_1536/openai_query.fvecs"), None),
+        (
+            "GloVe-25 (Real Public)",
+            PathBuf::from("datasets/glove_25/glove25_base.fvecs"),
+            PathBuf::from("datasets/glove_25/glove25_query.fvecs"),
+            Some(2_500),
+        ),
+        (
+            "GloVe-50 (Real Public)",
+            PathBuf::from("datasets/glove_50/glove50_base.fvecs"),
+            PathBuf::from("datasets/glove_50/glove50_query.fvecs"),
+            Some(2_500),
+        ),
+        (
+            "GloVe-100 (Real Public)",
+            PathBuf::from("datasets/glove_100/glove100_base.fvecs"),
+            PathBuf::from("datasets/glove_100/glove100_query.fvecs"),
+            Some(2_500),
+        ),
+        (
+            "Texmex SIFT10K (Real Public, Full)",
+            PathBuf::from("datasets/siftsmall/siftsmall_base.fvecs"),
+            PathBuf::from("datasets/siftsmall/siftsmall_query.fvecs"),
+            None,
+        ),
+        (
+            "Texmex SIFT1M (Real Public)",
+            PathBuf::from("datasets/sift_1m/sift1m_base.fvecs"),
+            PathBuf::from("datasets/sift_1m/sift1m_query.fvecs"),
+            Some(5_000),
+        ),
+        (
+            "CLIP ViT-B/32 512 (Real Public, Full — only 1K vectors exist on disk)",
+            PathBuf::from("datasets/clip_512/clip_base.fvecs"),
+            PathBuf::from("datasets/clip_512/clip_query.fvecs"),
+            None,
+        ),
+        (
+            "Cohere Wikipedia 768 (Real Public, Full — only 1K vectors exist on disk)",
+            PathBuf::from("datasets/cohere_768/cohere_base.fvecs"),
+            PathBuf::from("datasets/cohere_768/cohere_query.fvecs"),
+            None,
+        ),
+        (
+            "OpenAI text-embedding-1536 (Real Public, Full — only 1K vectors exist on disk)",
+            PathBuf::from("datasets/openai_1536/openai_base.fvecs"),
+            PathBuf::from("datasets/openai_1536/openai_query.fvecs"),
+            None,
+        ),
     ];
 
     for (name, base_path, query_path, declared_n) in &public_datasets {
         if !base_path.exists() || !query_path.exists() {
-            println!("\n{name} — SKIPPED: dataset files not found at {}", base_path.display());
+            println!(
+                "\n{name} — SKIPPED: dataset files not found at {}",
+                base_path.display()
+            );
             continue;
         }
-        match (read_fvecs_limited(base_path, *declared_n), read_fvecs_limited(query_path, Some(MAX_QUERIES_PER_DATASET))) {
+        match (
+            read_fvecs_limited(base_path, *declared_n),
+            read_fvecs_limited(query_path, Some(MAX_QUERIES_PER_DATASET)),
+        ) {
             (Ok(base_vecs), Ok(query_vecs)) if !base_vecs.is_empty() && !query_vecs.is_empty() => {
                 let dim = base_vecs[0].dimension();
                 let r = evaluate_dataset(name, &base_vecs, &query_vecs, dim, k, *declared_n);
@@ -366,7 +440,10 @@ fn main() {
     println!("ROUTING VERIFICATION");
     for r in &results {
         let crosses = r.corpus_n as f64 > r.predicted_crossover_n;
-        let planner = r.modes.iter().find(|m| matches!(m.mode, ExecMode::PlannerDefault));
+        let planner = r
+            .modes
+            .iter()
+            .find(|m| matches!(m.mode, ExecMode::PlannerDefault));
         let reference = r.modes.iter().find(|m| {
             matches!(m.mode, ExecMode::ExactForced) == !crosses
                 || matches!(m.mode, ExecMode::GraphOnly) == crosses
@@ -379,7 +456,11 @@ fn main() {
                 ref_m.mode.label(),
                 p.mean_recall_pct,
                 ref_m.mean_recall_pct,
-                if matches_prediction { "CONSISTENT" } else { "DIVERGENT — investigate before trusting PlannerDefault routing at this N" }
+                if matches_prediction {
+                    "CONSISTENT"
+                } else {
+                    "DIVERGENT — investigate before trusting PlannerDefault routing at this N"
+                }
             );
         }
     }

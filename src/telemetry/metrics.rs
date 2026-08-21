@@ -55,14 +55,18 @@ impl PrometheusExporter {
             metrics.query_latency_micros_total.load(Ordering::Relaxed)
         ));
 
-        out.push_str("# HELP hnsqr_exact_simd_evaluations Total vectors evaluated via exact SIMD.\n");
+        out.push_str(
+            "# HELP hnsqr_exact_simd_evaluations Total vectors evaluated via exact SIMD.\n",
+        );
         out.push_str("# TYPE hnsqr_exact_simd_evaluations counter\n");
         out.push_str(&format!(
             "hnsqr_exact_simd_evaluations {}\n",
             metrics.exact_simd_evaluations.load(Ordering::Relaxed)
         ));
 
-        out.push_str("# HELP hnsqr_proof_regions_pruned Subtree envelopes pruned by proof bounds.\n");
+        out.push_str(
+            "# HELP hnsqr_proof_regions_pruned Subtree envelopes pruned by proof bounds.\n",
+        );
         out.push_str("# TYPE hnsqr_proof_regions_pruned counter\n");
         out.push_str(&format!(
             "hnsqr_proof_regions_pruned {}\n",

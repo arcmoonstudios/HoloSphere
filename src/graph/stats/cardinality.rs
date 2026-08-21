@@ -8,7 +8,7 @@
 /*▫~•◦------------------------------------------------------------------------------------‣
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
- 
+
 use std::collections::HashMap;
 
 use crate::graph::catalog::labels::LabelId;

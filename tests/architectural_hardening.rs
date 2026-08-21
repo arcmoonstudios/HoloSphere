@@ -7,13 +7,13 @@
 //!   4. AST Filter Bitmask Compilation: Verifies RoaringBitmap filter execution without dynamic closures.
 //!   5. Adversarial Degenerate Manifolds & NaN/Inf Fuzzing: Verifies stability on extreme/corrupted LLM inputs.
 
-use num_complex::Complex32;
 use hnsqr::cluster::ConsistentHashRing;
 use hnsqr::metadata::index::{FilterExpr, MetadataInvertedIndex};
 use hnsqr::proof::lutz::{LutzCode, SemanticRerankPlan};
 use hnsqr::proof::{GlobalExactProofSearch, SegmentProofView, SemanticProofTree};
 use hnsqr::storage::segment::SegmentedEngine;
-use hnsqr::{dot_product_complex_simd, NodeIndex, VectorEmbedding};
+use hnsqr::{NodeIndex, VectorEmbedding, dot_product_complex_simd};
+use num_complex::Complex32;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. CONSISTENT HASHING SCALE-OUT BOUNDS
@@ -69,7 +69,9 @@ fn test_consistent_hashing_scale_out_migration_bound() {
 
 #[test]
 fn test_simd_complex_dot_product_unaligned_and_varied_lengths() {
-    let lengths = [1, 2, 3, 4, 7, 8, 15, 16, 31, 32, 63, 64, 127, 128, 256, 384, 768, 1536];
+    let lengths = [
+        1, 2, 3, 4, 7, 8, 15, 16, 31, 32, 63, 64, 127, 128, 256, 384, 768, 1536,
+    ];
 
     for &len in &lengths {
         let a: Vec<Complex32> = (0..len)
@@ -92,12 +94,14 @@ fn test_simd_complex_dot_product_unaligned_and_varied_lengths() {
         assert!(
             (simd_res.re - expected_re).abs() < 1e-4,
             "Real part mismatch for len {len}: simd={}, expected={}",
-            simd_res.re, expected_re
+            simd_res.re,
+            expected_re
         );
         assert!(
             (simd_res.im - expected_im).abs() < 1e-4,
             "Imag part mismatch for len {len}: simd={}, expected={}",
-            simd_res.im, expected_im
+            simd_res.im,
+            expected_im
         );
     }
 }
@@ -140,7 +144,10 @@ fn test_streamed_compaction_memory_and_deduplication() {
 
     // Trigger streamed compaction
     let purged = engine.compact().unwrap();
-    assert!(purged >= 40, "Compaction must purge superseded and tombstoned vectors");
+    assert!(
+        purged >= 40,
+        "Compaction must purge superseded and tombstoned vectors"
+    );
 
     // Search must find doc_0 with its new vector, and not find deleted doc_85
     let query_new_0 = VectorEmbedding::from_complex(
@@ -163,7 +170,11 @@ fn test_streamed_compaction_memory_and_deduplication() {
 
     let res_del = engine.search(&query_deleted, 5, SemanticRerankPlan::ExactSimd);
     for (id, _) in res_del {
-        assert_ne!(id.as_ref(), "doc_85", "Deleted documents must never appear in search");
+        assert_ne!(
+            id.as_ref(),
+            "doc_85",
+            "Deleted documents must never appear in search"
+        );
     }
 }
 
@@ -177,8 +188,18 @@ fn test_ast_filter_compilation_and_execution() {
 
     // Index 1,000 documents with structured JSON fields
     for i in 0..1000u32 {
-        let tenant = if i % 2 == 0 { "tenant_alpha" } else { "tenant_beta" };
-        let category = if i % 3 == 0 { "finance" } else if i % 3 == 1 { "tech" } else { "health" };
+        let tenant = if i % 2 == 0 {
+            "tenant_alpha"
+        } else {
+            "tenant_beta"
+        };
+        let category = if i % 3 == 0 {
+            "finance"
+        } else if i % 3 == 1 {
+            "tech"
+        } else {
+            "health"
+        };
         let rating = (i % 10) as i64;
 
         let meta = serde_json::json!({
@@ -238,12 +259,9 @@ fn test_adversarial_degenerate_manifolds_and_non_finite_fuzzing() {
     }
 
     // 3. Subnormal Floats
-    let subnormal_vec = VectorEmbedding::from_complex(
-        (0..dim)
-            .map(|_| Complex32::new(1e-40, 1e-42))
-            .collect(),
-    )
-    .into_normalized();
+    let subnormal_vec =
+        VectorEmbedding::from_complex((0..dim).map(|_| Complex32::new(1e-40, 1e-42)).collect())
+            .into_normalized();
     assert!(subnormal_vec.norm().is_finite());
 
     // 4. Rank-1 Single-Coordinate Spike
@@ -266,14 +284,7 @@ fn test_adversarial_degenerate_manifolds_and_non_finite_fuzzing() {
         lutz_codes: None,
         tombstones: None,
     };
-    let (res, proof) = GlobalExactProofSearch::search(
-        &query,
-        2,
-        &[seg_view],
-        &[],
-        &[],
-        None,
-    );
+    let (res, proof) = GlobalExactProofSearch::search(&query, 2, &[seg_view], &[], &[], None);
 
     assert_eq!(res.len(), 2);
     assert_eq!(res[0].0, 3, "Spike vector must match query at rank 0");
@@ -334,12 +345,13 @@ fn test_no_swallowed_storage_errors_in_consensus_module() {
 
 #[test]
 fn test_uncommitted_persisted_suffix_not_promoted_during_recovery() {
-    use std::sync::Arc;
     use hnsqr::cluster::state_machine::{DataMutation, ShardStateMachine};
     use hnsqr::consensus::raft::RaftNode;
     use hnsqr::consensus::storage::DurableRaftStorage;
+    use std::sync::Arc;
 
-    let tmp_dir = std::env::temp_dir().join(format!("hnsqr_uncommitted_rec_{}", rand::random::<u64>()));
+    let tmp_dir =
+        std::env::temp_dir().join(format!("hnsqr_uncommitted_rec_{}", rand::random::<u64>()));
     std::fs::create_dir_all(&tmp_dir).unwrap();
 
     let storage = Arc::new(DurableRaftStorage::open(&tmp_dir).unwrap());
@@ -353,7 +365,8 @@ fn test_uncommitted_persisted_suffix_not_promoted_during_recovery() {
 
     // Leader proposes mutation at index 1 without quorum
     let vec = VectorEmbedding::from_reals(&[1.0, 0.0, 0.0, 0.0]);
-    let cmd = hnsqr::consensus::raft::RaftCommand::Data(DataMutation::new_upsert("doc_42", vec.clone()));
+    let cmd =
+        hnsqr::consensus::raft::RaftCommand::Data(DataMutation::new_upsert("doc_42", vec.clone()));
     let idx = node.propose(cmd).unwrap();
     assert_eq!(idx, 1);
 
@@ -367,21 +380,27 @@ fn test_uncommitted_persisted_suffix_not_promoted_during_recovery() {
     let recovered = node.recover_node_state(&fresh_sm).unwrap();
 
     // MUST NOT apply uncommitted entry 1
-    assert_eq!(recovered, 0, "Uncommitted log entries must NEVER be applied during recovery!");
+    assert_eq!(
+        recovered, 0,
+        "Uncommitted log entries must NEVER be applied during recovery!"
+    );
     assert_eq!(*node.commit_index.read(), 0);
     assert_eq!(*node.last_applied.read(), 0);
 
     let search_res = fresh_engine.search(&vec, 1, SemanticRerankPlan::ExactSimd);
-    assert!(search_res.is_empty(), "Uncommitted entry must not exist in state machine!");
+    assert!(
+        search_res.is_empty(),
+        "Uncommitted entry must not exist in state machine!"
+    );
 
     let _ = std::fs::remove_dir_all(&tmp_dir);
 }
 
 #[test]
 fn test_follower_storage_failure_prevents_quorum_commit() {
-    use std::sync::Arc;
     use hnsqr::consensus::raft::{AppendEntriesArgs, RaftCluster, RaftCommand, RaftLogEntry};
     use hnsqr::consensus::storage::{MemoryRaftStorage, RaftStorage};
+    use std::sync::Arc;
 
     let storage_a = Arc::new(MemoryRaftStorage::new());
     let storage_b = Arc::new(MemoryRaftStorage::new());
@@ -397,7 +416,9 @@ fn test_follower_storage_failure_prevents_quorum_commit() {
     let _leader = cluster.nodes.get(&1).unwrap();
 
     // Inject disk failure on follower B BEFORE any new entry arrives.
-    storage_b.fail_before_log_persist.store(true, std::sync::atomic::Ordering::SeqCst);
+    storage_b
+        .fail_before_log_persist
+        .store(true, std::sync::atomic::Ordering::SeqCst);
 
     // After election + initial NoOp heartbeat, node 2's log already has index 0 (sentinel)
     // and index 1 (leader NoOp). We must send a genuinely new entry (index 2) with a valid
@@ -418,36 +439,53 @@ fn test_follower_storage_failure_prevents_quorum_commit() {
     });
 
     // Follower B MUST return success=false on storage failure!
-    assert!(!reply.success, "Follower with storage failure must reply success=false!");
+    assert!(
+        !reply.success,
+        "Follower with storage failure must reply success=false!"
+    );
 }
 
 #[test]
 fn test_upsert_metadata_preservation_and_patching() {
+    use hnsqr::cluster::state_machine::{DataMutation, ReplicatedStateMachine, ShardStateMachine};
+    use hnsqr::metadata::index::MetadataValue;
     use std::collections::HashMap;
     use std::sync::Arc;
-    use hnsqr::cluster::state_machine::{DataMutation, ShardStateMachine, ReplicatedStateMachine};
-    use hnsqr::metadata::index::MetadataValue;
 
     let dim = 4;
     let engine = Arc::new(SegmentedEngine::new(dim, 100));
     let sm = ShardStateMachine::new(0, engine.clone());
 
     let mut meta = HashMap::new();
-    meta.insert("author".to_string(), MetadataValue::String("Lord Xyn".to_string()));
+    meta.insert(
+        "author".to_string(),
+        MetadataValue::String("Lord Xyn".to_string()),
+    );
     meta.insert("rating".to_string(), MetadataValue::Integer(100));
 
     let vec = VectorEmbedding::from_reals(&[1.0, 2.0, 3.0, 4.0]);
     let mutation = DataMutation::new_upsert_with_metadata("item_1", vec, Some(meta));
     sm.apply(1, &mutation).unwrap();
 
-    let stored_meta = engine.get_metadata("item_1").expect("Metadata must be stored");
-    assert_eq!(stored_meta.get("author").unwrap(), &MetadataValue::String("Lord Xyn".to_string()));
-    assert_eq!(stored_meta.get("rating").unwrap(), &MetadataValue::Integer(100));
+    let stored_meta = engine
+        .get_metadata("item_1")
+        .expect("Metadata must be stored");
+    assert_eq!(
+        stored_meta.get("author").unwrap(),
+        &MetadataValue::String("Lord Xyn".to_string())
+    );
+    assert_eq!(
+        stored_meta.get("rating").unwrap(),
+        &MetadataValue::Integer(100)
+    );
 
     // Patch metadata
     let mut patch = HashMap::new();
     patch.insert("rating".to_string(), MetadataValue::Integer(200));
-    patch.insert("tag".to_string(), MetadataValue::String("certified".to_string()));
+    patch.insert(
+        "tag".to_string(),
+        MetadataValue::String("certified".to_string()),
+    );
 
     let patch_mutation = DataMutation::MetadataPatch {
         mutation_id: hnsqr::consensus::pending::MutationId::generate(),
@@ -457,15 +495,24 @@ fn test_upsert_metadata_preservation_and_patching() {
     sm.apply(2, &patch_mutation).unwrap();
 
     let updated_meta = engine.get_metadata("item_1").unwrap();
-    assert_eq!(updated_meta.get("rating").unwrap(), &MetadataValue::Integer(200));
-    assert_eq!(updated_meta.get("tag").unwrap(), &MetadataValue::String("certified".to_string()));
-    assert_eq!(updated_meta.get("author").unwrap(), &MetadataValue::String("Lord Xyn".to_string()));
+    assert_eq!(
+        updated_meta.get("rating").unwrap(),
+        &MetadataValue::Integer(200)
+    );
+    assert_eq!(
+        updated_meta.get("tag").unwrap(),
+        &MetadataValue::String("certified".to_string())
+    );
+    assert_eq!(
+        updated_meta.get("author").unwrap(),
+        &MetadataValue::String("Lord Xyn".to_string())
+    );
 }
 
 #[test]
 fn test_atomic_batch_rollback_on_prevalidation_failure() {
+    use hnsqr::cluster::state_machine::{DataMutation, ReplicatedStateMachine, ShardStateMachine};
     use std::sync::Arc;
-    use hnsqr::cluster::state_machine::{DataMutation, ShardStateMachine, ReplicatedStateMachine};
 
     let dim = 4;
     let engine = Arc::new(SegmentedEngine::new(dim, 100));
@@ -483,17 +530,25 @@ fn test_atomic_batch_rollback_on_prevalidation_failure() {
     };
 
     let res = sm.apply(1, &batch);
-    assert!(res.is_err(), "Batch with mismatched dimension must fail prevalidation");
+    assert!(
+        res.is_err(),
+        "Batch with mismatched dimension must fail prevalidation"
+    );
 
     // Verify batch_1 was NOT inserted (Zero partial visibility)
     let search = engine.search(&v_valid, 10, SemanticRerankPlan::ExactSimd);
-    assert!(search.is_empty(), "Failed batch must leave zero partial state!");
+    assert!(
+        search.is_empty(),
+        "Failed batch must leave zero partial state!"
+    );
 }
 
 #[test]
 fn test_deduplication_horizon_sequence_window_gap_rejection() {
+    use hnsqr::cluster::state_machine::{
+        ClientIdentity, DataMutation, ReplicatedStateMachine, RetrySemantics, ShardStateMachine,
+    };
     use std::sync::Arc;
-    use hnsqr::cluster::state_machine::{ClientIdentity, DataMutation, RetrySemantics, ShardStateMachine, ReplicatedStateMachine};
 
     let dim = 4;
     let engine = Arc::new(SegmentedEngine::new(dim, 100));
@@ -514,7 +569,9 @@ fn test_deduplication_horizon_sequence_window_gap_rejection() {
         metadata: None,
         client: Some(client.clone()),
         client_seq: 1,
-        retry_semantics: RetrySemantics::ExactlyOnceWithinWindow { max_sequence_gap: 10 },
+        retry_semantics: RetrySemantics::ExactlyOnceWithinWindow {
+            max_sequence_gap: 10,
+        },
     };
     sm.apply(1, &m1).unwrap();
 
@@ -526,10 +583,15 @@ fn test_deduplication_horizon_sequence_window_gap_rejection() {
         metadata: None,
         client: Some(client.clone()),
         client_seq: 50,
-        retry_semantics: RetrySemantics::ExactlyOnceWithinWindow { max_sequence_gap: 10 },
+        retry_semantics: RetrySemantics::ExactlyOnceWithinWindow {
+            max_sequence_gap: 10,
+        },
     };
     let res_gap = sm.apply(2, &m_gap);
-    assert!(res_gap.is_err(), "Sequence jump exceeding max_sequence_gap must be rejected");
+    assert!(
+        res_gap.is_err(),
+        "Sequence jump exceeding max_sequence_gap must be rejected"
+    );
 
     // Stale sequence = 0 (< last_seq 1)
     let m_stale = DataMutation::Upsert {
@@ -539,7 +601,9 @@ fn test_deduplication_horizon_sequence_window_gap_rejection() {
         metadata: None,
         client: Some(client),
         client_seq: 0,
-        retry_semantics: RetrySemantics::ExactlyOnceWithinWindow { max_sequence_gap: 10 },
+        retry_semantics: RetrySemantics::ExactlyOnceWithinWindow {
+            max_sequence_gap: 10,
+        },
     };
     let res_stale = sm.apply(3, &m_stale);
     assert!(res_stale.is_err(), "Stale sequence must be rejected");

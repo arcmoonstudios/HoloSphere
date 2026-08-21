@@ -368,8 +368,16 @@ impl LutzCode {
             scales_l1_opt = Some(scales_l1);
         }
 
-        let global_residual_l0 = block_residuals_l0.iter().map(|&r| r * r).sum::<f32>().sqrt();
-        let global_residual_l1 = block_residuals_l1.iter().map(|&r| r * r).sum::<f32>().sqrt();
+        let global_residual_l0 = block_residuals_l0
+            .iter()
+            .map(|&r| r * r)
+            .sum::<f32>()
+            .sqrt();
+        let global_residual_l1 = block_residuals_l1
+            .iter()
+            .map(|&r| r * r)
+            .sum::<f32>()
+            .sqrt();
 
         Self {
             codes_l0,
@@ -479,7 +487,12 @@ impl LutzQueryTable {
     /// AVX2 In-Register Parallel FastScan evaluating 32 candidate nibbles per CPU cycle.
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "avx2")]
-    pub unsafe fn fastscan_32_candidates_avx2(&self, lut_table: &[f32], packed_codes: &[u8], out_scores: &mut [f32]) {
+    pub unsafe fn fastscan_32_candidates_avx2(
+        &self,
+        lut_table: &[f32],
+        packed_codes: &[u8],
+        out_scores: &mut [f32],
+    ) {
         use core::arch::x86_64::*;
 
         let lut_low = _mm_loadu_si128(lut_table.as_ptr() as *const __m128i);

@@ -13,7 +13,6 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::path::PathBuf;
 use hnsqr::consensus::raft::RaftCluster;
 use hnsqr::ecosystem::agent_memory::AutonomousMemoryConsolidator;
 use hnsqr::ecosystem::kv_cache::MemoryKvStore;
@@ -26,6 +25,7 @@ use hnsqr::storage::wal::WalManager;
 use hnsqr::transport::resp::RespServer;
 use hnsqr::vector::hypercube::HypercubeTensorSpace;
 use hnsqr::vector::inference::{InProcessModelEmbedder, InferenceModelConfig};
+use std::path::PathBuf;
 
 fn main() {
     println!("╔═════════════════════════════════════════════════════════════════════════════╗");
@@ -37,9 +37,30 @@ fn main() {
     #[cfg(target_arch = "x86_64")]
     {
         println!("   • Architecture:        x86_64");
-        println!("   • AVX2 Support:        {}", if is_x86_feature_detected!("avx2") { "✅ Supported" } else { "❌ Missing" });
-        println!("   • FMA Support:         {}", if is_x86_feature_detected!("fma") { "✅ Supported" } else { "❌ Missing" });
-        println!("   • SSE4.1 Support:      {}", if is_x86_feature_detected!("sse4.1") { "✅ Supported" } else { "❌ Missing" });
+        println!(
+            "   • AVX2 Support:        {}",
+            if is_x86_feature_detected!("avx2") {
+                "✅ Supported"
+            } else {
+                "❌ Missing"
+            }
+        );
+        println!(
+            "   • FMA Support:         {}",
+            if is_x86_feature_detected!("fma") {
+                "✅ Supported"
+            } else {
+                "❌ Missing"
+            }
+        );
+        println!(
+            "   • SSE4.1 Support:      {}",
+            if is_x86_feature_detected!("sse4.1") {
+                "✅ Supported"
+            } else {
+                "❌ Missing"
+            }
+        );
     }
     #[cfg(target_arch = "aarch64")]
     {
@@ -66,14 +87,22 @@ fn main() {
         Ok(secs) => {
             let days = secs / 86400;
             println!("   • Certificate Status:  ✅ Valid (Expires in {days} days)");
-            println!("   • Frame DoS Guard:     ✅ Active (Max {} MB per frame)", tls.max_frame_bytes / (1024 * 1024));
+            println!(
+                "   • Frame DoS Guard:     ✅ Active (Max {} MB per frame)",
+                tls.max_frame_bytes / (1024 * 1024)
+            );
         }
         Err(e) => println!("   • Certificate Status:  ❌ Expired ({e})"),
     }
 
     // 4. Storage & Persistence Integrity
-    let data_dir = std::env::var("HNSQR_DATA_DIR").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("./data"));
-    println!("\n🔍 4. STORAGE & DURABILITY INTEGRITY (Target: {}):", data_dir.display());
+    let data_dir = std::env::var("HNSQR_DATA_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("./data"));
+    println!(
+        "\n🔍 4. STORAGE & DURABILITY INTEGRITY (Target: {}):",
+        data_dir.display()
+    );
 
     if !data_dir.exists() {
         println!("   ℹ️ Data directory does not exist yet. Initializing dry check.");
@@ -84,8 +113,13 @@ fn main() {
             print!("   • Auditing Snapshot Manifest...");
             match UnifiedSnapshotEngine::load_latest_snapshot(&snap_dir) {
                 Ok((manifest, mmap)) => {
-                    println!(" ✅ OK (Gen {}, LSN {}, Vectors {}, Mmap {} bytes)",
-                        manifest.generation, manifest.snapshot_lsn, manifest.total_vectors, mmap.len());
+                    println!(
+                        " ✅ OK (Gen {}, LSN {}, Vectors {}, Mmap {} bytes)",
+                        manifest.generation,
+                        manifest.snapshot_lsn,
+                        manifest.total_vectors,
+                        mmap.len()
+                    );
                 }
                 Err(e) => {
                     println!(" ⚠️ Snapshot issue: {e}");
@@ -102,8 +136,12 @@ fn main() {
                     let replay_res = wal.replay(0, |_lsn, _mut| Ok(()));
                     match replay_res {
                         Ok(summary) => {
-                            println!(" ✅ OK (Current LSN {}, Replayed {}, Torn Skipped {})",
-                                wal.current_lsn(), summary.total_replayed, summary.torn_records_skipped);
+                            println!(
+                                " ✅ OK (Current LSN {}, Replayed {}, Torn Skipped {})",
+                                wal.current_lsn(),
+                                summary.total_replayed,
+                                summary.torn_records_skipped
+                            );
                         }
                         Err(e) => println!(" ⚠️ WAL replay issue: {e}"),
                     }
@@ -115,7 +153,7 @@ fn main() {
 
     // 5. Universal Multi-Paradigm Data Engines
     println!("\n🔍 5. UNIVERSAL MULTI-PARADIGM ENGINES HEALTH:");
-    
+
     // Relational SQL ACID
     let sql_engine = RelationalSqlEngine::new();
     let tx = sql_engine.begin_transaction();
@@ -124,12 +162,22 @@ fn main() {
 
     // Hypercube Tensor Space
     let space = HypercubeTensorSpace::new(vec![10, 10, 10, 10]);
-    println!("   • 4D Hypercube Tensor: ✅ Volumetric Grid Active ({} cells)", space.total_volume());
+    println!(
+        "   • 4D Hypercube Tensor: ✅ Volumetric Grid Active ({} cells)",
+        space.total_volume()
+    );
 
     // Linguistic Search
     let dfa = FuzzyLevenshteinAutomaton::new("holosphere", 2);
     let fuzzy_ok = dfa.matches("holosfere").0;
-    println!("   • Linguistic Engine:   {}", if fuzzy_ok { "✅ Fuzzy Levenshtein DFA Active" } else { "❌ Fuzzy Error" });
+    println!(
+        "   • Linguistic Engine:   {}",
+        if fuzzy_ok {
+            "✅ Fuzzy Levenshtein DFA Active"
+        } else {
+            "❌ Fuzzy Error"
+        }
+    );
 
     // Columnar OLAP
     let _olap = ColumnarOlapEngine::new();
@@ -151,11 +199,14 @@ fn main() {
 
     // 6. Global Enterprise & Distributed Platform
     println!("\n🔍 6. GLOBAL ENTERPRISE & FEDERATION CAPABILITIES:");
-    
+
     // Sharded Lock-Free Map
     let sharded_map = hnsqr::storage::sharded_map::ShardedConcurrentMap::<String, u32>::new();
     sharded_map.insert("doc_test".into(), 100);
-    println!("   • Lock-Free Ingestion: ✅ 64-Way Striped Map Active ({} items)", sharded_map.len());
+    println!(
+        "   • Lock-Free Ingestion: ✅ 64-Way Striped Map Active ({} items)",
+        sharded_map.len()
+    );
 
     // Multi-Region Federation
     let _fed_mgr = hnsqr::cluster::federation::FederatedRegionManager::new("us-east-1");
@@ -168,7 +219,10 @@ fn main() {
 
     // Apache Arrow Flight
     let arrow_schema = hnsqr::transport::arrow_flight::ArrowFlightService::vector_olap_schema(1536);
-    println!("   • Arrow Flight SQL:    ✅ Zero-Copy IPC Serializer Active ({} fields)", arrow_schema.fields.len());
+    println!(
+        "   • Arrow Flight SQL:    ✅ Zero-Copy IPC Serializer Active ({} fields)",
+        arrow_schema.fields.len()
+    );
 
     // SIEM Export
     println!("   • SIEM Event Streams:  ✅ RFC 5424 Syslog & OTLP JSON Ready");

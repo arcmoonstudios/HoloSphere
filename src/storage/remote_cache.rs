@@ -9,10 +9,10 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use crate::HNSQRResult;
 
@@ -71,7 +71,8 @@ impl RemoteRangeCache {
             // Evict least frequently used chunk
             if let Some((&lfu_id, _)) = guard.iter().min_by_key(|(_, c)| c.access_frequency) {
                 if let Some(removed) = guard.remove(&lfu_id) {
-                    self.current_bytes.fetch_sub(removed.data.len(), Ordering::Relaxed);
+                    self.current_bytes
+                        .fetch_sub(removed.data.len(), Ordering::Relaxed);
                 }
             }
         }

@@ -11,11 +11,9 @@ mod common;
 
 use std::time::Instant;
 
-use hnsqr::proof::{
-    DenseExactProof, GlobalExactProofSearch, SegmentProofView, SemanticProofTree,
-};
-use hnsqr::rivero::{RiveroAddressConfig, RiveroCompiler, RiveroConfig, RiveroProjectionMode};
+use hnsqr::proof::{DenseExactProof, GlobalExactProofSearch, SegmentProofView, SemanticProofTree};
 use hnsqr::rivero::bulk::RiveroBulkBuilder;
+use hnsqr::rivero::{RiveroAddressConfig, RiveroCompiler, RiveroConfig, RiveroProjectionMode};
 use hnsqr::{DistanceFunction, NodeIndex, SimilarityScore, VectorEmbedding};
 
 #[derive(Debug, Clone)]
@@ -64,16 +62,12 @@ fn brute_force_exact(
 
 fn run_experiment(exp: &ExperimentConfig) -> BenchmarkResult {
     let complex_dim = exp.d_real / 2;
-    println!(
-        "\n═══════════════════════════════════════════════════════════════════════════════"
-    );
+    println!("\n═══════════════════════════════════════════════════════════════════════════════");
     println!(
         " 🔬 Running Gate B Benchmark: D_real = {} ({} complex), N = {}, K = {}",
         exp.d_real, complex_dim, exp.n_corpus, exp.k
     );
-    println!(
-        "═══════════════════════════════════════════════════════════════════════════════"
-    );
+    println!("═══════════════════════════════════════════════════════════════════════════════");
 
     // 1. Generate Synthetic Corpus & Queries using realistic text embeddings
     let dataset = common::generate_realistic_text_corpus(
@@ -155,14 +149,8 @@ fn run_experiment(exp: &ExperimentConfig) -> BenchmarkResult {
             tombstones: None,
         };
         let proof_start = Instant::now();
-        let (certified, proof) = GlobalExactProofSearch::search(
-            q,
-            exp.k,
-            &[seg_view],
-            &[],
-            &rivero_cands,
-            None,
-        );
+        let (certified, proof) =
+            GlobalExactProofSearch::search(q, exp.k, &[seg_view], &[], &rivero_cands, None);
         let proof_dur = proof_start.elapsed().as_secs_f64() * 1_000_000.0;
         proof_latencies_us.push(proof_dur);
         proofs.push(proof);
@@ -190,11 +178,12 @@ fn run_experiment(exp: &ExperimentConfig) -> BenchmarkResult {
 
     // Compute Summary Telemetry
     let n_f64 = exp.n_corpus as f64;
-    let avg_regions_pruned = proofs.iter().map(|p| p.proof_regions_pruned).sum::<usize>() as f64
-        / exp.n_queries as f64;
-    let avg_regions_popped = proofs.iter().map(|p| p.proof_regions_popped).sum::<usize>() as f64
-        / exp.n_queries as f64;
-    let regions_pruned_pct = (avg_regions_pruned / (avg_regions_pruned + avg_regions_popped)) * 100.0;
+    let avg_regions_pruned =
+        proofs.iter().map(|p| p.proof_regions_pruned).sum::<usize>() as f64 / exp.n_queries as f64;
+    let avg_regions_popped =
+        proofs.iter().map(|p| p.proof_regions_popped).sum::<usize>() as f64 / exp.n_queries as f64;
+    let regions_pruned_pct =
+        (avg_regions_pruned / (avg_regions_pruned + avg_regions_popped)) * 100.0;
 
     let avg_vectors_pruned_by_region = proofs
         .iter()
@@ -203,18 +192,18 @@ fn run_experiment(exp: &ExperimentConfig) -> BenchmarkResult {
         / exp.n_queries as f64;
     let vectors_pruned_by_region_pct = (avg_vectors_pruned_by_region / n_f64) * 100.0;
 
-    let avg_lutz_l0_evals = proofs.iter().map(|p| p.lutz_l0_evaluations).sum::<usize>() as f64
-        / exp.n_queries as f64;
-    let avg_lutz_l0_pruned = proofs.iter().map(|p| p.lutz_l0_pruned).sum::<usize>() as f64
-        / exp.n_queries as f64;
+    let avg_lutz_l0_evals =
+        proofs.iter().map(|p| p.lutz_l0_evaluations).sum::<usize>() as f64 / exp.n_queries as f64;
+    let avg_lutz_l0_pruned =
+        proofs.iter().map(|p| p.lutz_l0_pruned).sum::<usize>() as f64 / exp.n_queries as f64;
     let lutz_l0_pruned_pct = if avg_lutz_l0_evals > 0.0 {
         (avg_lutz_l0_pruned / avg_lutz_l0_evals) * 100.0
     } else {
         0.0
     };
 
-    let avg_exact_evals = proofs.iter().map(|p| p.exact_evaluations).sum::<usize>() as f64
-        / exp.n_queries as f64;
+    let avg_exact_evals =
+        proofs.iter().map(|p| p.exact_evaluations).sum::<usize>() as f64 / exp.n_queries as f64;
     let exact_simd_evals_pct = (avg_exact_evals / n_f64) * 100.0;
 
     bf_latencies_us.sort_by(|a, b| a.total_cmp(b));
@@ -225,13 +214,31 @@ fn run_experiment(exp: &ExperimentConfig) -> BenchmarkResult {
     let speedup = bf_lat_p50 / proof_lat_p50;
 
     println!("\n   📊 RESULTS SUMMARY:");
-    println!("      • Exact Recall@K:               {:.4}% (VERIFIED 100.000%)", exact_recall);
-    println!("      • Hierarchy Regions Pruned:     {:.2}%", regions_pruned_pct);
-    println!("      • Vectors Pruned by Region UB:  {:.2}% ({:.0} vectors)", vectors_pruned_by_region_pct, avg_vectors_pruned_by_region);
-    println!("      • Leaf LUTz L0 Pruned:          {:.2}%", lutz_l0_pruned_pct);
-    println!("      • Exact SIMD Evaluations:       {:.2}% ({:.0} vectors vs {} total)", exact_simd_evals_pct, avg_exact_evals, exp.n_corpus);
+    println!(
+        "      • Exact Recall@K:               {:.4}% (VERIFIED 100.000%)",
+        exact_recall
+    );
+    println!(
+        "      • Hierarchy Regions Pruned:     {:.2}%",
+        regions_pruned_pct
+    );
+    println!(
+        "      • Vectors Pruned by Region UB:  {:.2}% ({:.0} vectors)",
+        vectors_pruned_by_region_pct, avg_vectors_pruned_by_region
+    );
+    println!(
+        "      • Leaf LUTz L0 Pruned:          {:.2}%",
+        lutz_l0_pruned_pct
+    );
+    println!(
+        "      • Exact SIMD Evaluations:       {:.2}% ({:.0} vectors vs {} total)",
+        exact_simd_evals_pct, avg_exact_evals, exp.n_corpus
+    );
     println!("      • Brute Force Latency (p50):    {:.2} µs", bf_lat_p50);
-    println!("      • Hierarchical Proof (p50):     {:.2} µs", proof_lat_p50);
+    println!(
+        "      • Hierarchical Proof (p50):     {:.2} µs",
+        proof_lat_p50
+    );
     println!("      • Speedup Factor vs Brute Force: {:.2}x", speedup);
 
     BenchmarkResult {
@@ -286,14 +293,27 @@ fn main() {
         results.push(run_experiment(exp));
     }
 
-    println!("\n═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════");
+    println!(
+        "\n═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════"
+    );
     println!("🏆 GATE B GRAND SCORECARD (100.000% EXACT TOP-K)");
-    println!("═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════");
+    println!(
+        "═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════"
+    );
     println!(
         "{:<8} | {:<8} | {:<10} | {:<12} | {:<12} | {:<12} | {:<12} | {:<10}",
-        "D_real", "N", "Recall@10", "Region Prune", "LUTz Prune", "Exact SIMD", "Latency", "Speedup"
+        "D_real",
+        "N",
+        "Recall@10",
+        "Region Prune",
+        "LUTz Prune",
+        "Exact SIMD",
+        "Latency",
+        "Speedup"
     );
-    println!("---------------------------------------------------------------------------------------------------------------");
+    println!(
+        "---------------------------------------------------------------------------------------------------------------"
+    );
     for r in results {
         println!(
             "{:<8} | {:<8} | {:<9.3}% | {:<11.2}% | {:<11.2}% | {:<11.2}% | {:<9.1} µs | {:.2}x",
@@ -307,5 +327,7 @@ fn main() {
             r.speedup
         );
     }
-    println!("═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════\n");
+    println!(
+        "═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════\n"
+    );
 }

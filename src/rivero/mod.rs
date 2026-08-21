@@ -18,8 +18,8 @@
 use std::cell::RefCell;
 use std::cmp::Ordering as CmpOrdering;
 use std::collections::HashMap;
-use std::sync::{Arc, LazyLock};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, LazyLock};
 
 use num_complex::Complex32;
 use parking_lot::RwLock;
@@ -830,155 +830,151 @@ impl RiveroCompiler {
         let limit = data.len().min(self.dimension);
 
         match self.config.geometry {
-            VectorGeometry::Real => {
-                match self.config.projection {
-                    RiveroProjectionMode::GlobalMix => {
-                        for foundation in 0..foundation_count {
-                            let f_arr = &mut foundations[foundation];
-                            for (index, &value) in data[..limit].iter().enumerate() {
-                                if !value.re.is_finite() || !value.im.is_finite() {
-                                    continue;
-                                }
-                                let mixed = self.rot_seeds[index][foundation];
-                                let re_lane = (mixed & 7) as usize;
-                                let im_lane = ((mixed >> 8) & 7) as usize;
-                                let re_sign = if mixed & (1 << 16) == 0 { 1.0 } else { -1.0 };
-                                let im_sign = if mixed & (1 << 17) == 0 { 1.0 } else { -1.0 };
-                                f_arr[re_lane] += value.re * re_sign;
-                                f_arr[im_lane] += value.im * im_sign;
-                            }
-                        }
-                    }
-                    RiveroProjectionMode::MultiLane { lanes, .. } => {
-                        let lanes_count = (lanes as usize).max(1);
-                        let f_per_lane = (foundation_count / lanes_count).max(1);
+            VectorGeometry::Real => match self.config.projection {
+                RiveroProjectionMode::GlobalMix => {
+                    for foundation in 0..foundation_count {
+                        let f_arr = &mut foundations[foundation];
                         for (index, &value) in data[..limit].iter().enumerate() {
                             if !value.re.is_finite() || !value.im.is_finite() {
                                 continue;
                             }
-                            let lane = (self.dim_lanes[index] as usize).min(lanes_count - 1);
-                            let f_start = lane * f_per_lane;
-                            let f_end = (f_start + f_per_lane).min(foundation_count);
-                            let r_row = &self.rot_seeds[index];
-
-                            for foundation in f_start..f_end {
-                                let mixed = r_row[foundation];
-                                let re_lane = (mixed & 7) as usize;
-                                let im_lane = ((mixed >> 8) & 7) as usize;
-                                let re_sign = if mixed & (1 << 16) == 0 { 1.0 } else { -1.0 };
-                                let im_sign = if mixed & (1 << 17) == 0 { 1.0 } else { -1.0 };
-                                foundations[foundation][re_lane] += value.re * re_sign;
-                                foundations[foundation][im_lane] += value.im * im_sign;
-                            }
+                            let mixed = self.rot_seeds[index][foundation];
+                            let re_lane = (mixed & 7) as usize;
+                            let im_lane = ((mixed >> 8) & 7) as usize;
+                            let re_sign = if mixed & (1 << 16) == 0 { 1.0 } else { -1.0 };
+                            let im_sign = if mixed & (1 << 17) == 0 { 1.0 } else { -1.0 };
+                            f_arr[re_lane] += value.re * re_sign;
+                            f_arr[im_lane] += value.im * im_sign;
                         }
                     }
                 }
-            }
-            VectorGeometry::ComplexPhaseInvariant => {
-                match self.config.projection {
-                    RiveroProjectionMode::GlobalMix => {
-                        for foundation in 0..foundation_count {
-                            let mut ref_acc = Complex32::new(0.0, 0.0);
-                            for (index, &value) in data[..limit].iter().enumerate() {
-                                if !value.re.is_finite() || !value.im.is_finite() {
-                                    continue;
-                                }
-                                let mixed = self.phase_seeds[index][foundation];
-                                let weighted = match (mixed >> 20) & 3 {
-                                    0 => value,
-                                    1 => -value,
-                                    2 => Complex32::new(-value.im, value.re),
-                                    _ => Complex32::new(value.im, -value.re),
-                                };
-                                ref_acc += weighted;
-                            }
-                            references[foundation] = ref_acc;
+                RiveroProjectionMode::MultiLane { lanes, .. } => {
+                    let lanes_count = (lanes as usize).max(1);
+                    let f_per_lane = (foundation_count / lanes_count).max(1);
+                    for (index, &value) in data[..limit].iter().enumerate() {
+                        if !value.re.is_finite() || !value.im.is_finite() {
+                            continue;
                         }
+                        let lane = (self.dim_lanes[index] as usize).min(lanes_count - 1);
+                        let f_start = lane * f_per_lane;
+                        let f_end = (f_start + f_per_lane).min(foundation_count);
+                        let r_row = &self.rot_seeds[index];
 
-                        let fallback_rotation = canonical_phase_rotation(&data[..limit]);
-                        let mut rotations = [fallback_rotation; RIVERO_MAX_FOUNDATIONS];
-                        for foundation in 0..foundation_count {
-                            let magnitude = references[foundation].norm();
-                            if magnitude.is_finite() && magnitude > 1e-6 {
-                                rotations[foundation] = references[foundation].conj() / magnitude;
-                            }
-                        }
-
-                        for foundation in 0..foundation_count {
-                            let rot = rotations[foundation];
-                            let f_arr = &mut foundations[foundation];
-                            for (index, &value) in data[..limit].iter().enumerate() {
-                                if !value.re.is_finite() || !value.im.is_finite() {
-                                    continue;
-                                }
-                                let canonical = value * rot;
-                                let mixed = self.rot_seeds[index][foundation];
-                                let re_lane = (mixed & 7) as usize;
-                                let im_lane = ((mixed >> 8) & 7) as usize;
-                                let re_sign = if mixed & (1 << 16) == 0 { 1.0 } else { -1.0 };
-                                let im_sign = if mixed & (1 << 17) == 0 { 1.0 } else { -1.0 };
-                                f_arr[re_lane] += canonical.re * re_sign;
-                                f_arr[im_lane] += canonical.im * im_sign;
-                            }
-                        }
-                    }
-                    RiveroProjectionMode::MultiLane { lanes, .. } => {
-                        let lanes_count = (lanes as usize).max(1);
-                        let f_per_lane = (foundation_count / lanes_count).max(1);
-
-                        for (index, &value) in data[..limit].iter().enumerate() {
-                            if !value.re.is_finite() || !value.im.is_finite() {
-                                continue;
-                            }
-                            let lane = (self.dim_lanes[index] as usize).min(lanes_count - 1);
-                            let f_start = lane * f_per_lane;
-                            let f_end = (f_start + f_per_lane).min(foundation_count);
-                            let p_row = &self.phase_seeds[index];
-
-                            for foundation in f_start..f_end {
-                                let mixed = p_row[foundation];
-                                let weighted = match (mixed >> 20) & 3 {
-                                    0 => value,
-                                    1 => -value,
-                                    2 => Complex32::new(-value.im, value.re),
-                                    _ => Complex32::new(value.im, -value.re),
-                                };
-                                references[foundation] += weighted;
-                            }
-                        }
-
-                        let fallback_rotation = canonical_phase_rotation(&data[..limit]);
-                        let mut rotations = [fallback_rotation; RIVERO_MAX_FOUNDATIONS];
-                        for foundation in 0..foundation_count {
-                            let magnitude = references[foundation].norm();
-                            if magnitude.is_finite() && magnitude > 1e-6 {
-                                rotations[foundation] = references[foundation].conj() / magnitude;
-                            }
-                        }
-
-                        for (index, &value) in data[..limit].iter().enumerate() {
-                            if !value.re.is_finite() || !value.im.is_finite() {
-                                continue;
-                            }
-                            let lane = (self.dim_lanes[index] as usize).min(lanes_count - 1);
-                            let f_start = lane * f_per_lane;
-                            let f_end = (f_start + f_per_lane).min(foundation_count);
-                            let r_row = &self.rot_seeds[index];
-
-                            for foundation in f_start..f_end {
-                                let canonical = value * rotations[foundation];
-                                let mixed = r_row[foundation];
-                                let re_lane = (mixed & 7) as usize;
-                                let im_lane = ((mixed >> 8) & 7) as usize;
-                                let re_sign = if mixed & (1 << 16) == 0 { 1.0 } else { -1.0 };
-                                let im_sign = if mixed & (1 << 17) == 0 { 1.0 } else { -1.0 };
-                                foundations[foundation][re_lane] += canonical.re * re_sign;
-                                foundations[foundation][im_lane] += canonical.im * im_sign;
-                            }
+                        for foundation in f_start..f_end {
+                            let mixed = r_row[foundation];
+                            let re_lane = (mixed & 7) as usize;
+                            let im_lane = ((mixed >> 8) & 7) as usize;
+                            let re_sign = if mixed & (1 << 16) == 0 { 1.0 } else { -1.0 };
+                            let im_sign = if mixed & (1 << 17) == 0 { 1.0 } else { -1.0 };
+                            foundations[foundation][re_lane] += value.re * re_sign;
+                            foundations[foundation][im_lane] += value.im * im_sign;
                         }
                     }
                 }
-            }
+            },
+            VectorGeometry::ComplexPhaseInvariant => match self.config.projection {
+                RiveroProjectionMode::GlobalMix => {
+                    for foundation in 0..foundation_count {
+                        let mut ref_acc = Complex32::new(0.0, 0.0);
+                        for (index, &value) in data[..limit].iter().enumerate() {
+                            if !value.re.is_finite() || !value.im.is_finite() {
+                                continue;
+                            }
+                            let mixed = self.phase_seeds[index][foundation];
+                            let weighted = match (mixed >> 20) & 3 {
+                                0 => value,
+                                1 => -value,
+                                2 => Complex32::new(-value.im, value.re),
+                                _ => Complex32::new(value.im, -value.re),
+                            };
+                            ref_acc += weighted;
+                        }
+                        references[foundation] = ref_acc;
+                    }
+
+                    let fallback_rotation = canonical_phase_rotation(&data[..limit]);
+                    let mut rotations = [fallback_rotation; RIVERO_MAX_FOUNDATIONS];
+                    for foundation in 0..foundation_count {
+                        let magnitude = references[foundation].norm();
+                        if magnitude.is_finite() && magnitude > 1e-6 {
+                            rotations[foundation] = references[foundation].conj() / magnitude;
+                        }
+                    }
+
+                    for foundation in 0..foundation_count {
+                        let rot = rotations[foundation];
+                        let f_arr = &mut foundations[foundation];
+                        for (index, &value) in data[..limit].iter().enumerate() {
+                            if !value.re.is_finite() || !value.im.is_finite() {
+                                continue;
+                            }
+                            let canonical = value * rot;
+                            let mixed = self.rot_seeds[index][foundation];
+                            let re_lane = (mixed & 7) as usize;
+                            let im_lane = ((mixed >> 8) & 7) as usize;
+                            let re_sign = if mixed & (1 << 16) == 0 { 1.0 } else { -1.0 };
+                            let im_sign = if mixed & (1 << 17) == 0 { 1.0 } else { -1.0 };
+                            f_arr[re_lane] += canonical.re * re_sign;
+                            f_arr[im_lane] += canonical.im * im_sign;
+                        }
+                    }
+                }
+                RiveroProjectionMode::MultiLane { lanes, .. } => {
+                    let lanes_count = (lanes as usize).max(1);
+                    let f_per_lane = (foundation_count / lanes_count).max(1);
+
+                    for (index, &value) in data[..limit].iter().enumerate() {
+                        if !value.re.is_finite() || !value.im.is_finite() {
+                            continue;
+                        }
+                        let lane = (self.dim_lanes[index] as usize).min(lanes_count - 1);
+                        let f_start = lane * f_per_lane;
+                        let f_end = (f_start + f_per_lane).min(foundation_count);
+                        let p_row = &self.phase_seeds[index];
+
+                        for foundation in f_start..f_end {
+                            let mixed = p_row[foundation];
+                            let weighted = match (mixed >> 20) & 3 {
+                                0 => value,
+                                1 => -value,
+                                2 => Complex32::new(-value.im, value.re),
+                                _ => Complex32::new(value.im, -value.re),
+                            };
+                            references[foundation] += weighted;
+                        }
+                    }
+
+                    let fallback_rotation = canonical_phase_rotation(&data[..limit]);
+                    let mut rotations = [fallback_rotation; RIVERO_MAX_FOUNDATIONS];
+                    for foundation in 0..foundation_count {
+                        let magnitude = references[foundation].norm();
+                        if magnitude.is_finite() && magnitude > 1e-6 {
+                            rotations[foundation] = references[foundation].conj() / magnitude;
+                        }
+                    }
+
+                    for (index, &value) in data[..limit].iter().enumerate() {
+                        if !value.re.is_finite() || !value.im.is_finite() {
+                            continue;
+                        }
+                        let lane = (self.dim_lanes[index] as usize).min(lanes_count - 1);
+                        let f_start = lane * f_per_lane;
+                        let f_end = (f_start + f_per_lane).min(foundation_count);
+                        let r_row = &self.rot_seeds[index];
+
+                        for foundation in f_start..f_end {
+                            let canonical = value * rotations[foundation];
+                            let mixed = r_row[foundation];
+                            let re_lane = (mixed & 7) as usize;
+                            let im_lane = ((mixed >> 8) & 7) as usize;
+                            let re_sign = if mixed & (1 << 16) == 0 { 1.0 } else { -1.0 };
+                            let im_sign = if mixed & (1 << 17) == 0 { 1.0 } else { -1.0 };
+                            foundations[foundation][re_lane] += canonical.re * re_sign;
+                            foundations[foundation][im_lane] += canonical.im * im_sign;
+                        }
+                    }
+                }
+            },
         }
 
         for coords in foundations[..foundation_count].iter_mut() {
@@ -1364,9 +1360,8 @@ impl CellSlots {
                 slot: resident.slot,
             };
         }
-        ranked[..scanned].select_nth_unstable_by(admitted - 1, |lhs, rhs| {
-            ranked_resident_order(lhs, rhs)
-        });
+        ranked[..scanned]
+            .select_nth_unstable_by(admitted - 1, |lhs, rhs| ranked_resident_order(lhs, rhs));
         append_best_slice(&self.slots, query_code, budget, candidates)
     }
 }
@@ -1384,8 +1379,7 @@ pub(crate) fn append_best_slice(
     let q = unpack_projected_coords(query_code);
     if scanned <= budget {
         candidates.extend(residents.iter().map(|resident| {
-            let (dot, l1_distance) =
-                projected_similarity_unpacked(q, resident.projected_code());
+            let (dot, l1_distance) = projected_similarity_unpacked(q, resident.projected_code());
             RankedResident {
                 dot,
                 l1_distance,
@@ -1397,7 +1391,10 @@ pub(crate) fn append_best_slice(
 
     let mut ranked = [RankedResident::EMPTY; RIVERO_CELL_CAPACITY];
     let capped_scanned = scanned.min(RIVERO_CELL_CAPACITY);
-    for (rank, resident) in ranked[..capped_scanned].iter_mut().zip(residents.iter().copied()) {
+    for (rank, resident) in ranked[..capped_scanned]
+        .iter_mut()
+        .zip(residents.iter().copied())
+    {
         let (dot, l1_distance) = projected_similarity_unpacked(q, resident.projected_code());
         *rank = RankedResident {
             dot,
@@ -1405,9 +1402,8 @@ pub(crate) fn append_best_slice(
             slot: resident.slot,
         };
     }
-    ranked[..capped_scanned].select_nth_unstable_by(admitted - 1, |lhs, rhs| {
-        ranked_resident_order(lhs, rhs)
-    });
+    ranked[..capped_scanned]
+        .select_nth_unstable_by(admitted - 1, |lhs, rhs| ranked_resident_order(lhs, rhs));
     candidates.extend_from_slice(&ranked[..admitted]);
     (scanned, admitted)
 }
@@ -2160,10 +2156,22 @@ pub(crate) fn projected_similarity_unpacked(q: [i16; 8], rhs: u32) -> (i16, u16)
     let r6 = ((rhs >> 18) & 7) as i16 - 3;
     let r7 = ((rhs >> 21) & 7) as i16 - 3;
 
-    let dot = q[0] * r0 + q[1] * r1 + q[2] * r2 + q[3] * r3
-        + q[4] * r4 + q[5] * r5 + q[6] * r6 + q[7] * r7;
-    let l1_distance = q[0].abs_diff(r0) + q[1].abs_diff(r1) + q[2].abs_diff(r2) + q[3].abs_diff(r3)
-        + q[4].abs_diff(r4) + q[5].abs_diff(r5) + q[6].abs_diff(r6) + q[7].abs_diff(r7);
+    let dot = q[0] * r0
+        + q[1] * r1
+        + q[2] * r2
+        + q[3] * r3
+        + q[4] * r4
+        + q[5] * r5
+        + q[6] * r6
+        + q[7] * r7;
+    let l1_distance = q[0].abs_diff(r0)
+        + q[1].abs_diff(r1)
+        + q[2].abs_diff(r2)
+        + q[3].abs_diff(r3)
+        + q[4].abs_diff(r4)
+        + q[5].abs_diff(r5)
+        + q[6].abs_diff(r6)
+        + q[7].abs_diff(r7);
     (dot, l1_distance)
 }
 
@@ -2260,10 +2268,26 @@ pub(crate) fn simhash_signature(
         let p1 = if mask & 2 == 0 { coords[1] } else { -coords[1] };
         let p2 = if mask & 4 == 0 { coords[2] } else { -coords[2] };
         let p3 = if mask & 8 == 0 { coords[3] } else { -coords[3] };
-        let p4 = if mask & 16 == 0 { coords[4] } else { -coords[4] };
-        let p5 = if mask & 32 == 0 { coords[5] } else { -coords[5] };
-        let p6 = if mask & 64 == 0 { coords[6] } else { -coords[6] };
-        let p7 = if mask & 128 == 0 { coords[7] } else { -coords[7] };
+        let p4 = if mask & 16 == 0 {
+            coords[4]
+        } else {
+            -coords[4]
+        };
+        let p5 = if mask & 32 == 0 {
+            coords[5]
+        } else {
+            -coords[5]
+        };
+        let p6 = if mask & 64 == 0 {
+            coords[6]
+        } else {
+            -coords[6]
+        };
+        let p7 = if mask & 128 == 0 {
+            coords[7]
+        } else {
+            -coords[7]
+        };
         let projection = p0 + p1 + p2 + p3 + p4 + p5 + p6 + p7;
 
         if projection >= 0.0 {
@@ -2326,9 +2350,8 @@ pub(crate) fn simhash_probe_signatures(
     pool.select_nth_unstable_by(RIVERO_SIMHASH_BUILD_PROBES - 1, |lhs, rhs| {
         lhs.0.total_cmp(&rhs.0).then_with(|| lhs.1.cmp(&rhs.1))
     });
-    pool[..RIVERO_SIMHASH_BUILD_PROBES].sort_unstable_by(|lhs, rhs| {
-        lhs.0.total_cmp(&rhs.0).then_with(|| lhs.1.cmp(&rhs.1))
-    });
+    pool[..RIVERO_SIMHASH_BUILD_PROBES]
+        .sort_unstable_by(|lhs, rhs| lhs.0.total_cmp(&rhs.0).then_with(|| lhs.1.cmp(&rhs.1)));
 
     let mut probes = [0u16; RIVERO_SIMHASH_BUILD_PROBES];
     for (probe, &(_, mask)) in probes.iter_mut().zip(pool.iter()) {

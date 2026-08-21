@@ -7,11 +7,11 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::NodeIndex;
 use crate::graph::catalog::labels::LabelId;
 use crate::graph::catalog::properties::PropertyKey;
 use crate::graph::catalog::relationships::RelTypeId;
 use crate::graph::storage::properties::GraphPropertyValue;
-use crate::NodeIndex;
 
 /// Stable external identity for a relationship, assigned at creation.
 pub type RelationshipId = u64;
@@ -26,7 +26,6 @@ pub type GraphProperties = HashMap<PropertyKey, GraphPropertyValue>;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum GraphMutation {
     // ── Node operations ────────────────────────────────────────────────
-
     /// Create a new graph node, optionally binding it to a vector slot.
     CreateNode {
         /// Stable external identifier used by the client.
@@ -38,9 +37,7 @@ pub enum GraphMutation {
     },
 
     /// Delete a node and all its incident edges (cascade).
-    DeleteNode {
-        external_id: String,
-    },
+    DeleteNode { external_id: String },
 
     /// Add labels to an existing node (idempotent).
     SetNodeLabels {
@@ -61,7 +58,6 @@ pub enum GraphMutation {
     },
 
     // ── Relationship operations ─────────────────────────────────────────
-
     /// Create a directed relationship between two nodes.
     CreateRelationship {
         relationship_id: RelationshipId,
@@ -73,9 +69,7 @@ pub enum GraphMutation {
     },
 
     /// Delete a specific relationship.
-    DeleteRelationship {
-        relationship_id: RelationshipId,
-    },
+    DeleteRelationship { relationship_id: RelationshipId },
 
     /// Patch properties on an existing relationship.
     PatchRelationshipProperties {
@@ -84,7 +78,6 @@ pub enum GraphMutation {
     },
 
     // ── Batch ───────────────────────────────────────────────────────────
-
     /// Atomic batch of graph mutations applied in order.
     /// Fails entirely if any constituent mutation fails pre-validation.
     Batch(Vec<GraphMutation>),

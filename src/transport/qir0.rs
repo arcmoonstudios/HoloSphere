@@ -353,7 +353,12 @@ impl<S: HNSQRService + 'static> HNSQRServer<S> {
                                 ..Default::default()
                             };
 
-                            match service.search(&ctx, &query, k, crate::proof::lutz::SemanticRerankPlan::Auto) {
+                            match service.search(
+                                &ctx,
+                                &query,
+                                k,
+                                crate::proof::lutz::SemanticRerankPlan::Auto,
+                            ) {
                                 Ok(results) => {
                                     let header_pos = write_buf.len();
                                     // Flag 0x0001 = CertifiedExact. The search trait returns
@@ -438,7 +443,12 @@ impl<S: HNSQRService + 'static> HNSQRServer<S> {
 
                             let mut batch_results = Vec::with_capacity(queries.len());
                             for q in &queries {
-                                match service.search(&ctx, q, k, crate::proof::lutz::SemanticRerankPlan::Auto) {
+                                match service.search(
+                                    &ctx,
+                                    q,
+                                    k,
+                                    crate::proof::lutz::SemanticRerankPlan::Auto,
+                                ) {
                                     Ok(res) => batch_results.push(res),
                                     Err(e) => {
                                         Self::write_error(
@@ -496,7 +506,11 @@ impl<S: HNSQRService + 'static> HNSQRServer<S> {
                 OpCode::GraphQuery => {
                     let q_len = payload.get_u32() as usize;
                     if payload.len() < q_len {
-                        Self::write_error(&mut write_buf, header.request_id, "Truncated graph query payload");
+                        Self::write_error(
+                            &mut write_buf,
+                            header.request_id,
+                            "Truncated graph query payload",
+                        );
                     } else {
                         let q_bytes = payload.split_to(q_len);
                         let q_str = std::str::from_utf8(&q_bytes).unwrap_or("");
@@ -517,7 +531,9 @@ impl<S: HNSQRService + 'static> HNSQRServer<S> {
                                 resp_header.encode(&mut write_buf);
                                 write_buf.put_slice(json.as_bytes());
                             }
-                            Err(e) => Self::write_error(&mut write_buf, header.request_id, &e.to_string()),
+                            Err(e) => {
+                                Self::write_error(&mut write_buf, header.request_id, &e.to_string())
+                            }
                         }
                     }
                 }

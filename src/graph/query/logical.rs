@@ -72,8 +72,18 @@ impl LogicalPlan {
             Self::NodeScan { binding, .. } | Self::VectorSeed { binding, .. } => {
                 vec![*binding]
             }
-            Self::Expand { input, dst_binding, rel_binding, .. }
-            | Self::OptionalExpand { input, dst_binding, rel_binding, .. } => {
+            Self::Expand {
+                input,
+                dst_binding,
+                rel_binding,
+                ..
+            }
+            | Self::OptionalExpand {
+                input,
+                dst_binding,
+                rel_binding,
+                ..
+            } => {
                 let mut b = input.output_bindings();
                 if let Some(rb) = rel_binding {
                     b.push(*rb);
@@ -81,10 +91,10 @@ impl LogicalPlan {
                 b.push(*dst_binding);
                 b
             }
-            Self::Filter { input, .. } | Self::Limit { input, .. } => {
-                input.output_bindings()
-            }
-            Self::Project { output_bindings, .. } => output_bindings.clone(),
+            Self::Filter { input, .. } | Self::Limit { input, .. } => input.output_bindings(),
+            Self::Project {
+                output_bindings, ..
+            } => output_bindings.clone(),
         }
     }
 }

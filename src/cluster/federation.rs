@@ -9,9 +9,9 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::collections::HashMap;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 use crate::{HNSQRResult, VectorEmbedding};
 
@@ -66,7 +66,9 @@ impl GeoRoutingTable {
 
     /// Registers or updates a regional cluster status.
     pub fn register_region(&self, status: RegionEndpointStatus) {
-        self.regions.write().insert(status.region_id.clone(), status);
+        self.regions
+            .write()
+            .insert(status.region_id.clone(), status);
     }
 
     /// Selects the nearest healthy regional endpoint.
@@ -82,7 +84,11 @@ impl GeoRoutingTable {
         guard
             .values()
             .filter(|r| r.is_healthy)
-            .min_by(|a, b| a.p50_latency_ms.partial_cmp(&b.p50_latency_ms).unwrap_or(std::cmp::Ordering::Equal))
+            .min_by(|a, b| {
+                a.p50_latency_ms
+                    .partial_cmp(&b.p50_latency_ms)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
             .cloned()
     }
 }
@@ -206,8 +212,14 @@ mod tests {
             },
         };
 
-        let applied_stale = manager.replicator.ingest_federated_event(event_stale).unwrap();
-        assert!(!applied_stale, "Stale CRDT event must not overwrite newer clock!");
+        let applied_stale = manager
+            .replicator
+            .ingest_federated_event(event_stale)
+            .unwrap();
+        assert!(
+            !applied_stale,
+            "Stale CRDT event must not overwrite newer clock!"
+        );
         assert_eq!(manager.replicator.applied_count(), 1);
     }
 }

@@ -78,7 +78,8 @@ fn generate_master(
     let (mut queries, _) = common::read_fvecs(&query_path, Some(query_count)).unwrap_or_default();
 
     if corpus.is_empty() {
-        let text_corpus = common::generate_realistic_text_corpus(count, query_count, dimension, SEED);
+        let text_corpus =
+            common::generate_realistic_text_corpus(count, query_count, dimension, SEED);
         corpus = text_corpus.folded_corpus;
         queries = text_corpus.folded_queries;
     }
@@ -169,7 +170,12 @@ fn working_set_bytes() -> Option<usize> {
         let status = std::fs::read_to_string("/proc/self/status").ok()?;
         for line in status.lines() {
             if let Some(rest) = line.strip_prefix("VmRSS:") {
-                let kb = rest.trim().split_whitespace().next()?.parse::<usize>().ok()?;
+                let kb = rest
+                    .trim()
+                    .split_whitespace()
+                    .next()?
+                    .parse::<usize>()
+                    .ok()?;
                 return Some(kb * 1024);
             }
         }
@@ -188,10 +194,14 @@ fn audit_size(
 ) -> AuditRow {
     let actual_dim = corpus.first().map_or(dimension, |v| v.dimension());
     let baseline_memory = working_set_bytes();
-    let snap_path = common::bench_cache_dir().join(format!("rivero_scaling_d{actual_dim}_n{}.snapshot", corpus.len()));
+    let snap_path = common::bench_cache_dir().join(format!(
+        "rivero_scaling_d{actual_dim}_n{}.snapshot",
+        corpus.len()
+    ));
     let (index, build_seconds) = if snap_path.exists() {
         let t0 = Instant::now();
-        let idx = HNSQRIndex::open_snapshot_v2(&snap_path, hnsqr::SnapshotOpenOptions::default()).unwrap();
+        let idx = HNSQRIndex::open_snapshot_v2(&snap_path, hnsqr::SnapshotOpenOptions::default())
+            .unwrap();
         idx.freeze_rivero_routing();
         (idx, t0.elapsed().as_secs_f64())
     } else {

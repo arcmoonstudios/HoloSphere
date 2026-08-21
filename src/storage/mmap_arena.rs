@@ -38,10 +38,10 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering as AtomicOrdering};
 
-use memmap2::{MmapMut, MmapOptions};
-use num_complex::Complex32;
 use crate::vector::quantization::{PolarQuantizedVector, asymmetric_projective_overlap};
 use crate::{HNSQRError, HNSQRResult, NodeIndex};
+use memmap2::{MmapMut, MmapOptions};
+use num_complex::Complex32;
 
 /// Magic header identifier: "HNSQR001" in ASCII.
 pub const HNSQR_MAGIC: u64 = 0x484E535152303031;

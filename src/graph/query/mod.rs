@@ -42,7 +42,7 @@ pub use explain::ExplainOutput;
 pub use lexer::{Lexer, Token};
 pub use logical::LogicalPlan;
 pub use morsel::{BindingColumn, Morsel};
-pub use parser::{parse_query, ParseError, Parser};
+pub use parser::{ParseError, Parser, parse_query};
 pub use physical::PhysicalPlan;
 pub use planner::{CompileError, CompiledQuery, QueryPlanner};
 pub use semantic::{SemanticAnalyzer, SemanticError};

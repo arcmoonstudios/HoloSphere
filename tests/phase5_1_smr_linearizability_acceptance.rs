@@ -27,9 +27,7 @@ use hnsqr::consensus::raft::{RaftCluster, RaftRole};
 use hnsqr::consensus::read_index::{LinearizableReadMode, ReadConsistency};
 use hnsqr::consensus::storage::{DurableRaftStorage, RaftStorage};
 use hnsqr::proof::lutz::SemanticRerankPlan;
-use hnsqr::service::{
-    ClusterService, DeleteRequest, RequestContext, SearchService, UpsertRequest,
-};
+use hnsqr::service::{ClusterService, DeleteRequest, RequestContext, SearchService, UpsertRequest};
 use hnsqr::storage::segment::SegmentedEngine;
 use hnsqr::{DistributedCoordinator, VectorEmbedding};
 
@@ -113,7 +111,9 @@ fn test_idempotent_deduplication_horizon() {
             client_id: "client_alpha".to_string(),
         }),
         client_seq: 1,
-        retry_semantics: RetrySemantics::ExactlyOnceWithinWindow { max_sequence_gap: 100 },
+        retry_semantics: RetrySemantics::ExactlyOnceWithinWindow {
+            max_sequence_gap: 100,
+        },
     };
 
     // First attempt
@@ -132,7 +132,9 @@ fn test_idempotent_deduplication_horizon() {
             client_id: "client_alpha".to_string(),
         }),
         client_seq: 1,
-        retry_semantics: RetrySemantics::ExactlyOnceWithinWindow { max_sequence_gap: 100 },
+        retry_semantics: RetrySemantics::ExactlyOnceWithinWindow {
+            max_sequence_gap: 100,
+        },
     };
 
     let rx2 = cluster.propose_data_mutation(mutation2).unwrap();
@@ -163,7 +165,10 @@ fn test_network_partition_zero_dirty_writes() {
     // Step down node 1: leadership lost
     *node1.role.write() = RaftRole::Follower;
     let prop_res = node1.propose_data_mutation(mutation);
-    assert!(prop_res.is_err(), "Non-leader must reject proposal immediately without dirty writing!");
+    assert!(
+        prop_res.is_err(),
+        "Non-leader must reject proposal immediately without dirty writing!"
+    );
 
     // State machine index must not advance
     assert_eq!(sm.last_applied_index(), prev_applied);
@@ -184,13 +189,20 @@ fn test_linearizable_read_index_contract() {
             vector: generate_test_vector(dim, i),
             metadata: None,
         };
-        let receipt = service.upsert_blocking(&ctx, req).expect("Upsert must succeed through Raft");
-        assert_eq!(receipt.durability, hnsqr::consensus::pending::DurabilityLevel::QuorumReplicated);
+        let receipt = service
+            .upsert_blocking(&ctx, req)
+            .expect("Upsert must succeed through Raft");
+        assert_eq!(
+            receipt.durability,
+            hnsqr::consensus::pending::DurabilityLevel::QuorumReplicated
+        );
     }
 
     // Pin a Linearizable ReadSnapshot with explicit ReadIndex mode
     let snapshot = coordinator
-        .obtain_read_snapshot(ReadConsistency::LinearizableWithMode(LinearizableReadMode::ReadIndex))
+        .obtain_read_snapshot(ReadConsistency::LinearizableWithMode(
+            LinearizableReadMode::ReadIndex,
+        ))
         .expect("Linearizable ReadIndex must succeed");
 
     assert!(snapshot.raft_read_index >= 50);
@@ -209,7 +221,11 @@ fn test_linearizable_read_index_contract() {
         .expect("Search must succeed");
 
     assert!(!results.is_empty());
-    assert_eq!(results[0].0.as_ref(), "doc_10", "Top 1 match must be exact query identity doc_10!");
+    assert_eq!(
+        results[0].0.as_ref(),
+        "doc_10",
+        "Top 1 match must be exact query identity doc_10!"
+    );
 }
 
 #[test]
@@ -260,9 +276,12 @@ fn test_brutal_multi_node_fault_partition_kill_heal_and_oracle_recovery() {
     let tmp_dir = std::env::temp_dir().join(format!("hnsqr_brutal_test_{}", rand::random::<u64>()));
     let _ = std::fs::create_dir_all(&tmp_dir);
 
-    let storage_a: Arc<dyn RaftStorage> = Arc::new(DurableRaftStorage::open(tmp_dir.join("node_1")).unwrap());
-    let storage_b: Arc<dyn RaftStorage> = Arc::new(DurableRaftStorage::open(tmp_dir.join("node_2")).unwrap());
-    let storage_c: Arc<dyn RaftStorage> = Arc::new(DurableRaftStorage::open(tmp_dir.join("node_3")).unwrap());
+    let storage_a: Arc<dyn RaftStorage> =
+        Arc::new(DurableRaftStorage::open(tmp_dir.join("node_1")).unwrap());
+    let storage_b: Arc<dyn RaftStorage> =
+        Arc::new(DurableRaftStorage::open(tmp_dir.join("node_2")).unwrap());
+    let storage_c: Arc<dyn RaftStorage> =
+        Arc::new(DurableRaftStorage::open(tmp_dir.join("node_3")).unwrap());
 
     let mut storages = HashMap::new();
     storages.insert(1, storage_a.clone());
@@ -273,15 +292,27 @@ fn test_brutal_multi_node_fault_partition_kill_heal_and_oracle_recovery() {
 
     let engine_a = Arc::new(SegmentedEngine::new(dim, 1000));
     let sm_a = Arc::new(ShardStateMachine::new(0, engine_a.clone()));
-    cluster.nodes.get(&1).unwrap().set_replicated_sm(sm_a.clone());
+    cluster
+        .nodes
+        .get(&1)
+        .unwrap()
+        .set_replicated_sm(sm_a.clone());
 
     let engine_b = Arc::new(SegmentedEngine::new(dim, 1000));
     let sm_b = Arc::new(ShardStateMachine::new(0, engine_b.clone()));
-    cluster.nodes.get(&2).unwrap().set_replicated_sm(sm_b.clone());
+    cluster
+        .nodes
+        .get(&2)
+        .unwrap()
+        .set_replicated_sm(sm_b.clone());
 
     let engine_c = Arc::new(SegmentedEngine::new(dim, 1000));
     let sm_c = Arc::new(ShardStateMachine::new(0, engine_c.clone()));
-    cluster.nodes.get(&3).unwrap().set_replicated_sm(sm_c.clone());
+    cluster
+        .nodes
+        .get(&3)
+        .unwrap()
+        .set_replicated_sm(sm_c.clone());
 
     // 1. Elect Node 1 as Leader
     assert!(cluster.trigger_election(1));
@@ -379,18 +410,32 @@ fn test_brutal_multi_node_fault_partition_kill_heal_and_oracle_recovery() {
     storage_c.flush().unwrap();
 
     let fresh_engine_a = Arc::new(SegmentedEngine::new(dim, 1000));
-    let fresh_sm_a: Arc<dyn ReplicatedStateMachine> = Arc::new(ShardStateMachine::new(0, fresh_engine_a.clone()));
+    let fresh_sm_a: Arc<dyn ReplicatedStateMachine> =
+        Arc::new(ShardStateMachine::new(0, fresh_engine_a.clone()));
 
     // 10. Restart solely from durable Raft consensus storage
-    let recovered_replayed = node_a.recover_node_state(&fresh_sm_a).expect("Durable replay must succeed");
-    assert!(recovered_replayed >= 3, "Must recover all committed entries (X, Z, Y)");
+    let recovered_replayed = node_a
+        .recover_node_state(&fresh_sm_a)
+        .expect("Durable replay must succeed");
+    assert!(
+        recovered_replayed >= 3,
+        "Must recover all committed entries (X, Z, Y)"
+    );
 
     // 11. Run Certified exhaustive oracle verification
     let search_x = fresh_engine_a.search(&vec_x, 1, SemanticRerankPlan::ExactSimd);
-    assert_eq!(search_x[0].0.as_ref(), "vector_X", "Oracle must find vector_X with 100% exactness");
+    assert_eq!(
+        search_x[0].0.as_ref(),
+        "vector_X",
+        "Oracle must find vector_X with 100% exactness"
+    );
 
     let search_z = fresh_engine_a.search(&vec_z, 1, SemanticRerankPlan::ExactSimd);
-    assert_eq!(search_z[0].0.as_ref(), "vector_Z", "Oracle must find vector_Z with 100% exactness");
+    assert_eq!(
+        search_z[0].0.as_ref(),
+        "vector_Z",
+        "Oracle must find vector_Z with 100% exactness"
+    );
 
     let _ = std::fs::remove_dir_all(&tmp_dir);
 }

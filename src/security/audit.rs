@@ -10,10 +10,10 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::time::{SystemTime, UNIX_EPOCH};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::HNSQRResult;
 
@@ -67,7 +67,10 @@ impl AuditLogger {
         let mut hash_guard = self.last_hash_hex.write();
 
         let seq = rec_guard.len() as u64 + 1;
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
         let prev_hash = hash_guard.clone();
 
         let mut hasher = Sha256::new();
@@ -75,7 +78,11 @@ impl AuditLogger {
         hasher.update(now.to_le_bytes());
         hasher.update(actor_id.as_bytes());
         hasher.update(prev_hash.as_bytes());
-        let record_hash_hex = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect::<String>();
+        let record_hash_hex = hasher
+            .finalize()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>();
 
         let record = AuditRecord {
             sequence_num: seq,
@@ -91,7 +98,11 @@ impl AuditLogger {
 
         // Persist to disk if a log file path was provided.
         if let Some(path) = &self.log_file {
-            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+            {
                 if let Ok(json) = serde_json::to_string(&record) {
                     use std::io::Write;
                     let _ = writeln!(f, "{}", json);
@@ -153,7 +164,11 @@ impl AuditLogger {
             hasher.update(rec.timestamp_epoch_ms.to_le_bytes());
             hasher.update(rec.actor_id.as_bytes());
             hasher.update(rec.prev_hash_hex.as_bytes());
-            let computed = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect::<String>();
+            let computed = hasher
+                .finalize()
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>();
 
             if computed != rec.record_hash_hex {
                 return false;

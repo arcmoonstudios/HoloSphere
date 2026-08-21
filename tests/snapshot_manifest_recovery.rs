@@ -23,7 +23,10 @@ use hnsqr::{NodeIndex, VectorEmbedding};
 use num_complex::Complex32;
 
 fn temp_snap_dir(test_name: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("hnsqr_snap_test_{test_name}_{:x}", rand::random::<u64>()));
+    let dir = std::env::temp_dir().join(format!(
+        "hnsqr_snap_test_{test_name}_{:x}",
+        rand::random::<u64>()
+    ));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
@@ -51,7 +54,10 @@ fn test_unified_snapshot_cow_and_load_integrity() {
     let mut metadata_map = Vec::new();
     for i in 0..n {
         let mut m = HashMap::new();
-        m.insert("tenant".to_string(), MetadataValue::String(format!("tenant_{}", i % 3)));
+        m.insert(
+            "tenant".to_string(),
+            MetadataValue::String(format!("tenant_{}", i % 3)),
+        );
         metadata_map.push(m);
     }
 
@@ -70,14 +76,19 @@ fn test_unified_snapshot_cow_and_load_integrity() {
         None,
         Some(&proof_tree),
         None,
-    ).unwrap();
+    )
+    .unwrap();
 
     assert_eq!(manifest1.generation, 1);
     assert_eq!(manifest1.snapshot_lsn, 100);
     assert!(manifest1.sections.contains_key(&SectionKind::VectorData));
     assert!(manifest1.sections.contains_key(&SectionKind::ExternalIdMap));
     assert!(manifest1.sections.contains_key(&SectionKind::MetadataStore));
-    assert!(manifest1.sections.contains_key(&SectionKind::SemanticProofTree));
+    assert!(
+        manifest1
+            .sections
+            .contains_key(&SectionKind::SemanticProofTree)
+    );
 
     // Load back and verify integrity
     let (loaded_manifest, mmap) = UnifiedSnapshotEngine::load_latest_snapshot(&snap_dir).unwrap();
@@ -117,19 +128,26 @@ fn test_corrupt_section_checksum_failure_safety() {
         None,
         None,
         None,
-    ).unwrap();
+    )
+    .unwrap();
 
     // Corrupt 2 bytes in snapshot data file
     let data_file_path = snap_dir.join("snapshot_gen_0000000000000001.data");
     {
-        let mut f = OpenOptions::new().write(true).open(&data_file_path).unwrap();
+        let mut f = OpenOptions::new()
+            .write(true)
+            .open(&data_file_path)
+            .unwrap();
         f.seek(SeekFrom::Start(12)).unwrap();
         f.write_all(&[0xAA, 0xBB]).unwrap();
     }
 
     // Load must reject corrupted section with CRC32C failure
     let load_res = UnifiedSnapshotEngine::load_latest_snapshot(&snap_dir);
-    assert!(load_res.is_err(), "Corrupted snapshot must fail validation!");
+    assert!(
+        load_res.is_err(),
+        "Corrupted snapshot must fail validation!"
+    );
 
     let _ = std::fs::remove_dir_all(&snap_dir);
 }

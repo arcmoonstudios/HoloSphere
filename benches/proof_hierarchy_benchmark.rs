@@ -15,11 +15,9 @@ mod common;
 use std::time::Instant;
 
 use hnsqr::proof::lutz::{LutzCode, LutzQueryTable};
-use hnsqr::proof::{
-    DenseExactProof, GlobalExactProofSearch, SegmentProofView, SemanticProofTree,
-};
-use hnsqr::rivero::{RiveroCompiler, RiveroProfile};
+use hnsqr::proof::{DenseExactProof, GlobalExactProofSearch, SegmentProofView, SemanticProofTree};
 use hnsqr::rivero::bulk::RiveroBulkBuilder;
+use hnsqr::rivero::{RiveroCompiler, RiveroProfile};
 use hnsqr::{NodeIndex, SimilarityScore, VectorEmbedding};
 
 #[derive(Debug, Clone)]
@@ -115,9 +113,7 @@ fn generate_semantic_manifold_corpus(
 }
 
 fn run_hierarchy_experiment(exp: &HierarchyExperiment) -> HierarchyResult {
-    println!(
-        "\n═══════════════════════════════════════════════════════════════════════════════"
-    );
+    println!("\n═══════════════════════════════════════════════════════════════════════════════");
     println!(
         " 🔬 Running B3 Hierarchy Experiment: D_real = {} ({} complex), N = {}, K = {}",
         exp.d_real,
@@ -125,9 +121,7 @@ fn run_hierarchy_experiment(exp: &HierarchyExperiment) -> HierarchyResult {
         exp.n_corpus,
         exp.k
     );
-    println!(
-        "═══════════════════════════════════════════════════════════════════════════════"
-    );
+    println!("═══════════════════════════════════════════════════════════════════════════════");
 
     let (corpus, queries) = generate_semantic_manifold_corpus(
         exp.n_corpus,
@@ -148,10 +142,7 @@ fn run_hierarchy_experiment(exp: &HierarchyExperiment) -> HierarchyResult {
 
     // 2. Encode LUTz L0/L1 Codes
     print!("   ⚙️ Encoding LUTz L0/L1 Quantized Representations...");
-    let lutz_codes: Vec<LutzCode> = corpus
-        .iter()
-        .map(|v| LutzCode::encode(v, true))
-        .collect();
+    let lutz_codes: Vec<LutzCode> = corpus.iter().map(|v| LutzCode::encode(v, true)).collect();
     println!(" Done.");
 
     // 3. Build Semantic Proof Tree
@@ -224,14 +215,8 @@ fn run_hierarchy_experiment(exp: &HierarchyExperiment) -> HierarchyResult {
             tombstones: None,
         };
         let proof_start = Instant::now();
-        let (certified, proof) = GlobalExactProofSearch::search(
-            q,
-            exp.k,
-            &[seg_view],
-            &[],
-            &rivero_cands,
-            None,
-        );
+        let (certified, proof) =
+            GlobalExactProofSearch::search(q, exp.k, &[seg_view], &[], &rivero_cands, None);
         let proof_dur = proof_start.elapsed().as_secs_f64() * 1_000_000.0;
         proof_latencies_us.push(proof_dur);
         proofs.push(proof);
@@ -269,24 +254,27 @@ fn run_hierarchy_experiment(exp: &HierarchyExperiment) -> HierarchyResult {
     }
 
     let n_f64 = exp.n_corpus as f64;
-    let avg_region_pruned = proofs.iter().map(|p| p.vectors_pruned_by_region).sum::<usize>() as f64
+    let avg_region_pruned = proofs
+        .iter()
+        .map(|p| p.vectors_pruned_by_region)
+        .sum::<usize>() as f64
         / exp.n_queries as f64;
     let region_pruned_pct = (avg_region_pruned / n_f64) * 100.0;
 
-    let avg_l0_pruned = proofs.iter().map(|p| p.lutz_l0_pruned).sum::<usize>() as f64
-        / exp.n_queries as f64;
+    let avg_l0_pruned =
+        proofs.iter().map(|p| p.lutz_l0_pruned).sum::<usize>() as f64 / exp.n_queries as f64;
     let l0_pruned_pct = (avg_l0_pruned / n_f64) * 100.0;
 
-    let avg_l1_pruned = proofs.iter().map(|p| p.lutz_l1_pruned).sum::<usize>() as f64
-        / exp.n_queries as f64;
+    let avg_l1_pruned =
+        proofs.iter().map(|p| p.lutz_l1_pruned).sum::<usize>() as f64 / exp.n_queries as f64;
     let l1_pruned_pct = (avg_l1_pruned / n_f64) * 100.0;
 
-    let avg_exact_evals = proofs.iter().map(|p| p.exact_evaluations).sum::<usize>() as f64
-        / exp.n_queries as f64;
+    let avg_exact_evals =
+        proofs.iter().map(|p| p.exact_evaluations).sum::<usize>() as f64 / exp.n_queries as f64;
     let exact_simd_pct = (avg_exact_evals / n_f64) * 100.0;
 
-    let avg_exact_bytes = proofs.iter().map(|p| p.exact_bytes_touched).sum::<usize>()
-        / exp.n_queries;
+    let avg_exact_bytes =
+        proofs.iter().map(|p| p.exact_bytes_touched).sum::<usize>() / exp.n_queries;
 
     bf_latencies_us.sort_by(|a, b| a.total_cmp(b));
     proof_latencies_us.sort_by(|a, b| a.total_cmp(b));
@@ -313,17 +301,47 @@ fn run_hierarchy_experiment(exp: &HierarchyExperiment) -> HierarchyResult {
     };
 
     println!("\n   📊 B3 RESULTS FUNNEL & SLACK AUDIT:");
-    println!("      • Certified Recall@10:          {:.4}% (VERIFIED 100.000%)", exact_recall);
+    println!(
+        "      • Certified Recall@10:          {:.4}% (VERIFIED 100.000%)",
+        exact_recall
+    );
     println!("      • Terminal Accounting:          100.00% EXACT (0 double-counts)");
-    println!("      • Leaf Avg Angular Radius θ:    {:.2}°", leaf_avg_theta_deg);
-    println!("      • Region Pruned (Tree):         {:.2}% ({:.0} vectors)", region_pruned_pct, avg_region_pruned);
-    println!("      • LUTz L0 Pruned:               {:.2}% ({:.0} vectors)", l0_pruned_pct, avg_l0_pruned);
-    println!("      • LUTz L1 Pruned:               {:.2}% ({:.0} vectors)", l1_pruned_pct, avg_l1_pruned);
-    println!("      • Exact SIMD Evaluations:       {:.2}% ({:.0} vectors)", exact_simd_pct, avg_exact_evals);
-    println!("      • Δ_L0 Slack (Median / p95):    {:.4} / {:.4}", l0_slack_median, l0_slack_p95);
-    println!("      • Δ_L1 Slack (Median / p95):    {:.4} / {:.4}", l1_slack_median, l1_slack_p95);
-    println!("      • Full-Vector Memory Traffic:   {:.1} KB / query", avg_exact_bytes as f64 / 1024.0);
-    println!("      • Latency p50 / p95 / p99:      {:.1} µs / {:.1} µs / {:.1} µs", p50_us, p95_us, p99_us);
+    println!(
+        "      • Leaf Avg Angular Radius θ:    {:.2}°",
+        leaf_avg_theta_deg
+    );
+    println!(
+        "      • Region Pruned (Tree):         {:.2}% ({:.0} vectors)",
+        region_pruned_pct, avg_region_pruned
+    );
+    println!(
+        "      • LUTz L0 Pruned:               {:.2}% ({:.0} vectors)",
+        l0_pruned_pct, avg_l0_pruned
+    );
+    println!(
+        "      • LUTz L1 Pruned:               {:.2}% ({:.0} vectors)",
+        l1_pruned_pct, avg_l1_pruned
+    );
+    println!(
+        "      • Exact SIMD Evaluations:       {:.2}% ({:.0} vectors)",
+        exact_simd_pct, avg_exact_evals
+    );
+    println!(
+        "      • Δ_L0 Slack (Median / p95):    {:.4} / {:.4}",
+        l0_slack_median, l0_slack_p95
+    );
+    println!(
+        "      • Δ_L1 Slack (Median / p95):    {:.4} / {:.4}",
+        l1_slack_median, l1_slack_p95
+    );
+    println!(
+        "      • Full-Vector Memory Traffic:   {:.1} KB / query",
+        avg_exact_bytes as f64 / 1024.0
+    );
+    println!(
+        "      • Latency p50 / p95 / p99:      {:.1} µs / {:.1} µs / {:.1} µs",
+        p50_us, p95_us, p99_us
+    );
     println!("      • Speedup vs Brute Force:       {:.2}x", speedup);
 
     HierarchyResult {
@@ -391,14 +409,29 @@ fn main() {
         results.push(run_hierarchy_experiment(exp));
     }
 
-    println!("\n══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════");
+    println!(
+        "\n══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════"
+    );
     println!("🏆 GATE B3 GRAND PROOF + LUTz CASCADE SCORECARD (100.000% CERTIFIED RECALL)");
-    println!("══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════");
+    println!(
+        "══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════"
+    );
     println!(
         "{:<6} | {:<7} | {:<10} | {:<12} | {:<10} | {:<10} | {:<10} | {:<10} | {:<12} | {:<10}",
-        "D_real", "N", "Recall@10", "Region Prune", "L0 Prune", "L1 Prune", "Exact SIMD", "Traffic", "Latency p50", "Speedup"
+        "D_real",
+        "N",
+        "Recall@10",
+        "Region Prune",
+        "L0 Prune",
+        "L1 Prune",
+        "Exact SIMD",
+        "Traffic",
+        "Latency p50",
+        "Speedup"
     );
-    println!("--------------------------------------------------------------------------------------------------------------------------------------");
+    println!(
+        "--------------------------------------------------------------------------------------------------------------------------------------"
+    );
     for r in results {
         println!(
             "{:<6} | {:<7} | {:<9.3}% | {:<11.2}% | {:<9.2}% | {:<9.2}% | {:<9.2}% | {:<7.1} KB | {:<9.1} µs | {:.2}x",
@@ -414,5 +447,7 @@ fn main() {
             r.speedup_vs_bf
         );
     }
-    println!("══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════\n");
+    println!(
+        "══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════\n"
+    );
 }

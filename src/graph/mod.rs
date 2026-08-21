@@ -49,26 +49,24 @@ pub mod storage;
 
 // Flat re-exports for convenient `use hnsqr::graph::*` access.
 pub use analytics::{
-    BfsResult, CsrProjection, DegreeCentrality, ConnectedComponents, GraphProjection,
+    BfsResult, ConnectedComponents, CsrProjection, DegreeCentrality, GraphProjection,
     KCoreDecomposition, LouvainEngine, LouvainResult, PageRankEngine, PathfindingEngine,
     ShortestPath, TriangleCount,
 };
 pub use catalog::{
-    LabelCatalog, LabelId, LabelResolution, PropertyKey, PropertyKeyCatalog,
-    RelTypeCatalog, RelTypeId, RelTypeResolution,
+    LabelCatalog, LabelId, LabelResolution, PropertyKey, PropertyKeyCatalog, RelTypeCatalog,
+    RelTypeId, RelTypeResolution,
 };
-pub use mutation::{
-    GraphMutation, GraphMutationApplier, GraphProperties, RelationshipId,
-};
+pub use mutation::{GraphMutation, GraphMutationApplier, GraphProperties, RelationshipId};
 pub use query::{
     BindingColumn, CompileError, CompiledQuery, Direction, ExecutionContext, ExplainOutput,
-    GraphPattern, Lexer, LogicalPlan, Morsel, PhysicalPlan, ParseError, Parser, QueryAst,
+    GraphPattern, Lexer, LogicalPlan, Morsel, ParseError, Parser, PhysicalPlan, QueryAst,
     QueryPlanner, QueryResult, ReturnClause, SemanticAnalyzer, SemanticError, SymbolId,
     SymbolTable, Token, WhereClause, parse_query,
 };
 pub use stats::{DegreeStats, GraphCardinalityStats};
 pub use storage::{
-    AdjacencyBlock, CscAdjacency, CsrAdjacency, EdgeDelta, EdgeDeltaStats,
-    GraphGeneration, GraphNodeRecord, GraphPropertyStore, GraphPropertyValue,
-    GraphReadGeneration, GraphSnapshot, ImmutableGraphSnapshot, NeighborSlice, NodeArena, NULL_OVERFLOW_REF,
+    AdjacencyBlock, CscAdjacency, CsrAdjacency, EdgeDelta, EdgeDeltaStats, GraphGeneration,
+    GraphNodeRecord, GraphPropertyStore, GraphPropertyValue, GraphReadGeneration, GraphSnapshot,
+    ImmutableGraphSnapshot, NULL_OVERFLOW_REF, NeighborSlice, NodeArena,
 };

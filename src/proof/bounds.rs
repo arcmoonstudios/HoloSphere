@@ -146,7 +146,8 @@ pub fn evaluate_node_upper_bound_f64(
     };
 
     // 2. Global Ball Upper Bound
-    let ub_global = dot_block + query.global_norm * (global_radius as f64 + centroid_error_norm as f64);
+    let ub_global =
+        dot_block + query.global_norm * (global_radius as f64 + centroid_error_norm as f64);
 
     // 3. Additive Block Upper Bound
     let ub_block = dot_block + cs_block;

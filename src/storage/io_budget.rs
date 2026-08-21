@@ -11,10 +11,10 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::time::Instant;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::Instant;
 
 /// Maintenance I/O category.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -52,7 +52,7 @@ impl IoBudgetManager {
             available_tokens: AtomicU64::new(max_bytes_per_sec),
             last_refill: Mutex::new(Instant::now()),
             is_throttled: AtomicBool::new(false),
-            p95_latency_threshold_micros: 5000,  // 5ms throttle trigger
+            p95_latency_threshold_micros: 5000, // 5ms throttle trigger
             p95_recovery_threshold_micros: 2000, // 2ms recovery with hysteresis
         }
     }

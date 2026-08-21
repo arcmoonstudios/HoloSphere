@@ -11,11 +11,11 @@
 //!   8. Tombstone Invariance: Deleting Top-1 preserves exactness on remaining corpus without tree rebuilds.
 //!   9. Multi-Segment Coordination: Mutable + Immutable A + Immutable B + Tombstones exactness.
 
-use std::collections::HashSet;
 use num_complex::Complex32;
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 use roaring::RoaringBitmap;
+use std::collections::HashSet;
 
 use hnsqr::proof::{
     GlobalExactProofSearch, PROOF_BLOCK_COMPLEX_DIM, ProofQuery, SegmentProofView,
@@ -274,19 +274,18 @@ fn test_proof_tree_exact_matches_exhaustive_exact() {
         tombstones: None,
     };
 
-    let (res, proof) = GlobalExactProofSearch::search(
-        &query,
-        k,
-        &[seg_view],
-        &[],
-        &[],
-        None,
-    );
+    let (res, proof) = GlobalExactProofSearch::search(&query, k, &[seg_view], &[], &[], None);
 
     assert_eq!(res.len(), k);
-    assert_eq!(res, gt, "Exact match failure against brute force ground truth");
+    assert_eq!(
+        res, gt,
+        "Exact match failure against brute force ground truth"
+    );
     assert!(proof.globally_exact);
-    assert!(proof.is_accounting_exact(), "Terminal funnel accounting must be 100% exact");
+    assert!(
+        proof.is_accounting_exact(),
+        "Terminal funnel accounting must be 100% exact"
+    );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -380,16 +379,13 @@ fn test_deliberately_bad_seed_test() {
         tombstones: None,
     };
 
-    let (res, proof) = GlobalExactProofSearch::search(
-        &query,
-        k,
-        &[seg_view],
-        &[],
-        &bad_seeds,
-        None,
-    );
+    let (res, proof) =
+        GlobalExactProofSearch::search(&query, k, &[seg_view], &[], &bad_seeds, None);
 
-    assert_eq!(res, gt, "Adversarial worst seeds must not compromise exactness");
+    assert_eq!(
+        res, gt,
+        "Adversarial worst seeds must not compromise exactness"
+    );
     assert!(proof.globally_exact);
     assert!(proof.is_accounting_exact());
 }
@@ -440,17 +436,13 @@ fn test_tombstone_oracle_exactness() {
         tombstones: Some(&tombstones),
     };
 
-    let (res, proof) = GlobalExactProofSearch::search(
-        &query,
-        k,
-        &[seg_view],
-        &[],
-        &[],
-        None,
-    );
+    let (res, proof) = GlobalExactProofSearch::search(&query, k, &[seg_view], &[], &[], None);
 
     assert_eq!(res.len(), k);
-    assert_eq!(res, gt_after_delete, "Tombstone search must match live-only ground truth");
+    assert_eq!(
+        res, gt_after_delete,
+        "Tombstone search must match live-only ground truth"
+    );
     assert!(proof.globally_exact);
     assert!(proof.is_accounting_exact());
 }
@@ -487,7 +479,11 @@ fn test_multi_segment_and_mutable_coordination() {
     )
     .into_normalized();
 
-    let topk = engine.search_with_contract(&query, 5, hnsqr::planning::planner::RetrievalContract::Certified);
+    let topk = engine.search_with_contract(
+        &query,
+        5,
+        hnsqr::planning::planner::RetrievalContract::Certified,
+    );
 
     assert_eq!(topk.len(), 5);
     assert_eq!(topk[0].0.as_ref(), "multi_doc_25");
@@ -577,14 +573,8 @@ fn test_isotropic_manifold_cliff_elimination_and_exactness() {
         tombstones: None,
     };
 
-    let (proof_topk, proof) = GlobalExactProofSearch::search(
-        &query,
-        k,
-        &[seg_view],
-        &[],
-        &[],
-        None,
-    );
+    let (proof_topk, proof) =
+        GlobalExactProofSearch::search(&query, k, &[seg_view], &[], &[], None);
 
     let brute_topk = brute_force_exact(&query, &isotropic_corpus, k, None, |_| true);
 
@@ -594,6 +584,11 @@ fn test_isotropic_manifold_cliff_elimination_and_exactness() {
 
     for (p, b) in proof_topk.iter().zip(brute_topk.iter()) {
         assert_eq!(p.0, b.0, "Slot mismatch on isotropic exact search");
-        assert!((p.1 - b.1).abs() < 1e-5, "Score mismatch: {} vs {}", p.1, b.1);
+        assert!(
+            (p.1 - b.1).abs() < 1e-5,
+            "Score mismatch: {} vs {}",
+            p.1,
+            b.1
+        );
     }
 }

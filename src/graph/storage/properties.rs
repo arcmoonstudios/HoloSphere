@@ -54,12 +54,7 @@ impl Default for GraphPropertyStore {
 impl GraphPropertyStore {
     // ── Node properties ────────────────────────────────────────────────
 
-    pub fn set_node_property(
-        &self,
-        node: NodeIndex,
-        key: PropertyKey,
-        value: GraphPropertyValue,
-    ) {
+    pub fn set_node_property(&self, node: NodeIndex, key: PropertyKey, value: GraphPropertyValue) {
         self.node_props
             .write()
             .entry(node)
@@ -79,10 +74,7 @@ impl GraphPropertyStore {
             .cloned()
     }
 
-    pub fn get_node_properties(
-        &self,
-        node: NodeIndex,
-    ) -> HashMap<PropertyKey, GraphPropertyValue> {
+    pub fn get_node_properties(&self, node: NodeIndex) -> HashMap<PropertyKey, GraphPropertyValue> {
         self.node_props
             .read()
             .get(&node)
@@ -108,12 +100,7 @@ impl GraphPropertyStore {
 
     // ── Edge properties ────────────────────────────────────────────────
 
-    pub fn set_rel_property(
-        &self,
-        rel_id: u32,
-        key: PropertyKey,
-        value: GraphPropertyValue,
-    ) {
+    pub fn set_rel_property(&self, rel_id: u32, key: PropertyKey, value: GraphPropertyValue) {
         self.rel_props
             .write()
             .entry(rel_id)
@@ -121,11 +108,7 @@ impl GraphPropertyStore {
             .insert(key, value);
     }
 
-    pub fn get_rel_property(
-        &self,
-        rel_id: u32,
-        key: PropertyKey,
-    ) -> Option<GraphPropertyValue> {
+    pub fn get_rel_property(&self, rel_id: u32, key: PropertyKey) -> Option<GraphPropertyValue> {
         self.rel_props
             .read()
             .get(&rel_id)

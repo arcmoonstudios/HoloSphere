@@ -56,10 +56,7 @@ fn evaluate_ann_benchmarks(real_dim: usize, complex_dim: usize, n: usize, num_qu
         let gt = &ground_truth[q_idx];
         for (res_id, _) in &topk {
             let s: &str = res_id.as_ref();
-            if let Ok(id_num) = s
-                .strip_prefix("node_")
-                .unwrap_or("")
-                .parse::<NodeIndex>()
+            if let Ok(id_num) = s.strip_prefix("node_").unwrap_or("").parse::<NodeIndex>()
                 && gt.contains(&id_num)
             {
                 total_hits += 1;

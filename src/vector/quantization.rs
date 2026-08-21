@@ -73,7 +73,6 @@ pub struct PolarQuantizedVector {
     pub data: Vec<u8>,
 }
 
-
 impl PolarQuantizedVector {
     /// Quantizes a slice of complex numbers into an 8-bit polar quantized vector.
     ///

@@ -57,7 +57,8 @@ impl ProofAwareLayoutBuilder {
             let start_offset = byte_buffer.len() as u64;
             let mut leaf_slots = Vec::new();
             let member_end = (node.member_start + node.member_len) as usize;
-            let slots_slice = &proof_tree.leaf_slots[node.member_start as usize..member_end.min(proof_tree.leaf_slots.len())];
+            let slots_slice = &proof_tree.leaf_slots
+                [node.member_start as usize..member_end.min(proof_tree.leaf_slots.len())];
 
             for &slot in slots_slice {
                 if let Some(vec) = vectors.get(slot as usize) {

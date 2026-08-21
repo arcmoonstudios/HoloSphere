@@ -156,9 +156,7 @@ impl<'src> Lexer<'src> {
     fn skip_whitespace_and_comments(&mut self) {
         loop {
             // Skip ASCII whitespace.
-            while self.pos < self.src.len()
-                && self.src.as_bytes()[self.pos].is_ascii_whitespace()
-            {
+            while self.pos < self.src.len() && self.src.as_bytes()[self.pos].is_ascii_whitespace() {
                 self.pos += 1;
             }
             // Skip `//` line comments.
@@ -184,13 +182,34 @@ impl<'src> Lexer<'src> {
         let b = self.src.as_bytes()[self.pos];
 
         match b {
-            b'(' => { self.pos += 1; Ok(Token::LParen) }
-            b')' => { self.pos += 1; Ok(Token::RParen) }
-            b'[' => { self.pos += 1; Ok(Token::LBracket) }
-            b']' => { self.pos += 1; Ok(Token::RBracket) }
-            b'{' => { self.pos += 1; Ok(Token::LBrace) }
-            b'}' => { self.pos += 1; Ok(Token::RBrace) }
-            b',' => { self.pos += 1; Ok(Token::Comma) }
+            b'(' => {
+                self.pos += 1;
+                Ok(Token::LParen)
+            }
+            b')' => {
+                self.pos += 1;
+                Ok(Token::RParen)
+            }
+            b'[' => {
+                self.pos += 1;
+                Ok(Token::LBracket)
+            }
+            b']' => {
+                self.pos += 1;
+                Ok(Token::RBracket)
+            }
+            b'{' => {
+                self.pos += 1;
+                Ok(Token::LBrace)
+            }
+            b'}' => {
+                self.pos += 1;
+                Ok(Token::RBrace)
+            }
+            b',' => {
+                self.pos += 1;
+                Ok(Token::Comma)
+            }
             b'.' => {
                 // `..` for hop range
                 if self.byte_at(1) == Some(b'.') {
@@ -201,11 +220,26 @@ impl<'src> Lexer<'src> {
                     Ok(Token::Dot)
                 }
             }
-            b'|' => { self.pos += 1; Ok(Token::Pipe) }
-            b'*' => { self.pos += 1; Ok(Token::Star) }
-            b'$' => { self.pos += 1; Ok(Token::Dollar) }
-            b'=' => { self.pos += 1; Ok(Token::Eq) }
-            b':' => { self.pos += 1; Ok(Token::Colon) }
+            b'|' => {
+                self.pos += 1;
+                Ok(Token::Pipe)
+            }
+            b'*' => {
+                self.pos += 1;
+                Ok(Token::Star)
+            }
+            b'$' => {
+                self.pos += 1;
+                Ok(Token::Dollar)
+            }
+            b'=' => {
+                self.pos += 1;
+                Ok(Token::Eq)
+            }
+            b':' => {
+                self.pos += 1;
+                Ok(Token::Colon)
+            }
             b'>' => {
                 if self.byte_at(1) == Some(b'=') {
                     self.pos += 2;
@@ -227,7 +261,10 @@ impl<'src> Lexer<'src> {
                     Ok(Token::Lt)
                 }
             }
-            b'-' => { self.pos += 1; Ok(Token::Dash) }
+            b'-' => {
+                self.pos += 1;
+                Ok(Token::Dash)
+            }
             // String literals: single or double quoted.
             b'\'' | b'"' => self.lex_string_literal(b),
             // Numeric literals.
@@ -248,7 +285,10 @@ impl<'src> Lexer<'src> {
         let start = self.pos;
         loop {
             if self.pos >= self.src.len() {
-                return Err(LexError { offset: start - 1, message: "Unterminated string literal" });
+                return Err(LexError {
+                    offset: start - 1,
+                    message: "Unterminated string literal",
+                });
             }
             let c = self.src.as_bytes()[self.pos];
             if c == b'\\' {
@@ -306,7 +346,10 @@ impl<'src> Lexer<'src> {
             self.pos += 1;
         }
         if self.pos >= self.src.len() {
-            return Err(LexError { offset: start - 1, message: "Unterminated backtick identifier" });
+            return Err(LexError {
+                offset: start - 1,
+                message: "Unterminated backtick identifier",
+            });
         }
         let s = &self.src[start..self.pos];
         self.pos += 1; // skip closing backtick
@@ -328,33 +371,33 @@ fn keyword_or_ident(word: &str) -> Token<'_> {
     let upper = std::str::from_utf8(&buf[..len]).unwrap_or(word);
 
     match upper {
-        "MATCH"        => Token::Match,
-        "OPTIONAL"     => {
+        "MATCH" => Token::Match,
+        "OPTIONAL" => {
             // Will be combined with MATCH by the parser.
             Token::OptionalMatch
         }
-        "WHERE"        => Token::Where,
-        "RETURN"       => Token::Return,
-        "LIMIT"        => Token::Limit,
-        "WITH"         => Token::With,
-        "AND"          => Token::And,
-        "OR"           => Token::Or,
-        "NOT"          => Token::Not,
-        "IS"           => Token::Is,
-        "NULL"         => Token::Null,
-        "CREATE"       => Token::Create,
-        "DELETE"       => Token::Delete,
-        "MERGE"        => Token::Merge,
-        "SET"          => Token::Set,
-        "VECTOR"       => Token::Vector,
-        "CERTIFIED"    => Token::Certified,
-        "HIGH_RECALL"  => Token::HighRecall,
-        "BOUNDED"      => Token::Bounded,
-        "AS"           => Token::As,
-        "TRUE"         => Token::True,
-        "FALSE"        => Token::False,
+        "WHERE" => Token::Where,
+        "RETURN" => Token::Return,
+        "LIMIT" => Token::Limit,
+        "WITH" => Token::With,
+        "AND" => Token::And,
+        "OR" => Token::Or,
+        "NOT" => Token::Not,
+        "IS" => Token::Is,
+        "NULL" => Token::Null,
+        "CREATE" => Token::Create,
+        "DELETE" => Token::Delete,
+        "MERGE" => Token::Merge,
+        "SET" => Token::Set,
+        "VECTOR" => Token::Vector,
+        "CERTIFIED" => Token::Certified,
+        "HIGH_RECALL" => Token::HighRecall,
+        "BOUNDED" => Token::Bounded,
+        "AS" => Token::As,
+        "TRUE" => Token::True,
+        "FALSE" => Token::False,
         "SHORTESTPATH" => Token::Shortestpath,
-        _              => Token::Ident(word),
+        _ => Token::Ident(word),
     }
 }
 

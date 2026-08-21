@@ -13,10 +13,10 @@ mod common;
 use std::collections::HashSet;
 use std::time::Instant;
 
+use hnsqr::rivero::bulk::RiveroBulkBuilder;
 use hnsqr::rivero::{
     LaneAssignment, RiveroAddressConfig, RiveroCompiler, RiveroConfig, RiveroProjectionMode,
 };
-use hnsqr::rivero::bulk::RiveroBulkBuilder;
 use hnsqr::{DistanceFunction, NodeIndex, VectorEmbedding};
 use rayon::prelude::*;
 
@@ -100,9 +100,7 @@ fn evaluate_geometry(
         .with_address_config(cfg.address_config())
         .with_distance_function(DistanceFunction::Cosine);
 
-    let built = builder
-        .build(corpus)
-        .expect("Bulk build must succeed");
+    let built = builder.build(corpus).expect("Bulk build must succeed");
 
     let territory = &built.territory;
     let witnesses = &built.witnesses;
@@ -173,7 +171,10 @@ fn evaluate_geometry(
 
         // Verify Set Consistency & Hard Assertions
         let raw_hits = gt.iter().filter(|id| raw_set.contains(id)).count();
-        let vote_hits = gt.iter().filter(|id| vote_selected_set.contains(id)).count();
+        let vote_hits = gt
+            .iter()
+            .filter(|id| vote_selected_set.contains(id))
+            .count();
 
         let vote_rank_survival_count = gt
             .iter()
@@ -291,15 +292,25 @@ fn evaluate_geometry(
 }
 
 fn print_header(title: &str) {
-    println!("\n╔═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗");
+    println!(
+        "\n╔═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗"
+    );
     println!("║ {:^129} ║", title);
-    println!("╚═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝");
+    println!(
+        "╚═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝"
+    );
 }
 
 fn print_table_header() {
-    println!("┌───────────────────────┬───────┬────────┬──────────┬──────────┬──────────┬──────────┬──────────┬──────────┬──────────┬──────────┐");
-    println!("│ Configuration         │ Dreal │ C_addr │ Raw R@10 │ Vote R@10│ Wit R@10 │ Cap-Drop │ Wit-Esc  │ Raw Cands│ Mean Rk  │ P50 Lat  │");
-    println!("├───────────────────────┼───────┼────────┼──────────┼──────────┼──────────┼──────────┼──────────┼──────────┼──────────┼──────────┤");
+    println!(
+        "┌───────────────────────┬───────┬────────┬──────────┬──────────┬──────────┬──────────┬──────────┬──────────┬──────────┬──────────┐"
+    );
+    println!(
+        "│ Configuration         │ Dreal │ C_addr │ Raw R@10 │ Vote R@10│ Wit R@10 │ Cap-Drop │ Wit-Esc  │ Raw Cands│ Mean Rk  │ P50 Lat  │"
+    );
+    println!(
+        "├───────────────────────┼───────┼────────┼──────────┼──────────┼──────────┼──────────┼──────────┼──────────┼──────────┼──────────┤"
+    );
 }
 
 fn print_table_row(name: &str, d_real: usize, m: &MetricSummary) {
@@ -320,13 +331,21 @@ fn print_table_row(name: &str, d_real: usize, m: &MetricSummary) {
 }
 
 fn print_table_footer() {
-    println!("└───────────────────────┴───────┴────────┴──────────┴──────────┴──────────┴──────────┴──────────┴──────────┴──────────┴──────────┘");
+    println!(
+        "└───────────────────────┴───────┴────────┴──────────┴──────────┴──────────┴──────────┴──────────┴──────────┴──────────┴──────────┘"
+    );
 }
 
 fn main() {
-    println!("╔═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗");
-    println!("║           HNSQR GATE A2: RIVERO CAPACITY CLOSURE & SET-LEVEL FUNNEL ACCOUNTING                                            ║");
-    println!("╚═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝");
+    println!(
+        "╔═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗"
+    );
+    println!(
+        "║           HNSQR GATE A2: RIVERO CAPACITY CLOSURE & SET-LEVEL FUNNEL ACCOUNTING                                            ║"
+    );
+    println!(
+        "╚═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝"
+    );
 
     let is_fast_smoke = cfg!(debug_assertions);
     let n = if is_fast_smoke { 1_000 } else { 10_000 };
@@ -347,7 +366,8 @@ fn main() {
     print_table_header();
 
     for &d_real in &dimensions {
-        let corpus_data = common::generate_realistic_text_corpus(n, q, d_real, 0x5a5a_0000 + d_real as u64);
+        let corpus_data =
+            common::generate_realistic_text_corpus(n, q, d_real, 0x5a5a_0000 + d_real as u64);
         let corpus = &corpus_data.folded_corpus;
         let queries = &corpus_data.folded_queries;
 
@@ -383,9 +403,19 @@ fn main() {
     print_table_footer();
 
     println!("\n[SET-LEVEL FUNNEL DEFINITIONS]");
-    println!("  • Raw R@10:       |GT ∩ raw| / K (All candidates admitted to any territory cell pre-cap)");
-    println!("  • Vote R@10:      |GT ∩ vote| / K (Candidates surviving vote rank < candidate_cap)");
-    println!("  • Wit R@10:       |GT ∩ witness| / K (Final candidate pool after 2-hop witness expansion)");
-    println!("  • Cap-Drop:       |GT ∩ (raw - vote)| / K (GT present in raw territory but pruned by the 2048 cap)");
-    println!("  • Wit-Esc:        |GT ∩ (witness - raw)| / K (GT discovered by witnesses that territory NEVER admitted)\n");
+    println!(
+        "  • Raw R@10:       |GT ∩ raw| / K (All candidates admitted to any territory cell pre-cap)"
+    );
+    println!(
+        "  • Vote R@10:      |GT ∩ vote| / K (Candidates surviving vote rank < candidate_cap)"
+    );
+    println!(
+        "  • Wit R@10:       |GT ∩ witness| / K (Final candidate pool after 2-hop witness expansion)"
+    );
+    println!(
+        "  • Cap-Drop:       |GT ∩ (raw - vote)| / K (GT present in raw territory but pruned by the 2048 cap)"
+    );
+    println!(
+        "  • Wit-Esc:        |GT ∩ (witness - raw)| / K (GT discovered by witnesses that territory NEVER admitted)\n"
+    );
 }

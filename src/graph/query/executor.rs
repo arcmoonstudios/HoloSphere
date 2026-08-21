@@ -11,7 +11,7 @@
 
 use std::sync::Arc;
 
-use crate::graph::query::ast::{Direction, ScalarPredicate, PredicateValue};
+use crate::graph::query::ast::{Direction, PredicateValue, ScalarPredicate};
 use crate::graph::query::morsel::{BindingColumn, Morsel};
 use crate::graph::query::physical::{PhysicalOp, PhysicalPlan};
 use crate::graph::storage::generation::GraphReadGeneration;
@@ -58,7 +58,8 @@ impl ExecutionContext {
     }
 
     pub fn with_vector_seed(mut self, param: impl Into<String>, nodes: Vec<NodeIndex>) -> Self {
-        self.vector_seeds.insert(param.into(), VectorSeedSet { nodes });
+        self.vector_seeds
+            .insert(param.into(), VectorSeedSet { nodes });
         self
     }
 
@@ -76,7 +77,13 @@ impl ExecutionContext {
         query_vectors: &std::collections::HashMap<String, crate::VectorEmbedding>,
     ) -> crate::HNSQRResult<QueryResult> {
         for op in &plan.ops {
-            if let PhysicalOp::VectorSeed { query_param, k, contract, .. } = op {
+            if let PhysicalOp::VectorSeed {
+                query_param,
+                k,
+                contract,
+                ..
+            } = op
+            {
                 if !self.vector_seeds.contains_key(query_param.as_str()) {
                     if let Some(q_vec) = query_vectors.get(query_param.as_str()) {
                         let retrieval_contract = match contract {
@@ -92,12 +99,20 @@ impl ExecutionContext {
                                 )
                             }
                         };
-                        let results =
-                            index.search_indices_with_contract(q_vec, *k, None, retrieval_contract)?;
+                        let results = index.search_indices_with_contract(
+                            q_vec,
+                            *k,
+                            None,
+                            retrieval_contract,
+                        )?;
                         let matched_nodes: Vec<NodeIndex> =
                             results.into_iter().map(|(idx, _)| idx).collect();
-                        self.vector_seeds
-                            .insert(query_param.clone(), VectorSeedSet { nodes: matched_nodes });
+                        self.vector_seeds.insert(
+                            query_param.clone(),
+                            VectorSeedSet {
+                                nodes: matched_nodes,
+                            },
+                        );
                     }
                 }
             }
@@ -114,7 +129,13 @@ impl ExecutionContext {
         query_vectors: &std::collections::HashMap<String, crate::VectorEmbedding>,
     ) -> crate::HNSQRResult<QueryResult> {
         for op in &plan.ops {
-            if let PhysicalOp::VectorSeed { query_param, k, contract, .. } = op {
+            if let PhysicalOp::VectorSeed {
+                query_param,
+                k,
+                contract,
+                ..
+            } = op
+            {
                 if !self.vector_seeds.contains_key(query_param.as_str()) {
                     if let Some(q_vec) = query_vectors.get(query_param.as_str()) {
                         let retrieval_contract = match contract {
@@ -130,12 +151,17 @@ impl ExecutionContext {
                                 )
                             }
                         };
-                        let results =
-                            engine.search_with_contract(q_vec, *k, retrieval_contract);
-                        let matched_nodes: Vec<NodeIndex> =
-                            results.into_iter().filter_map(|(id, _)| id.parse::<u32>().ok()).collect();
-                        self.vector_seeds
-                            .insert(query_param.clone(), VectorSeedSet { nodes: matched_nodes });
+                        let results = engine.search_with_contract(q_vec, *k, retrieval_contract);
+                        let matched_nodes: Vec<NodeIndex> = results
+                            .into_iter()
+                            .filter_map(|(id, _)| id.parse::<u32>().ok())
+                            .collect();
+                        self.vector_seeds.insert(
+                            query_param.clone(),
+                            VectorSeedSet {
+                                nodes: matched_nodes,
+                            },
+                        );
                     }
                 }
             }
@@ -256,7 +282,16 @@ impl ExecutionContext {
                 Ok(Morsel::from_node_column(nodes))
             }
 
-            PhysicalOp::Expand { src_col, dst_col: _, rel_col, rel_type_filter, direction, min_hops, max_hops, optional } => {
+            PhysicalOp::Expand {
+                src_col,
+                dst_col: _,
+                rel_col,
+                rel_type_filter,
+                direction,
+                min_hops,
+                max_hops,
+                optional,
+            } => {
                 if morsel.rows == 0 {
                     return Ok(morsel);
                 }
@@ -409,7 +444,12 @@ impl ExecutionContext {
                 })
             }
 
-            PhysicalOp::ShortestPath { src_col, dst_col, out_cost_col: _, weighted } => {
+            PhysicalOp::ShortestPath {
+                src_col,
+                dst_col,
+                out_cost_col: _,
+                weighted,
+            } => {
                 if morsel.rows == 0 {
                     return Ok(morsel);
                 }
@@ -424,12 +464,10 @@ impl ExecutionContext {
                         Some(crate::graph::storage::generation::SealedAdjacency::Csr {
                             outgoing,
                             incoming,
-                        }) => Box::new(
-                            crate::graph::analytics::projection::CsrProjection::new(
-                                outgoing.clone(),
-                                incoming.clone(),
-                            ),
-                        ),
+                        }) => Box::new(crate::graph::analytics::projection::CsrProjection::new(
+                            outgoing.clone(),
+                            incoming.clone(),
+                        )),
                         None => {
                             // Mutable generation: materialise adjacency vecs once.
                             let mut out_nb = vec![Vec::<NodeIndex>::new(); node_count];
@@ -447,7 +485,13 @@ impl ExecutionContext {
                                     in_wt[u as usize].push(w);
                                 });
                             }
-                            Box::new(VecProjection { node_count, out_nb, out_wt, in_nb, in_wt })
+                            Box::new(VecProjection {
+                                node_count,
+                                out_nb,
+                                out_wt,
+                                in_nb,
+                                in_wt,
+                            })
                         }
                     };
 
@@ -541,12 +585,10 @@ impl ExecutionContext {
             ScalarPredicate::Eq(PredicateValue::Literal(a), PredicateValue::Literal(b)) => a == b,
             ScalarPredicate::Ne(PredicateValue::Literal(a), PredicateValue::Literal(b)) => a != b,
             ScalarPredicate::And(l, r) => {
-                Self::eval_predicate(l, _morsel, _row)
-                    && Self::eval_predicate(r, _morsel, _row)
+                Self::eval_predicate(l, _morsel, _row) && Self::eval_predicate(r, _morsel, _row)
             }
             ScalarPredicate::Or(l, r) => {
-                Self::eval_predicate(l, _morsel, _row)
-                    || Self::eval_predicate(r, _morsel, _row)
+                Self::eval_predicate(l, _morsel, _row) || Self::eval_predicate(r, _morsel, _row)
             }
             ScalarPredicate::Not(inner) => !Self::eval_predicate(inner, _morsel, _row),
             // Property-ref and parameter predicates are deferred to v2.
@@ -572,16 +614,28 @@ impl crate::graph::analytics::projection::GraphProjection for VecProjection {
         self.node_count
     }
     fn out_neighbors(&self, node: NodeIndex) -> &[NodeIndex] {
-        self.out_nb.get(node as usize).map(|v| v.as_slice()).unwrap_or(&[])
+        self.out_nb
+            .get(node as usize)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
     }
     fn in_neighbors(&self, node: NodeIndex) -> &[NodeIndex] {
-        self.in_nb.get(node as usize).map(|v| v.as_slice()).unwrap_or(&[])
+        self.in_nb
+            .get(node as usize)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
     }
     fn out_weights(&self, node: NodeIndex) -> &[f32] {
-        self.out_wt.get(node as usize).map(|v| v.as_slice()).unwrap_or(&[])
+        self.out_wt
+            .get(node as usize)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
     }
     fn in_weights(&self, node: NodeIndex) -> &[f32] {
-        self.in_wt.get(node as usize).map(|v| v.as_slice()).unwrap_or(&[])
+        self.in_wt
+            .get(node as usize)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
     }
     fn edge_count(&self) -> usize {
         self.out_nb.iter().map(|v| v.len()).sum()

@@ -3,8 +3,8 @@ mod common;
 use std::time::Instant;
 
 use common::generate_realistic_text_corpus;
-use hnsqr::rivero::{AdaptivePolicy, RiveroProfile};
 use hnsqr::NodeIndex;
+use hnsqr::rivero::{AdaptivePolicy, RiveroProfile};
 
 fn percentile(mut latencies: Vec<f64>, p: f64) -> f64 {
     if latencies.is_empty() {

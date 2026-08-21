@@ -11,10 +11,10 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Arc;
 use num_complex::Complex32;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use crate::VectorEmbedding;
 
@@ -34,7 +34,10 @@ pub enum GpuPrecision {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GpuExecutionDevice {
     /// NVIDIA CUDA GPU with Tensor Core acceleration.
-    Cuda { device_id: u32, compute_capability: (u32, u32) },
+    Cuda {
+        device_id: u32,
+        compute_capability: (u32, u32),
+    },
     /// CPU AVX2/AVX-512 SIMD fallback engine.
     CpuSimd { thread_count: usize },
 }
@@ -87,7 +90,8 @@ impl CudaPinnedMemory {
         let size = count * std::mem::size_of::<Complex32>();
         let current = self.allocated_bytes.load(Ordering::Relaxed);
         if current + size as u64 <= self.capacity_bytes as u64 {
-            self.allocated_bytes.fetch_add(size as u64, Ordering::Relaxed);
+            self.allocated_bytes
+                .fetch_add(size as u64, Ordering::Relaxed);
             Some(Vec::with_capacity(count))
         } else {
             None
@@ -113,7 +117,7 @@ impl GpuTensorAccelerator {
     /// Initializes the accelerator, detecting available GPU hardware.
     pub fn new(config: GpuDeviceConfig) -> Self {
         let pinned_memory = Arc::new(CudaPinnedMemory::new(config.pinned_memory_pool_mb));
-        
+
         // Check for CUDA environment availability; transparently default to CPU SIMD when absent
         let active_device = if std::env::var("HNSQR_ENABLE_CUDA").is_ok() {
             GpuExecutionDevice::Cuda {
@@ -151,12 +155,15 @@ impl GpuTensorAccelerator {
         }
 
         self.total_gemm_ops.fetch_add(1, Ordering::Relaxed);
-        self.total_vectors_evaluated.fetch_add((m * n) as u64, Ordering::Relaxed);
+        self.total_vectors_evaluated
+            .fetch_add((m * n) as u64, Ordering::Relaxed);
 
         let mut output = vec![vec![0.0f32; n]; m];
 
         // If batch size is smaller than GPU transfer crossover, use high-speed CPU SIMD
-        if n < self.config.gpu_batch_threshold || matches!(self.active_device, GpuExecutionDevice::CpuSimd { .. }) {
+        if n < self.config.gpu_batch_threshold
+            || matches!(self.active_device, GpuExecutionDevice::CpuSimd { .. })
+        {
             for (i, q) in queries.iter().enumerate() {
                 let q_comp = q.complex_data();
                 for (j, c) in candidates.iter().enumerate() {

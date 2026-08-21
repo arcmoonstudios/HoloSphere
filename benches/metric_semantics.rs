@@ -157,11 +157,14 @@ fn main() {
         "════════════════════════════════════════════════════════════════════════════════════════"
     );
 
-    use hnsqr::rivero::{AdaptivePolicy, RiveroProfile};
     use hnsqr::rivero::bulk::RiveroBulkBuilder;
+    use hnsqr::rivero::{AdaptivePolicy, RiveroProfile};
     use hnsqr::{DistanceFunction, HNSQRConfig, HNSQRIndex, SearchPlan};
 
-    for dist_fn in [DistanceFunction::Cosine, DistanceFunction::ProjectiveOverlap] {
+    for dist_fn in [
+        DistanceFunction::Cosine,
+        DistanceFunction::ProjectiveOverlap,
+    ] {
         let fn_label = match dist_fn {
             DistanceFunction::Cosine => "Cosine (Folded Hermitian Re)",
             DistanceFunction::ProjectiveOverlap => "ProjectiveOverlap (|<ψ|ϕ>|² / (||ψ||² ||ϕ||²))",

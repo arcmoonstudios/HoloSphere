@@ -10,10 +10,10 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::HNSQRResult;
 
@@ -70,14 +70,14 @@ impl AutonomousMemoryConsolidator {
     /// Ingests a new fact extracted from user interactions, resolving contradictory beliefs.
     pub fn ingest_fact(&self, user_id: &str, fact: EpisodicFact) -> HNSQRResult<()> {
         let mut profiles = self.profiles.write();
-        let profile = profiles.entry(user_id.to_string()).or_insert_with(|| {
-            UserPersonaProfile {
+        let profile = profiles
+            .entry(user_id.to_string())
+            .or_insert_with(|| UserPersonaProfile {
                 user_id: user_id.to_string(),
                 preferences: HashMap::new(),
                 consolidated_facts: Vec::new(),
                 total_interactions: 0,
-            }
-        });
+            });
 
         profile.total_interactions += 1;
 
@@ -92,7 +92,8 @@ impl AutonomousMemoryConsolidator {
 
         if let Some(idx) = conflict_idx {
             // Supersede if incoming fact has higher confidence or is more recent
-            self.total_conflicts_resolved.fetch_add(1, Ordering::Relaxed);
+            self.total_conflicts_resolved
+                .fetch_add(1, Ordering::Relaxed);
             profile.consolidated_facts[idx] = fact.clone();
         } else {
             profile.consolidated_facts.push(fact.clone());
@@ -114,16 +115,23 @@ impl AutonomousMemoryConsolidator {
     /// Evaluates Ebbinghaus retention score: $R = e^{-\frac{\Delta t}{S \cdot (1 + \text{salience})}}$
     pub fn evaluate_retention(&self, fact: &EpisodicFact, current_time_secs: u64) -> f32 {
         let delta_t = current_time_secs.saturating_sub(fact.last_accessed_secs) as f32;
-        let memory_strength = (fact.recall_count as f32 + 1.0) * (1.0 + fact.emotional_salience * 2.0);
+        let memory_strength =
+            (fact.recall_count as f32 + 1.0) * (1.0 + fact.emotional_salience * 2.0);
         let decay_rate = delta_t / (memory_strength * 86400.0); // scaled to days
         (-decay_rate).exp()
     }
 
     /// Retrieves active non-decayed persona facts for a user.
-    pub fn get_active_persona(&self, user_id: &str, current_time_secs: u64, min_retention: f32) -> Option<UserPersonaProfile> {
+    pub fn get_active_persona(
+        &self,
+        user_id: &str,
+        current_time_secs: u64,
+        min_retention: f32,
+    ) -> Option<UserPersonaProfile> {
         let profiles = self.profiles.read();
         profiles.get(user_id).map(|p| {
-            let filtered_facts: Vec<EpisodicFact> = p.consolidated_facts
+            let filtered_facts: Vec<EpisodicFact> = p
+                .consolidated_facts
                 .iter()
                 .filter(|f| self.evaluate_retention(f, current_time_secs) >= min_retention)
                 .cloned()
@@ -194,8 +202,13 @@ mod tests {
         };
         consolidator.ingest_fact("usr_001", fact1).unwrap();
 
-        let profile1 = consolidator.get_active_persona("usr_001", 1000, 0.1).unwrap();
-        assert_eq!(profile1.preferences.get("favorite_programming_language"), Some(&"Python".to_string()));
+        let profile1 = consolidator
+            .get_active_persona("usr_001", 1000, 0.1)
+            .unwrap();
+        assert_eq!(
+            profile1.preferences.get("favorite_programming_language"),
+            Some(&"Python".to_string())
+        );
 
         // 2. Ingest contradictory updated preference: User migrated to Rust
         let fact2 = EpisodicFact {
@@ -213,7 +226,12 @@ mod tests {
         consolidator.ingest_fact("usr_001", fact2).unwrap();
 
         assert_eq!(consolidator.total_conflicts_resolved(), 1);
-        let profile2 = consolidator.get_active_persona("usr_001", 2000, 0.1).unwrap();
-        assert_eq!(profile2.preferences.get("favorite_programming_language"), Some(&"Rust".to_string()));
+        let profile2 = consolidator
+            .get_active_persona("usr_001", 2000, 0.1)
+            .unwrap();
+        assert_eq!(
+            profile2.preferences.get("favorite_programming_language"),
+            Some(&"Rust".to_string())
+        );
     }
 }

@@ -5,8 +5,8 @@
 
 use std::sync::Arc;
 
-use crate::graph::storage::csr::{CscAdjacency, CsrAdjacency};
 use crate::NodeIndex;
+use crate::graph::storage::csr::{CscAdjacency, CsrAdjacency};
 
 /// Uniform interface consumed by all GDS algorithms.
 ///

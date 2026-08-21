@@ -29,4 +29,4 @@ pub use kms::{KmsProvider, LocalKmsProvider};
 pub use oidc::{JsonWebKey, OidcClaims, OidcConfig, OidcValidator};
 pub use siem::{SiemExporter, SiemFormat};
 pub use tenant::{TenantContext, TenantManager, TenantNamespace, TenantQuota};
-pub use tls::{TlsConfig, DEFAULT_MAX_FRAME_BYTES};
+pub use tls::{DEFAULT_MAX_FRAME_BYTES, TlsConfig};

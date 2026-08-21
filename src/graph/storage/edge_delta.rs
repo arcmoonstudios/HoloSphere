@@ -35,8 +35,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use bytemuck::{Pod, Zeroable};
 use parking_lot::RwLock;
 
-use crate::graph::catalog::RelTypeId;
 use crate::NodeIndex;
+use crate::graph::catalog::RelTypeId;
 
 /// Sentinel for empty linked-list pointers.
 pub const NULL_EDGE: u32 = u32::MAX;
@@ -187,11 +187,7 @@ impl EdgeDelta {
     /// Iterates the outgoing edge chain for `node` starting at `head`.
     ///
     /// Skips tombstoned records so callers always see consistent live edges.
-    pub fn iter_out_chain(
-        &self,
-        head: u32,
-        mut visitor: impl FnMut(RelationshipId, &EdgeRecord),
-    ) {
+    pub fn iter_out_chain(&self, head: u32, mut visitor: impl FnMut(RelationshipId, &EdgeRecord)) {
         let records = self.records.read();
         let live = self.live.read();
         let mut cur = head;
@@ -211,11 +207,7 @@ impl EdgeDelta {
     }
 
     /// Iterates the incoming edge chain for `node` starting at `head`.
-    pub fn iter_in_chain(
-        &self,
-        head: u32,
-        mut visitor: impl FnMut(RelationshipId, &EdgeRecord),
-    ) {
+    pub fn iter_in_chain(&self, head: u32, mut visitor: impl FnMut(RelationshipId, &EdgeRecord)) {
         let records = self.records.read();
         let live = self.live.read();
         let mut cur = head;
@@ -255,7 +247,13 @@ impl EdgeDelta {
         let live = self.live.read();
         live.iter()
             .enumerate()
-            .filter_map(|(i, &b)| if b { Some((i as RelationshipId, records[i])) } else { None })
+            .filter_map(|(i, &b)| {
+                if b {
+                    Some((i as RelationshipId, records[i]))
+                } else {
+                    None
+                }
+            })
             .collect()
     }
 }

@@ -14,8 +14,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::service::ReadSnapshot;
 use crate::SimilarityScore;
+use crate::service::ReadSnapshot;
 
 pub type ClusterRegionId = String;
 
@@ -34,7 +34,9 @@ pub struct ClusterProofResponse {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FederatedProofStatus {
     CertifiedExact,
-    IncompleteGlobalProof { missing_regions: Vec<ClusterRegionId> },
+    IncompleteGlobalProof {
+        missing_regions: Vec<ClusterRegionId>,
+    },
 }
 
 /// Global federated query result.
@@ -77,7 +79,9 @@ impl FederatedProofCoordinator {
 
         // Certified condition: Every region's max unresolved upper bound must be strictly less than tau_global
         let proof_status = if !unreachable.is_empty() {
-            FederatedProofStatus::IncompleteGlobalProof { missing_regions: unreachable.clone() }
+            FederatedProofStatus::IncompleteGlobalProof {
+                missing_regions: unreachable.clone(),
+            }
         } else {
             let mut all_regions_certified = true;
             for resp in &responses {
@@ -89,7 +93,9 @@ impl FederatedProofCoordinator {
             if all_regions_certified {
                 FederatedProofStatus::CertifiedExact
             } else {
-                FederatedProofStatus::IncompleteGlobalProof { missing_regions: Vec::new() }
+                FederatedProofStatus::IncompleteGlobalProof {
+                    missing_regions: Vec::new(),
+                }
             }
         };
 
@@ -102,4 +108,3 @@ impl FederatedProofCoordinator {
         }
     }
 }
-

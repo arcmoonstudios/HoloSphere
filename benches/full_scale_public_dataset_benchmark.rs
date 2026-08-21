@@ -31,7 +31,10 @@ const TOP1_SCORE_TOLERANCE: f32 = 1e-4;
 /// wall-clock budget for it.
 const QUERIES_PER_DATASET: usize = 200;
 
-fn read_fvecs_limited(path: impl AsRef<Path>, max_vectors: Option<usize>) -> io::Result<Vec<VectorEmbedding>> {
+fn read_fvecs_limited(
+    path: impl AsRef<Path>,
+    max_vectors: Option<usize>,
+) -> io::Result<Vec<VectorEmbedding>> {
     let mut file = File::open(path)?;
     let mut vectors = Vec::new();
     let mut dim_buf = [0u8; 4];
@@ -137,10 +140,14 @@ fn evaluate_corpus_full(
     let snapshot_path = base_path.with_extension("snapshot");
 
     let index = if snapshot_path.exists() {
-        eprintln!("  [{name}] found prebuilt snapshot {:?}, attaching via mmap...", snapshot_path);
+        eprintln!(
+            "  [{name}] found prebuilt snapshot {:?}, attaching via mmap...",
+            snapshot_path
+        );
         let t_load = Instant::now();
-        let idx = HNSQRIndex::open_snapshot_v2(&snapshot_path, hnsqr::SnapshotOpenOptions::default())
-            .expect("Failed to open prebuilt snapshot");
+        let idx =
+            HNSQRIndex::open_snapshot_v2(&snapshot_path, hnsqr::SnapshotOpenOptions::default())
+                .expect("Failed to open prebuilt snapshot");
         idx.freeze_rivero_routing();
         eprintln!("  [{name}] snapshot attached in {:.2?}", t_load.elapsed());
         idx
@@ -156,7 +163,10 @@ fn evaluate_corpus_full(
         }
         index.freeze_rivero_routing();
         let _ = index.save_snapshot_v2(&snapshot_path);
-        eprintln!("  [{name}] index built and snapshot saved in {:.2?}", build_start.elapsed());
+        eprintln!(
+            "  [{name}] index built and snapshot saved in {:.2?}",
+            build_start.elapsed()
+        );
         index
     };
 
@@ -184,11 +194,20 @@ fn evaluate_corpus_full(
         let top1_delta = (top1_score - gt_top1_score).abs();
         let passed = recall_pct >= RECALL_PASS_THRESHOLD_PCT && top1_delta < TOP1_SCORE_TOLERANCE;
 
-        samples.push(QuerySample { recall_pct, top1_delta, latency: elapsed, passed });
+        samples.push(QuerySample {
+            recall_pct,
+            top1_delta,
+            latency: elapsed,
+            passed,
+        });
     }
 
-    let mean_recall_pct = samples.iter().map(|s| s.recall_pct).sum::<f64>() / samples.len().max(1) as f64;
-    let min_recall_pct = samples.iter().map(|s| s.recall_pct).fold(f64::MAX, f64::min);
+    let mean_recall_pct =
+        samples.iter().map(|s| s.recall_pct).sum::<f64>() / samples.len().max(1) as f64;
+    let min_recall_pct = samples
+        .iter()
+        .map(|s| s.recall_pct)
+        .fold(f64::MAX, f64::min);
     let latencies: Vec<Duration> = samples.iter().map(|s| s.latency).collect();
     let p50_latency = percentile(latencies.clone(), 0.50);
     let p95_latency = percentile(latencies, 0.95);
@@ -215,11 +234,21 @@ fn print_row(r: &DatasetResult) {
     if !r.ran {
         println!(
             "{:<40} {:<10} {:<12} {:<8} {:<15} {:<12} {:<12}",
-            r.name, "-", "-", "-", format!("SKIPPED: {}", r.skip_reason.as_deref().unwrap_or("unknown")), "-", "-"
+            r.name,
+            "-",
+            "-",
+            "-",
+            format!("SKIPPED: {}", r.skip_reason.as_deref().unwrap_or("unknown")),
+            "-",
+            "-"
         );
         return;
     }
-    let label_flag = if r.label_consistent { "" } else { " [LABEL MISMATCH]" };
+    let label_flag = if r.label_consistent {
+        ""
+    } else {
+        " [LABEL MISMATCH]"
+    };
     let status = if r.passed { "PASS" } else { "FAIL" };
     println!(
         "{:<40} {:<10} {:<12} {:<8} {:<15} {:<12.2?} {:<12.2?}",
@@ -227,7 +256,10 @@ fn print_row(r: &DatasetResult) {
         r.dim,
         r.corpus_n,
         r.samples.len(),
-        format!("{:.1}%/{:.1}% [{status}]{label_flag}", r.mean_recall_pct, r.min_recall_pct),
+        format!(
+            "{:.1}%/{:.1}% [{status}]{label_flag}",
+            r.mean_recall_pct, r.min_recall_pct
+        ),
         r.p50_latency,
         r.p95_latency,
     );
@@ -239,14 +271,22 @@ fn main() {
         eprintln!("This runs uncapped ground truth against corpora up to 1.18M vectors and");
         eprintln!("takes multiple minutes. Run with:");
         eprintln!();
-        eprintln!("  HOLOSPHERE_FULL_SCALE=1 cargo bench --bench full_scale_public_dataset_benchmark");
+        eprintln!(
+            "  HOLOSPHERE_FULL_SCALE=1 cargo bench --bench full_scale_public_dataset_benchmark"
+        );
         eprintln!();
         std::process::exit(0);
     }
 
-    println!("╔═════════════════════════════════════════════════════════════════════════════════════════════════════════════╗");
-    println!("║             HOLOSPHERE FULL-SCALE PUBLIC DATASET AUDIT (UNCAPPED)                                           ║");
-    println!("╚═════════════════════════════════════════════════════════════════════════════════════════════════════════════╝");
+    println!(
+        "╔═════════════════════════════════════════════════════════════════════════════════════════════════════════════╗"
+    );
+    println!(
+        "║             HOLOSPHERE FULL-SCALE PUBLIC DATASET AUDIT (UNCAPPED)                                           ║"
+    );
+    println!(
+        "╚═════════════════════════════════════════════════════════════════════════════════════════════════════════════╝"
+    );
     println!("Rayon threads: {}", rayon::current_num_threads());
 
     let k = 10;
@@ -255,11 +295,36 @@ fn main() {
     // declared_n here is the FULL dataset size per the public spec sheets
     // for each corpus — this is what full-scale is claiming to test.
     let public_datasets: [(&str, PathBuf, PathBuf, usize); 5] = [
-        ("GloVe-25 (Full, Real Public)", PathBuf::from("datasets/glove_25/glove25_base.fvecs"), PathBuf::from("datasets/glove_25/glove25_query.fvecs"), 1_183_514),
-        ("GloVe-50 (Full, Real Public)", PathBuf::from("datasets/glove_50/glove50_base.fvecs"), PathBuf::from("datasets/glove_50/glove50_query.fvecs"), 1_183_514),
-        ("GloVe-100 (Full, Real Public)", PathBuf::from("datasets/glove_100/glove100_base.fvecs"), PathBuf::from("datasets/glove_100/glove100_query.fvecs"), 1_183_514),
-        ("Texmex SIFT10K (Full, Real Public)", PathBuf::from("datasets/siftsmall/siftsmall_base.fvecs"), PathBuf::from("datasets/siftsmall/siftsmall_query.fvecs"), 10_000),
-        ("Texmex SIFT1M (Full, Real Public)", PathBuf::from("datasets/sift_1m/sift1m_base.fvecs"), PathBuf::from("datasets/sift_1m/sift1m_query.fvecs"), 1_000_000),
+        (
+            "GloVe-25 (Full, Real Public)",
+            PathBuf::from("datasets/glove_25/glove25_base.fvecs"),
+            PathBuf::from("datasets/glove_25/glove25_query.fvecs"),
+            1_183_514,
+        ),
+        (
+            "GloVe-50 (Full, Real Public)",
+            PathBuf::from("datasets/glove_50/glove50_base.fvecs"),
+            PathBuf::from("datasets/glove_50/glove50_query.fvecs"),
+            1_183_514,
+        ),
+        (
+            "GloVe-100 (Full, Real Public)",
+            PathBuf::from("datasets/glove_100/glove100_base.fvecs"),
+            PathBuf::from("datasets/glove_100/glove100_query.fvecs"),
+            1_183_514,
+        ),
+        (
+            "Texmex SIFT10K (Full, Real Public)",
+            PathBuf::from("datasets/siftsmall/siftsmall_base.fvecs"),
+            PathBuf::from("datasets/siftsmall/siftsmall_query.fvecs"),
+            10_000,
+        ),
+        (
+            "Texmex SIFT1M (Full, Real Public)",
+            PathBuf::from("datasets/sift_1m/sift1m_base.fvecs"),
+            PathBuf::from("datasets/sift_1m/sift1m_query.fvecs"),
+            1_000_000,
+        ),
     ];
 
     println!(
@@ -271,15 +336,38 @@ fn main() {
     for (name, base_path, query_path, declared_n) in &public_datasets {
         eprintln!("\n=== {name} ===");
         let result = if !base_path.exists() || !query_path.exists() {
-            DatasetResult::skipped(name, *declared_n, format!("dataset files not found at {}", base_path.display()))
+            DatasetResult::skipped(
+                name,
+                *declared_n,
+                format!("dataset files not found at {}", base_path.display()),
+            )
         } else {
-            match (read_fvecs_limited(base_path, None), read_fvecs_limited(query_path, Some(QUERIES_PER_DATASET))) {
-                (Ok(base_vecs), Ok(query_vecs)) if !base_vecs.is_empty() && !query_vecs.is_empty() => {
+            match (
+                read_fvecs_limited(base_path, None),
+                read_fvecs_limited(query_path, Some(QUERIES_PER_DATASET)),
+            ) {
+                (Ok(base_vecs), Ok(query_vecs))
+                    if !base_vecs.is_empty() && !query_vecs.is_empty() =>
+                {
                     let dim = base_vecs[0].dimension();
-                    evaluate_corpus_full(name, base_path, &base_vecs, &query_vecs, dim, k, *declared_n)
+                    evaluate_corpus_full(
+                        name,
+                        base_path,
+                        &base_vecs,
+                        &query_vecs,
+                        dim,
+                        k,
+                        *declared_n,
+                    )
                 }
-                (Ok(_), Ok(_)) => DatasetResult::skipped(name, *declared_n, "dataset files present but empty after parse".to_string()),
-                (Err(e), _) | (_, Err(e)) => DatasetResult::skipped(name, *declared_n, format!("read_fvecs failed: {e}")),
+                (Ok(_), Ok(_)) => DatasetResult::skipped(
+                    name,
+                    *declared_n,
+                    "dataset files present but empty after parse".to_string(),
+                ),
+                (Err(e), _) | (_, Err(e)) => {
+                    DatasetResult::skipped(name, *declared_n, format!("read_fvecs failed: {e}"))
+                }
             }
         };
         print_row(&result);
@@ -288,7 +376,10 @@ fn main() {
 
     let ran: Vec<&DatasetResult> = results.iter().filter(|r| r.ran).collect();
     let skipped: Vec<&DatasetResult> = results.iter().filter(|r| !r.ran).collect();
-    let mismatched: Vec<&DatasetResult> = results.iter().filter(|r| r.ran && !r.label_consistent).collect();
+    let mismatched: Vec<&DatasetResult> = results
+        .iter()
+        .filter(|r| r.ran && !r.label_consistent)
+        .collect();
     let passed_count = ran.iter().filter(|r| r.passed).count();
     let total_queries: usize = ran.iter().map(|r| r.samples.len()).sum();
 
@@ -296,14 +387,26 @@ fn main() {
     println!("FULL-SCALE AUDIT SUMMARY");
     println!("  Datasets evaluated:  {}/{}", ran.len(), results.len());
     println!("  Total queries run:   {}", total_queries);
-    println!("  Datasets passed:     {}/{}", passed_count, ran.len().max(1));
+    println!(
+        "  Datasets passed:     {}/{}",
+        passed_count,
+        ran.len().max(1)
+    );
     for m in &mismatched {
-        println!("  LABEL MISMATCH: {} — loaded {} vectors, declared {}", m.name, m.corpus_n, m.declared_n);
+        println!(
+            "  LABEL MISMATCH: {} — loaded {} vectors, declared {}",
+            m.name, m.corpus_n, m.declared_n
+        );
     }
     for s in &skipped {
-        println!("  SKIPPED: {} — {}", s.name, s.skip_reason.as_deref().unwrap_or("unknown"));
+        println!(
+            "  SKIPPED: {} — {}",
+            s.name,
+            s.skip_reason.as_deref().unwrap_or("unknown")
+        );
     }
-    let overall_pass = !ran.is_empty() && passed_count == ran.len() && skipped.is_empty() && mismatched.is_empty();
+    let overall_pass =
+        !ran.is_empty() && passed_count == ran.len() && skipped.is_empty() && mismatched.is_empty();
     println!(
         "  Verdict: {}",
         if overall_pass {

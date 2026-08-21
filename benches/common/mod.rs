@@ -1,15 +1,14 @@
 #![allow(dead_code)]
 
 use std::collections::HashMap;
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use hnsqr::metadata::index::MetadataValue;
-use hnsqr::vector::folding::ComplexWeaver;
 use hnsqr::rivero::RiveroProfile;
-use hnsqr::rivero::bulk::RiveroBulkBuilder;
-use hnsqr::{HNSQRConfig, HNSQRIndex, NodeIndex, VectorEmbedding};
+use hnsqr::vector::folding::ComplexWeaver;
+use hnsqr::{HNSQRIndex, NodeIndex, VectorEmbedding};
 use num_complex::Complex32;
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
@@ -105,16 +104,21 @@ pub fn bench_cache_dir() -> PathBuf {
 }
 
 fn require_prebuilt_snapshot(path: &Path) {
-    assert!(path.is_file(),
+    assert!(
+        path.is_file(),
         "prebuilt benchmark database is missing: {}\n\
          Build it once from the checked-in datasets with:\n\
            cargo run --release --bin hnsqr_build_bench_db -- --help\n\
          Benchmark processes never build or overwrite database artifacts.",
-        path.display());
+        path.display()
+    );
 }
 
 /// High-performance binary `.fvecs` parser.
-pub fn read_fvecs<P: AsRef<Path>>(path: P, limit: Option<usize>) -> std::io::Result<(Vec<VectorEmbedding>, usize)> {
+pub fn read_fvecs<P: AsRef<Path>>(
+    path: P,
+    limit: Option<usize>,
+) -> std::io::Result<(Vec<VectorEmbedding>, usize)> {
     let mut file = File::open(path)?;
     let mut dim_buf = [0u8; 4];
     let mut vectors = Vec::new();
@@ -180,37 +184,77 @@ pub fn read_fvecs_raw<P: AsRef<Path>>(
 pub fn find_best_matching_dataset(target_dim: usize) -> (PathBuf, PathBuf, usize) {
     let base_dir = Path::new("datasets");
     if target_dim <= 35 {
-        (base_dir.join("glove_25/glove25_base.fvecs"), base_dir.join("glove_25/glove25_query.fvecs"), 25)
+        (
+            base_dir.join("glove_25/glove25_base.fvecs"),
+            base_dir.join("glove_25/glove25_query.fvecs"),
+            25,
+        )
     } else if target_dim <= 75 {
-        (base_dir.join("glove_50/glove50_base.fvecs"), base_dir.join("glove_50/glove50_query.fvecs"), 50)
+        (
+            base_dir.join("glove_50/glove50_base.fvecs"),
+            base_dir.join("glove_50/glove50_query.fvecs"),
+            50,
+        )
     } else if target_dim <= 115 {
-        (base_dir.join("glove_100/glove100_base.fvecs"), base_dir.join("glove_100/glove100_query.fvecs"), 100)
+        (
+            base_dir.join("glove_100/glove100_base.fvecs"),
+            base_dir.join("glove_100/glove100_query.fvecs"),
+            100,
+        )
     } else if target_dim <= 300 {
         let sift1m = base_dir.join("sift_1m/sift1m_base.fvecs");
         let siftsmall = base_dir.join("siftsmall/siftsmall_base.fvecs");
         if sift1m.exists() {
             (sift1m, base_dir.join("sift_1m/sift1m_query.fvecs"), 128)
         } else {
-            (siftsmall, base_dir.join("siftsmall/siftsmall_query.fvecs"), 128)
+            (
+                siftsmall,
+                base_dir.join("siftsmall/siftsmall_query.fvecs"),
+                128,
+            )
         }
     } else if target_dim <= 600 {
-        (base_dir.join("clip_512/clip_base.fvecs"), base_dir.join("clip_512/clip_query.fvecs"), 512)
+        (
+            base_dir.join("clip_512/clip_base.fvecs"),
+            base_dir.join("clip_512/clip_query.fvecs"),
+            512,
+        )
     } else if target_dim <= 1000 {
         let cohere_large = base_dir.join("cohere_768_large/cohere_100k_base.fvecs");
         if cohere_large.exists() {
-            (cohere_large, base_dir.join("cohere_768/cohere_query.fvecs"), 768)
+            (
+                cohere_large,
+                base_dir.join("cohere_768/cohere_query.fvecs"),
+                768,
+            )
         } else {
-            (base_dir.join("cohere_768/cohere_base.fvecs"), base_dir.join("cohere_768/cohere_query.fvecs"), 768)
+            (
+                base_dir.join("cohere_768/cohere_base.fvecs"),
+                base_dir.join("cohere_768/cohere_query.fvecs"),
+                768,
+            )
         }
     } else if target_dim <= 2500 {
         let openai_large = base_dir.join("openai_1536_large/openai_1m_base.fvecs");
         if openai_large.exists() {
-            (openai_large, base_dir.join("openai_1536/openai_query.fvecs"), 1536)
+            (
+                openai_large,
+                base_dir.join("openai_1536/openai_query.fvecs"),
+                1536,
+            )
         } else {
-            (base_dir.join("openai_1536/openai_base.fvecs"), base_dir.join("openai_1536/openai_query.fvecs"), 1536)
+            (
+                base_dir.join("openai_1536/openai_base.fvecs"),
+                base_dir.join("openai_1536/openai_query.fvecs"),
+                1536,
+            )
         }
     } else {
-        (base_dir.join("arxiv_4096/database_vectors.fvecs"), base_dir.join("arxiv_4096/query_vectors.fvecs"), 4096)
+        (
+            base_dir.join("arxiv_4096/database_vectors.fvecs"),
+            base_dir.join("arxiv_4096/query_vectors.fvecs"),
+            4096,
+        )
     }
 }
 
@@ -230,7 +274,8 @@ pub fn generate_realistic_text_corpus(
     };
 
     let (mut queries_raw, mut folded_queries, _) = if query_path.exists() {
-        read_fvecs_raw(&query_path, Some(num_queries)).unwrap_or_else(|_| (Vec::new(), Vec::new(), actual_dim))
+        read_fvecs_raw(&query_path, Some(num_queries))
+            .unwrap_or_else(|_| (Vec::new(), Vec::new(), actual_dim))
     } else {
         (Vec::new(), Vec::new(), actual_dim)
     };
@@ -346,12 +391,22 @@ pub fn open_prebuilt_index(
     dim: usize,
     profile: RiveroProfile,
 ) -> HNSQRIndex {
-    let snap_path = bench_cache_dir().join(format!("{dataset_tag}_v{CACHE_VERSION}_p{:?}_d{dim}_n{}.snapshot", profile, corpus.len()));
+    let snap_path = bench_cache_dir().join(format!(
+        "{dataset_tag}_v{CACHE_VERSION}_p{:?}_d{dim}_n{}.snapshot",
+        profile,
+        corpus.len()
+    ));
     require_prebuilt_snapshot(&snap_path);
     let index = HNSQRIndex::open_snapshot_v2(
         &snap_path,
         hnsqr::storage::snapshot::SnapshotOpenOptions::default(),
-    ).unwrap_or_else(|error| panic!("invalid prebuilt benchmark database {}: {error}", snap_path.display()));
+    )
+    .unwrap_or_else(|error| {
+        panic!(
+            "invalid prebuilt benchmark database {}: {error}",
+            snap_path.display()
+        )
+    });
     index.freeze_rivero_routing();
     index
 }

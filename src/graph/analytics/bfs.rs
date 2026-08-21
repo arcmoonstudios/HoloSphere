@@ -12,8 +12,8 @@
 
 use std::collections::VecDeque;
 
-use crate::graph::analytics::projection::GraphProjection;
 use crate::NodeIndex;
+use crate::graph::analytics::projection::GraphProjection;
 
 /// BFS result from a single source.
 #[derive(Debug, Default)]

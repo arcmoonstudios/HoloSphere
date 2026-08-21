@@ -10,11 +10,11 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::{HNSQRError, HNSQRResult};
 
@@ -144,26 +144,50 @@ impl TypedColumnVector {
 
     pub fn get_value(&self, idx: usize) -> SqlValue {
         match self {
-            Self::Integer(v) => v.get(idx).copied().map(SqlValue::Integer).unwrap_or(SqlValue::Null),
-            Self::Text(v) => v.get(idx).cloned().map(SqlValue::Text).unwrap_or(SqlValue::Null),
-            Self::Float(v) => v.get(idx).copied().map(SqlValue::Float).unwrap_or(SqlValue::Null),
-            Self::Boolean(v) => v.get(idx).copied().map(SqlValue::Boolean).unwrap_or(SqlValue::Null),
+            Self::Integer(v) => v
+                .get(idx)
+                .copied()
+                .map(SqlValue::Integer)
+                .unwrap_or(SqlValue::Null),
+            Self::Text(v) => v
+                .get(idx)
+                .cloned()
+                .map(SqlValue::Text)
+                .unwrap_or(SqlValue::Null),
+            Self::Float(v) => v
+                .get(idx)
+                .copied()
+                .map(SqlValue::Float)
+                .unwrap_or(SqlValue::Null),
+            Self::Boolean(v) => v
+                .get(idx)
+                .copied()
+                .map(SqlValue::Boolean)
+                .unwrap_or(SqlValue::Null),
         }
     }
 
     pub fn set_value(&mut self, idx: usize, val: &SqlValue) {
         match (self, val) {
             (Self::Integer(v), SqlValue::Integer(i)) => {
-                if idx < v.len() { v[idx] = *i; }
+                if idx < v.len() {
+                    v[idx] = *i;
+                }
             }
             (Self::Text(v), SqlValue::Text(s)) => {
-                if idx < v.len() { v[idx] = s.clone(); }
+                if idx < v.len() {
+                    v[idx] = s.clone();
+                }
             }
             (Self::Float(v), SqlValue::Float(f)) => {
-                if idx < v.len() { v[idx] = *f; }
+                if idx < v.len() {
+                    v[idx] = *f;
+                }
             }
             (Self::Boolean(v), SqlValue::Boolean(b)) => {
-                if idx < v.len() { v[idx] = *b; }
+                if idx < v.len() {
+                    v[idx] = *b;
+                }
             }
             _ => {}
         }
@@ -305,16 +329,11 @@ impl RelationalSqlEngine {
     }
 
     /// Inserts a row inside an active ACID transaction, validating Foreign Key integrity.
-    pub fn insert(
-        &self,
-        tx_id: u64,
-        table: &str,
-        row: RelationalRow,
-    ) -> HNSQRResult<()> {
+    pub fn insert(&self, tx_id: u64, table: &str, row: RelationalRow) -> HNSQRResult<()> {
         let tables = self.tables.read();
-        let schema = tables.get(table).ok_or_else(|| {
-            HNSQRError::InvalidRequest(format!("Table '{table}' not found"))
-        })?;
+        let schema = tables
+            .get(table)
+            .ok_or_else(|| HNSQRError::InvalidRequest(format!("Table '{table}' not found")))?;
 
         // 1. Validate primary key presence
         let pk_val = row.values.get(&schema.primary_key_column).ok_or_else(|| {
@@ -330,7 +349,7 @@ impl RelationalSqlEngine {
             _ => {
                 return Err(HNSQRError::InvalidRequest(
                     "Primary key must be Text or Integer".into(),
-                ))
+                ));
             }
         };
 
@@ -342,14 +361,16 @@ impl RelationalSqlEngine {
                         let target_table_arc = {
                             let storage = self.storage.read();
                             storage.get(target_table).cloned().ok_or_else(|| {
-                                HNSQRError::InvalidRequest(format!("Target table '{target_table}' not found"))
+                                HNSQRError::InvalidRequest(format!(
+                                    "Target table '{target_table}' not found"
+                                ))
                             })?
                         };
-                        
+
                         let target_table_guard = target_table_arc.read();
-                        let target_exists = target_table_guard.iter_rows().any(|r| {
-                            r.values.get(target_col) == Some(val)
-                        });
+                        let target_exists = target_table_guard
+                            .iter_rows()
+                            .any(|r| r.values.get(target_col) == Some(val));
 
                         if !target_exists {
                             return Err(HNSQRError::InvalidRequest(format!(
@@ -364,21 +385,22 @@ impl RelationalSqlEngine {
 
         // 3. Stage uncommitted write and acquire 2PL lock
         let mut active_tx = self.active_transactions.write();
-        let tx = active_tx.get_mut(&tx_id).ok_or_else(|| {
-            HNSQRError::InvalidRequest(format!("Transaction {tx_id} not active"))
-        })?;
+        let tx = active_tx
+            .get_mut(&tx_id)
+            .ok_or_else(|| HNSQRError::InvalidRequest(format!("Transaction {tx_id} not active")))?;
 
         tx.locked_keys.insert((table.to_string(), pk_str.clone()));
-        tx.uncommitted_writes.push((table.to_string(), pk_str, Some(row)));
+        tx.uncommitted_writes
+            .push((table.to_string(), pk_str, Some(row)));
         Ok(())
     }
 
     /// Commits an active ACID transaction atomically with per-table sharded locking.
     pub fn commit(&self, tx_id: u64) -> HNSQRResult<()> {
         let mut active_tx = self.active_transactions.write();
-        let tx = active_tx.remove(&tx_id).ok_or_else(|| {
-            HNSQRError::InvalidRequest(format!("Transaction {tx_id} not active"))
-        })?;
+        let tx = active_tx
+            .remove(&tx_id)
+            .ok_or_else(|| HNSQRError::InvalidRequest(format!("Transaction {tx_id} not active")))?;
 
         let version = self.current_version.fetch_add(1, Ordering::Relaxed) + 1;
         for (table_name, pk, maybe_row) in tx.uncommitted_writes {
@@ -421,9 +443,10 @@ impl RelationalSqlEngine {
     ) -> HNSQRResult<Vec<RelationalRow>> {
         let table_arc = {
             let storage = self.storage.read();
-            storage.get(table).cloned().ok_or_else(|| {
-                HNSQRError::InvalidRequest(format!("Table '{table}' not found"))
-            })?
+            storage
+                .get(table)
+                .cloned()
+                .ok_or_else(|| HNSQRError::InvalidRequest(format!("Table '{table}' not found")))?
         };
 
         let table_storage = table_arc.read();
@@ -455,18 +478,25 @@ impl RelationalSqlEngine {
         is_delete: bool,
     ) -> HNSQRResult<()> {
         let tables = self.tables.read();
-        let schema = tables.get(table).ok_or_else(|| {
-            HNSQRError::InvalidRequest(format!("Table '{table}' does not exist"))
-        })?;
+        let schema = tables
+            .get(table)
+            .ok_or_else(|| HNSQRError::InvalidRequest(format!("Table '{table}' does not exist")))?;
 
         let pk_val = row.values.get(&schema.primary_key_column).ok_or_else(|| {
-            HNSQRError::InvalidRequest(format!("Row missing primary key '{}'", schema.primary_key_column))
+            HNSQRError::InvalidRequest(format!(
+                "Row missing primary key '{}'",
+                schema.primary_key_column
+            ))
         })?;
 
         let pk_str = match pk_val {
             SqlValue::Text(s) => s.clone(),
             SqlValue::Integer(i) => i.to_string(),
-            _ => return Err(HNSQRError::InvalidRequest("Primary key must be Text or Integer".into())),
+            _ => {
+                return Err(HNSQRError::InvalidRequest(
+                    "Primary key must be Text or Integer".into(),
+                ));
+            }
         };
 
         let version = self.current_version.fetch_add(1, Ordering::Relaxed) + 1;
@@ -592,7 +622,9 @@ mod tests {
         let mut user_row = HashMap::new();
         user_row.insert("user_id".into(), SqlValue::Text("usr_100".into()));
         user_row.insert("tenant_id".into(), SqlValue::Text("tenant_alpha".into()));
-        engine.insert(tx1, "users", RelationalRow { values: user_row }).unwrap();
+        engine
+            .insert(tx1, "users", RelationalRow { values: user_row })
+            .unwrap();
         engine.commit(tx1).unwrap();
 
         // 3. Query with RLS
@@ -605,10 +637,14 @@ mod tests {
             allowed_tenant_id: "tenant_beta".into(),
         };
 
-        let rows_alpha = engine.execute_select("users", None, Some(&rls_alpha)).unwrap();
+        let rows_alpha = engine
+            .execute_select("users", None, Some(&rls_alpha))
+            .unwrap();
         assert_eq!(rows_alpha.len(), 1);
 
-        let rows_beta = engine.execute_select("users", None, Some(&rls_beta)).unwrap();
+        let rows_beta = engine
+            .execute_select("users", None, Some(&rls_beta))
+            .unwrap();
         assert_eq!(rows_beta.len(), 0);
 
         // 4. Test Rollback
@@ -616,10 +652,14 @@ mod tests {
         let mut user2 = HashMap::new();
         user2.insert("user_id".into(), SqlValue::Text("usr_200".into()));
         user2.insert("tenant_id".into(), SqlValue::Text("tenant_alpha".into()));
-        engine.insert(tx2, "users", RelationalRow { values: user2 }).unwrap();
+        engine
+            .insert(tx2, "users", RelationalRow { values: user2 })
+            .unwrap();
         engine.rollback(tx2).unwrap();
 
-        let rows_after_rollback = engine.execute_select("users", None, Some(&rls_alpha)).unwrap();
+        let rows_after_rollback = engine
+            .execute_select("users", None, Some(&rls_alpha))
+            .unwrap();
         assert_eq!(rows_after_rollback.len(), 1);
     }
 }

@@ -10,11 +10,11 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
+use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
-use parking_lot::RwLock;
-use serde::{Deserialize, Serialize};
 
 /// Typed values stored in the in-memory multi-model KV engine.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -133,10 +133,12 @@ impl MemoryKvStore {
     pub fn set_add(&self, key: &str, member: &str) -> bool {
         self.total_ops.fetch_add(1, Ordering::Relaxed);
         let mut entries = self.entries.write();
-        let entry = entries.entry(key.as_bytes().to_vec()).or_insert_with(|| KvEntry {
-            value: KvValue::HashSet(HashSet::new()),
-            expires_at: None,
-        });
+        let entry = entries
+            .entry(key.as_bytes().to_vec())
+            .or_insert_with(|| KvEntry {
+                value: KvValue::HashSet(HashSet::new()),
+                expires_at: None,
+            });
 
         if let KvValue::HashSet(set) = &mut entry.value {
             set.insert(member.to_string())
@@ -195,7 +197,11 @@ mod tests {
         let kv = MemoryKvStore::new();
 
         // 1. Basic Get/Set
-        kv.set("user:100:session", KvValue::String("token_xyz".to_string()), None);
+        kv.set(
+            "user:100:session",
+            KvValue::String("token_xyz".to_string()),
+            None,
+        );
         assert_eq!(
             kv.get("user:100:session"),
             Some(KvValue::String("token_xyz".to_string()))

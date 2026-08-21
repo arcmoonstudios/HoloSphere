@@ -10,10 +10,10 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::collections::HashMap;
-use std::time::Instant;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::time::Instant;
 
 use crate::{HNSQRResult, NodeIndex};
 
@@ -59,9 +59,17 @@ impl PredictiveWarmer {
     /// Computes prioritized list of leaf partitions to warm on startup.
     pub fn get_warm_priority_leaves(&self, top_n_leaves: usize) -> Vec<usize> {
         let guard = self.heat_map.read();
-        let mut sorted: Vec<(usize, u64)> = guard.leaf_access_counts.iter().map(|(&k, &v)| (k, v)).collect();
+        let mut sorted: Vec<(usize, u64)> = guard
+            .leaf_access_counts
+            .iter()
+            .map(|(&k, &v)| (k, v))
+            .collect();
         sorted.sort_unstable_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-        sorted.into_iter().take(top_n_leaves).map(|(leaf, _)| leaf).collect()
+        sorted
+            .into_iter()
+            .take(top_n_leaves)
+            .map(|(leaf, _)| leaf)
+            .collect()
     }
 
     /// Executes staged startup warming and returns elapsed startup time to SLA.

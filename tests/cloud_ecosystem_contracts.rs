@@ -12,12 +12,12 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::time::{SystemTime, UNIX_EPOCH};
 use hnsqr::ecosystem::sdks::{HNSQRClientConfig, HNSQRClientRouter};
+use hnsqr::metadata::cardinality::{CardinalityBudget, CardinalityGuard, PostingRepresentation};
 use hnsqr::security::auth::AccessRole;
 use hnsqr::security::kms::{KmsProvider, LocalKmsProvider};
 use hnsqr::security::oidc::{JsonWebKey, OidcClaims, OidcConfig, OidcValidator};
-use hnsqr::metadata::cardinality::{CardinalityBudget, CardinalityGuard, PostingRepresentation};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[test]
 fn test_oidc_token_validation_and_rbac() {
@@ -37,7 +37,10 @@ fn test_oidc_token_validation_and_rbac() {
     };
     validator.register_jwk(jwk);
 
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
     let claims = OidcClaims {
         sub: "user_admin_99".to_string(),
         iss: "https://auth.enterprise.org".to_string(),
@@ -54,11 +57,18 @@ fn test_oidc_token_validation_and_rbac() {
 #[test]
 fn test_kms_envelope_encryption_roundtrip() {
     let kms = LocalKmsProvider::default();
-    let (plain_dek, enc_dek) = kms.generate_data_key("arn:aws:kms:us-east-1:123456789012:key/backup-key").unwrap();
+    let (plain_dek, enc_dek) = kms
+        .generate_data_key("arn:aws:kms:us-east-1:123456789012:key/backup-key")
+        .unwrap();
     assert_eq!(plain_dek.len(), 32);
     assert_eq!(enc_dek.len(), 32);
 
-    let decrypted = kms.decrypt_data_key("arn:aws:kms:us-east-1:123456789012:key/backup-key", &enc_dek).unwrap();
+    let decrypted = kms
+        .decrypt_data_key(
+            "arn:aws:kms:us-east-1:123456789012:key/backup-key",
+            &enc_dek,
+        )
+        .unwrap();
     assert_eq!(decrypted.len(), 32);
 }
 
@@ -81,16 +91,31 @@ fn test_tenant_cardinality_admission_and_adaptive_representation() {
     assert!(guard.check_admission("tenant_a", true, 32).is_err());
 
     // Adaptive posting representation selection
-    assert_eq!(CardinalityGuard::select_representation(10_000, 50, 0), PostingRepresentation::SortedPostings);
-    assert_eq!(CardinalityGuard::select_representation(10_000, 1_000, 0), PostingRepresentation::RoaringBitmap);
-    assert_eq!(CardinalityGuard::select_representation(10_000, 5_000, 0), PostingRepresentation::DenseBitmap);
-    assert_eq!(CardinalityGuard::select_representation(10_000, 1_000, 100), PostingRepresentation::CompactDictionary);
+    assert_eq!(
+        CardinalityGuard::select_representation(10_000, 50, 0),
+        PostingRepresentation::SortedPostings
+    );
+    assert_eq!(
+        CardinalityGuard::select_representation(10_000, 1_000, 0),
+        PostingRepresentation::RoaringBitmap
+    );
+    assert_eq!(
+        CardinalityGuard::select_representation(10_000, 5_000, 0),
+        PostingRepresentation::DenseBitmap
+    );
+    assert_eq!(
+        CardinalityGuard::select_representation(10_000, 1_000, 100),
+        PostingRepresentation::CompactDictionary
+    );
 }
 
 #[test]
 fn test_client_sdk_smart_routing() {
     let config = HNSQRClientConfig {
-        seed_endpoints: vec!["http://node-1:8080".to_string(), "http://node-2:8080".to_string()],
+        seed_endpoints: vec![
+            "http://node-1:8080".to_string(),
+            "http://node-2:8080".to_string(),
+        ],
         ..Default::default()
     };
     let router = HNSQRClientRouter::new(config);

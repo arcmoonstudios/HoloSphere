@@ -23,10 +23,10 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
+use crate::NodeIndex;
 use crate::graph::catalog::RelTypeId;
 use crate::graph::storage::edge_delta::EdgeDelta;
 use crate::graph::storage::node_arena::NodeArena;
-use crate::NodeIndex;
 
 /// Immutable Compressed Sparse Row adjacency for outgoing edges.
 ///
@@ -101,7 +101,13 @@ impl CsrAdjacency {
         // Suppress unused warning for arena (used for node_count validation).
         let _ = arena;
 
-        Self { row_offsets, targets, rel_types, weights, node_count }
+        Self {
+            row_offsets,
+            targets,
+            rel_types,
+            weights,
+            node_count,
+        }
     }
 
     /// Returns the contiguous outgoing-neighbour slice for `node`.
@@ -140,7 +146,11 @@ impl CsrAdjacency {
 
     /// Filters outgoing neighbours of `node` matching a target relationship type.
     /// Uses contiguous SIMD-ready chunked evaluation.
-    pub fn filter_out_neighbors_simd(&self, node: NodeIndex, target_rel_type: RelTypeId) -> Vec<NodeIndex> {
+    pub fn filter_out_neighbors_simd(
+        &self,
+        node: NodeIndex,
+        target_rel_type: RelTypeId,
+    ) -> Vec<NodeIndex> {
         let v = node as usize;
         if v >= self.node_count {
             return Vec::new();
@@ -219,7 +229,10 @@ impl CsrAdjacency {
                 step *= 2;
             }
 
-            let start = curr.saturating_sub(step / 2).max(large_idx).min(large.len());
+            let start = curr
+                .saturating_sub(step / 2)
+                .max(large_idx)
+                .min(large.len());
             let end = curr.min(large.len());
 
             if start < end {
@@ -312,7 +325,13 @@ impl CscAdjacency {
             }
         }
 
-        Self { col_offsets, sources, rel_types, weights, node_count }
+        Self {
+            col_offsets,
+            sources,
+            rel_types,
+            weights,
+            node_count,
+        }
     }
 
     /// Returns the contiguous incoming-source slice for `node`.

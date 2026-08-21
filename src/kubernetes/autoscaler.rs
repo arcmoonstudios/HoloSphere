@@ -10,9 +10,9 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::time::Instant;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use std::time::Instant;
 
 /// Metric inputs for evaluating autoscaling decisions.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -81,7 +81,10 @@ impl NativeAutoscaler {
             } else {
                 rationale.push("Scaling inhibited: stabilization cooldown active".to_string());
             }
-        } else if metrics.cpu_utilization_ratio < 0.20 && metrics.current_learners > 1 && !in_cooldown {
+        } else if metrics.cpu_utilization_ratio < 0.20
+            && metrics.current_learners > 1
+            && !in_cooldown
+        {
             desired_learners = metrics.current_learners.saturating_sub(1);
             rationale.push(format!(
                 "Scale in learners (low CPU utilization {:.1}%)",

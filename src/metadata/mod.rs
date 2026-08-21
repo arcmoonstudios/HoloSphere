@@ -11,7 +11,9 @@ pub mod geo;
 pub mod index;
 pub mod store;
 
-pub use cardinality::{CardinalityBudget, CardinalityGuard, PostingRepresentation, TenantCardinalityTracker};
+pub use cardinality::{
+    CardinalityBudget, CardinalityGuard, PostingRepresentation, TenantCardinalityTracker,
+};
 pub use geo::{BoundingBox2D, GeoPoint, GeoPolygon};
 pub use index::{FilterExpr, MetadataInvertedIndex, MetadataValue};
 pub use store::{MetadataQuotaConfig, MetadataStore, QuotaTracker};

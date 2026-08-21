@@ -142,10 +142,17 @@ pub struct DerivedPhysicalConfig {
 
 impl AutoForge {
     /// Synthesizes optimal low-level physical parameters from high-level operator intent.
-    pub fn derive_physical_config(intent: &OperatorIntentConfig, profile: &PlannerProfile) -> DerivedPhysicalConfig {
+    pub fn derive_physical_config(
+        intent: &OperatorIntentConfig,
+        profile: &PlannerProfile,
+    ) -> DerivedPhysicalConfig {
         let is_certified = intent.contract.to_lowercase() == "certified";
-        let rivero_profile = if is_certified { "Precision".to_string() } else { "Throughput".to_string() };
-        
+        let rivero_profile = if is_certified {
+            "Precision".to_string()
+        } else {
+            "Throughput".to_string()
+        };
+
         let proof_tree_fanout = if profile.simd_gflops > 200.0 { 16 } else { 8 };
         let proof_tree_leaf_capacity = 64;
         let lutz_code_bits = if is_certified { 8 } else { 4 };
@@ -155,7 +162,11 @@ impl AutoForge {
         let tier0_cache_mb = (total_mem_mb as f64 * 0.35) as usize;
         let tier1_cache_mb = (total_mem_mb as f64 * 0.50) as usize;
 
-        let raft_batch_target = if intent.max_commit_latency_ms >= 15 { 32 } else { 16 };
+        let raft_batch_target = if intent.max_commit_latency_ms >= 15 {
+            32
+        } else {
+            16
+        };
         let learner_count = (intent.failure_tolerance as usize * 2).max(1);
         let compaction_rate_mbps = 100;
         let remote_prefetch_chunks = 4;
@@ -176,13 +187,31 @@ impl AutoForge {
     }
 
     /// Explains to the operator why each derived parameter was selected.
-    pub fn explain_config(intent: &OperatorIntentConfig, derived: &DerivedPhysicalConfig) -> Vec<String> {
+    pub fn explain_config(
+        intent: &OperatorIntentConfig,
+        derived: &DerivedPhysicalConfig,
+    ) -> Vec<String> {
         vec![
-            format!("• Contract '{}': Rivero Profile '{}' with {}-bit LUTz bounds", intent.contract, derived.rivero_profile, derived.lutz_code_bits),
-            format!("• Target p99 {}ms: ProofTree fanout {} with leaf cap {} for fast exact pruning", intent.p99_target_ms, derived.proof_tree_fanout, derived.proof_tree_leaf_capacity),
-            format!("• Durability '{}' (max {}ms): Raft microbatch size target {}", intent.durability_mode, intent.max_commit_latency_ms, derived.raft_batch_target),
-            format!("• Memory budget {}GB: Tier 0 Metadata {}MB, Tier 1 Vector Cache {}MB", intent.memory_budget_gb, derived.tier0_cache_mb, derived.tier1_cache_mb),
-            format!("• Fault tolerance {}: Sized {} read learners for quorum safety and linearizable routing", intent.failure_tolerance, derived.learner_count),
+            format!(
+                "• Contract '{}': Rivero Profile '{}' with {}-bit LUTz bounds",
+                intent.contract, derived.rivero_profile, derived.lutz_code_bits
+            ),
+            format!(
+                "• Target p99 {}ms: ProofTree fanout {} with leaf cap {} for fast exact pruning",
+                intent.p99_target_ms, derived.proof_tree_fanout, derived.proof_tree_leaf_capacity
+            ),
+            format!(
+                "• Durability '{}' (max {}ms): Raft microbatch size target {}",
+                intent.durability_mode, intent.max_commit_latency_ms, derived.raft_batch_target
+            ),
+            format!(
+                "• Memory budget {}GB: Tier 0 Metadata {}MB, Tier 1 Vector Cache {}MB",
+                intent.memory_budget_gb, derived.tier0_cache_mb, derived.tier1_cache_mb
+            ),
+            format!(
+                "• Fault tolerance {}: Sized {} read learners for quorum safety and linearizable routing",
+                intent.failure_tolerance, derived.learner_count
+            ),
         ]
     }
 }
@@ -208,4 +237,3 @@ mod tests {
         assert_eq!(explanation.len(), 5);
     }
 }
-

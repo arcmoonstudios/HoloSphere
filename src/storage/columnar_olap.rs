@@ -10,9 +10,9 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::collections::HashMap;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 use crate::{HNSQRError, HNSQRResult, VectorEmbedding};
 
@@ -126,20 +126,14 @@ impl ColumnarOlapEngine {
     }
 
     /// Appends a vector and its columnar float attributes.
-    pub fn append_record(
-        &self,
-        vector: VectorEmbedding,
-        attributes: HashMap<String, f32>,
-    ) {
+    pub fn append_record(&self, vector: VectorEmbedding, attributes: HashMap<String, f32>) {
         let mut vecs = self.vectors.write();
         let mut cols = self.columns.write();
 
         vecs.push(vector);
 
         for (col_name, val) in attributes {
-            cols.entry(col_name)
-                .or_default()
-                .push(Some(val));
+            cols.entry(col_name).or_default().push(Some(val));
         }
     }
 
@@ -228,12 +222,9 @@ mod tests {
         engine.append_record(v2, attr2);
 
         // Aggregation: Average revenue where similarity to v1 >= 0.5
-        let avg_rev = engine.vector_filtered_aggregation(
-            &v1,
-            0.5,
-            "revenue",
-            OlapAggregationOp::Avg,
-        ).unwrap();
+        let avg_rev = engine
+            .vector_filtered_aggregation(&v1, 0.5, "revenue", OlapAggregationOp::Avg)
+            .unwrap();
 
         assert_eq!(avg_rev, Some(100.0));
 

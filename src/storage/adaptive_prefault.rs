@@ -10,8 +10,8 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::sync::atomic::{AtomicUsize, Ordering};
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::HNSQRResult;
 
@@ -67,7 +67,8 @@ impl AdaptivePrefaultEngine {
             offset += page_size;
         }
 
-        self.total_warmed_bytes.fetch_add(slice.len(), Ordering::Relaxed);
+        self.total_warmed_bytes
+            .fetch_add(slice.len(), Ordering::Relaxed);
         Ok(touched)
     }
 }

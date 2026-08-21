@@ -89,11 +89,14 @@ mod common;
 fn generate_dataset(seed: u64) -> Dataset {
     let total_vectors = CLUSTERS * VECTORS_PER_CLUSTER;
     let (base_path, query_path, _) = common::find_best_matching_dataset(D_REAL);
-    let (mut complex_corpus, _) = common::read_fvecs(&base_path, Some(total_vectors)).unwrap_or_default();
-    let (mut complex_queries, _) = common::read_fvecs(&query_path, Some(QUERY_COUNT)).unwrap_or_default();
+    let (mut complex_corpus, _) =
+        common::read_fvecs(&base_path, Some(total_vectors)).unwrap_or_default();
+    let (mut complex_queries, _) =
+        common::read_fvecs(&query_path, Some(QUERY_COUNT)).unwrap_or_default();
 
     if complex_corpus.is_empty() {
-        let text_corpus = common::generate_realistic_text_corpus(total_vectors, QUERY_COUNT, D_REAL, seed);
+        let text_corpus =
+            common::generate_realistic_text_corpus(total_vectors, QUERY_COUNT, D_REAL, seed);
         complex_corpus = text_corpus.folded_corpus;
         complex_queries = text_corpus.folded_queries;
     }

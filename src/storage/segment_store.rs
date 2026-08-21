@@ -10,13 +10,13 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use async_trait::async_trait;
 use bytes::Bytes;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crate::{HNSQRError, HNSQRResult};
 
@@ -29,7 +29,11 @@ pub struct SegmentObjectId {
 }
 
 impl SegmentObjectId {
-    pub fn new(namespace: impl Into<String>, segment_id: u64, section_name: impl Into<String>) -> Self {
+    pub fn new(
+        namespace: impl Into<String>,
+        segment_id: u64,
+        section_name: impl Into<String>,
+    ) -> Self {
         Self {
             namespace: namespace.into(),
             segment_id,
@@ -38,7 +42,10 @@ impl SegmentObjectId {
     }
 
     pub fn canonical_uri(&self) -> String {
-        format!("{}/{}/{}", self.namespace, self.segment_id, self.section_name)
+        format!(
+            "{}/{}/{}",
+            self.namespace, self.segment_id, self.section_name
+        )
     }
 }
 
@@ -106,7 +113,10 @@ impl ImmutableSegmentStore for LocalSegmentStore {
     ) -> HNSQRResult<Bytes> {
         let path = self.object_path(object);
         let data = std::fs::read(&path).map_err(|e| {
-            HNSQRError::IoError(format!("Failed to read local segment object {}: {e}", object.canonical_uri()))
+            HNSQRError::IoError(format!(
+                "Failed to read local segment object {}: {e}",
+                object.canonical_uri()
+            ))
         })?;
 
         let start = offset as usize;
@@ -210,7 +220,10 @@ impl ImmutableSegmentStore for S3SegmentStore {
         let key = self.s3_key(object);
         let guard = self.mock_remote_backing.read();
         let (data, _crc) = guard.get(&key).ok_or_else(|| {
-            HNSQRError::IoError(format!("S3 object s3://{}/{} not found", self.bucket_name, key))
+            HNSQRError::IoError(format!(
+                "S3 object s3://{}/{} not found",
+                self.bucket_name, key
+            ))
         })?;
 
         let start = offset as usize;
@@ -251,7 +264,10 @@ impl ImmutableSegmentStore for S3SegmentStore {
         let key = self.s3_key(object);
         let guard = self.mock_remote_backing.read();
         let (data, crc) = guard.get(&key).ok_or_else(|| {
-            HNSQRError::IoError(format!("S3 object s3://{}/{} not found", self.bucket_name, key))
+            HNSQRError::IoError(format!(
+                "S3 object s3://{}/{} not found",
+                self.bucket_name, key
+            ))
         })?;
 
         Ok(SegmentObjectMetadata {

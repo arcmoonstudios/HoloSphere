@@ -34,16 +34,37 @@ fn main() {
     println!("   • Replication Factor:  {:>12}", "3x (Quorum)");
 
     println!("\n💻 SIZED INFRASTRUCTURE RECOMMENDATION:");
-    println!("   • Total Vector Storage: {:>10.2} GB", plan.total_vector_storage_gb);
-    println!("   • Hot Index Memory:     {:>10.2} GB", plan.total_index_memory_gb);
-    println!("   • Recommended RAM:      {:>10.2} GB (95% CI: [{:.2} - {:.2}] GB)", plan.recommended_ram_gb, plan.recommended_ram_ci_low_gb, plan.recommended_ram_ci_high_gb);
-    println!("   • Recommended NVMe BW:  {:>10.2} MB/s", plan.recommended_nvme_bandwidth_mbps);
+    println!(
+        "   • Total Vector Storage: {:>10.2} GB",
+        plan.total_vector_storage_gb
+    );
+    println!(
+        "   • Hot Index Memory:     {:>10.2} GB",
+        plan.total_index_memory_gb
+    );
+    println!(
+        "   • Recommended RAM:      {:>10.2} GB (95% CI: [{:.2} - {:.2}] GB)",
+        plan.recommended_ram_gb, plan.recommended_ram_ci_low_gb, plan.recommended_ram_ci_high_gb
+    );
+    println!(
+        "   • Recommended NVMe BW:  {:>10.2} MB/s",
+        plan.recommended_nvme_bandwidth_mbps
+    );
     println!("   • Recommended Shards:   {:>10}", plan.recommended_shards);
-    println!("   • Recommended Learners: {:>10}", plan.recommended_learners);
-    println!("   • Expected p99 Latency: {:>10.2} ms", plan.expected_p99_latency_ms);
+    println!(
+        "   • Recommended Learners: {:>10}",
+        plan.recommended_learners
+    );
+    println!(
+        "   • Expected p99 Latency: {:>10.2} ms",
+        plan.expected_p99_latency_ms
+    );
 
     println!("\n📊 MULTI-MODAL & UNIVERSAL SUBSYSTEM ALLOCATION:");
-    println!("   • Graph Topology (CSR/CSC):  {:>8.2} GB (32 bytes/node)", (10_000_000.0 * 32.0) / (1024.0 * 1024.0 * 1024.0));
+    println!(
+        "   • Graph Topology (CSR/CSC):  {:>8.2} GB (32 bytes/node)",
+        (10_000_000.0 * 32.0) / (1024.0 * 1024.0 * 1024.0)
+    );
     println!("   • In-Memory KV Cache Pool:   {:>8.2} GB", 4.0);
     println!("   • Columnar OLAP Table Arena: {:>8.2} GB", 8.0);
     println!("   • In-Process Embedder Cache: {:>8.2} GB", 2.0);

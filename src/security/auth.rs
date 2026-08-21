@@ -69,7 +69,10 @@ impl AuthRegistry {
         let key_id = format!("key_{:08x}", crc32fast::hash(raw_token.as_bytes()));
         let mut hasher = sha2::Sha256::new();
         sha2::Digest::update(&mut hasher, raw_token.as_bytes());
-        let hashed_token = sha2::Digest::finalize(hasher).iter().map(|b| format!("{b:02x}")).collect::<String>();
+        let hashed_token = sha2::Digest::finalize(hasher)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>();
 
         let cred = AuthCredential {
             key_id: key_id.clone(),
@@ -96,9 +99,7 @@ impl AuthRegistry {
             .ok_or_else(|| HNSQRError::Internal("Invalid or missing API key".to_string()))?;
 
         if !cred.active {
-            return Err(HNSQRError::Internal(
-                "API key has been revoked".to_string(),
-            ));
+            return Err(HNSQRError::Internal("API key has been revoked".to_string()));
         }
 
         if cred.role < required_role {

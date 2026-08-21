@@ -11,10 +11,10 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use crate::HNSQRResult;
 
@@ -45,7 +45,11 @@ pub struct TwoTierCache {
 }
 
 impl TwoTierCache {
-    pub fn new(tier_0_max_bytes: usize, tier_1_max_bytes: usize, tenant_quota_bytes: usize) -> Self {
+    pub fn new(
+        tier_0_max_bytes: usize,
+        tier_1_max_bytes: usize,
+        tenant_quota_bytes: usize,
+    ) -> Self {
         Self {
             tier_0_max_bytes,
             tier_1_max_bytes,
@@ -69,7 +73,8 @@ impl TwoTierCache {
             // Evict lowest frequency Tier 0 if necessary
             if let Some((&lfu_id, _)) = guard.iter().min_by_key(|(_, b)| b.frequency) {
                 if let Some(removed) = guard.remove(&lfu_id) {
-                    self.tier_0_current_bytes.fetch_sub(removed.data.len(), Ordering::Relaxed);
+                    self.tier_0_current_bytes
+                        .fetch_sub(removed.data.len(), Ordering::Relaxed);
                 }
             }
         }
@@ -138,7 +143,8 @@ impl TwoTierCache {
         if self.tier_1_current_bytes.load(Ordering::Relaxed) + size > self.tier_1_max_bytes {
             if let Some((&lfu_id, _)) = guard1.iter().min_by_key(|(_, b)| b.frequency) {
                 if let Some(removed) = guard1.remove(&lfu_id) {
-                    self.tier_1_current_bytes.fetch_sub(removed.data.len(), Ordering::Relaxed);
+                    self.tier_1_current_bytes
+                        .fetch_sub(removed.data.len(), Ordering::Relaxed);
                     let mut usage_map = self.tenant_usage.write();
                     if let Some(u) = usage_map.get_mut(&removed.tenant_id) {
                         *u = u.saturating_sub(removed.data.len());

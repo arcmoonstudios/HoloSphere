@@ -3,8 +3,8 @@
 //! # Degree Centrality
 //!▫~•◦-------------------------------------------------------------------‣
 
-use crate::graph::analytics::projection::GraphProjection;
 use crate::NodeIndex;
+use crate::graph::analytics::projection::GraphProjection;
 
 /// Degree centrality scores per node.
 #[derive(Debug, Default)]
@@ -28,6 +28,9 @@ impl DegreeCentrality {
         let in_centrality = (0..n as NodeIndex)
             .map(|v| projection.in_degree(v) as f64 / norm)
             .collect();
-        Self { out_centrality, in_centrality }
+        Self {
+            out_centrality,
+            in_centrality,
+        }
     }
 }

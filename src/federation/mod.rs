@@ -11,6 +11,6 @@
 pub mod cluster;
 
 pub use cluster::{
-    ClusterProofResponse, ClusterRegionId, FederatedProofCoordinator, FederatedQueryResult,
-    FederatedProofStatus,
+    ClusterProofResponse, ClusterRegionId, FederatedProofCoordinator, FederatedProofStatus,
+    FederatedQueryResult,
 };

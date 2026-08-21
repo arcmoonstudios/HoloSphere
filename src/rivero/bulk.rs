@@ -32,15 +32,15 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
+use super::witness::{
+    self as rivero_witness, RIVERO_WITNESS_DEFAULT_DEGREE, RIVERO_WITNESS_DEFAULT_SECOND_SEEDS,
+    RIVERO_WITNESS_DEFAULT_SEEDS, RIVERO_WITNESS_INLINE_DEGREE, ScoredWitness,
+};
 use super::{
     CellSlots, FlatFrozenTerritoryTable, RiveroAddress, RiveroAddressConfig, RiveroCompiler,
     RiveroConfig, RiveroProfile, RiveroTerritoryIndex, cell_key, insert_sigs, lookup_sigs,
     pack_projected_code, projected_similarity, simhash_cell_key, simhash_probe_signatures,
     simhash_signature, stripe_for,
-};
-use super::witness::{
-    self as rivero_witness, RIVERO_WITNESS_DEFAULT_DEGREE, RIVERO_WITNESS_DEFAULT_SECOND_SEEDS,
-    RIVERO_WITNESS_DEFAULT_SEEDS, RIVERO_WITNESS_INLINE_DEGREE, ScoredWitness,
 };
 use crate::{
     DistanceFunction, HNSQRError, HNSQRResult, NodeIndex, VectorEmbedding, dot_product_complex_simd,
@@ -257,7 +257,10 @@ impl RiveroBulkBuilder {
         // PHASE 2: SHARDED BOUNDED-MEMORY CELL REDUCTION & ASSOCIATIVE MERGE
         // ════════════════════════════════════════════════════════════════════════
         let t1 = Instant::now();
-        let foundations_count = self.config.foundations.min(addresses[0].foundation_count as usize);
+        let foundations_count = self
+            .config
+            .foundations
+            .min(addresses[0].foundation_count as usize);
         let capacity = self.config.cell_capacity;
         let elites = self.config.affinity_elites;
 
@@ -373,7 +376,9 @@ impl RiveroBulkBuilder {
             NodeIndex,
             SmallVec<[ScoredWitness; RIVERO_WITNESS_INLINE_DEGREE]>,
         )> = if degree == 0 {
-            (0..n as NodeIndex).map(|slot| (slot, SmallVec::new())).collect()
+            (0..n as NodeIndex)
+                .map(|slot| (slot, SmallVec::new()))
+                .collect()
         } else {
             (0..n)
                 .into_par_iter()
@@ -384,195 +389,227 @@ impl RiveroBulkBuilder {
 
                     let mut candidate_slots: SmallVec<[NodeIndex; 512]> = SmallVec::new();
 
-                // STAGE A: Exact Voronoi & SimHash Insertion Cells
-                for (foundation, coords) in addr.foundations[..foundations_count].iter().enumerate()
-                {
-                    let query_code = pack_projected_code(coords);
-                    let (signatures, count) = insert_sigs(coords, 0);
+                    // STAGE A: Exact Voronoi & SimHash Insertion Cells
+                    for (foundation, coords) in
+                        addr.foundations[..foundations_count].iter().enumerate()
+                    {
+                        let query_code = pack_projected_code(coords);
+                        let (signatures, count) = insert_sigs(coords, 0);
 
-                    for &signature in &signatures[..count] {
-                        let key = cell_key(foundation, signature);
-                        let cell_slice = flat_table.get_residents(key);
-                        if cell_slice.len() <= budget {
-                            for r in cell_slice {
-                                if r.slot != current_slot {
-                                    candidate_slots.push(r.slot);
-                                }
-                            }
-                        } else {
-                            let mut best: SmallVec<[(i16, NodeIndex); 64]> = SmallVec::new();
-                            for r in cell_slice {
-                                if r.slot != current_slot {
-                                    let (dot, _) =
-                                        projected_similarity(query_code, r.projected_code());
-                                    best.push((dot, r.slot));
-                                }
-                            }
-                            if best.len() > budget {
-                                best.select_nth_unstable_by(budget - 1, |a, b| b.0.cmp(&a.0));
-                                for &(_, s) in &best[..budget] {
-                                    candidate_slots.push(s);
+                        for &signature in &signatures[..count] {
+                            let key = cell_key(foundation, signature);
+                            let cell_slice = flat_table.get_residents(key);
+                            if cell_slice.len() <= budget {
+                                for r in cell_slice {
+                                    if r.slot != current_slot {
+                                        candidate_slots.push(r.slot);
+                                    }
                                 }
                             } else {
-                                for &(_, s) in &best {
-                                    candidate_slots.push(s);
+                                let mut best: SmallVec<[(i16, NodeIndex); 64]> = SmallVec::new();
+                                for r in cell_slice {
+                                    if r.slot != current_slot {
+                                        let (dot, _) =
+                                            projected_similarity(query_code, r.projected_code());
+                                        best.push((dot, r.slot));
+                                    }
                                 }
+                                if best.len() > budget {
+                                    best.select_nth_unstable_by(budget - 1, |a, b| b.0.cmp(&a.0));
+                                    for &(_, s) in &best[..budget] {
+                                        candidate_slots.push(s);
+                                    }
+                                } else {
+                                    for &(_, s) in &best {
+                                        candidate_slots.push(s);
+                                    }
+                                }
+                            }
+                        }
+
+                        // SimHash insertion cell
+                        let (signature, _, _) = simhash_signature(coords, foundation);
+                        let key = simhash_cell_key(foundation, signature);
+                        let cell_slice = flat_table.get_residents(key);
+                        for r in cell_slice.iter().take(budget) {
+                            if r.slot != current_slot {
+                                candidate_slots.push(r.slot);
                             }
                         }
                     }
 
-                    // SimHash insertion cell
-                    let (signature, _, _) = simhash_signature(coords, foundation);
-                    let key = simhash_cell_key(foundation, signature);
-                    let cell_slice = flat_table.get_residents(key);
-                    for r in cell_slice.iter().take(budget) {
-                        if r.slot != current_slot {
-                            candidate_slots.push(r.slot);
-                        }
+                    candidate_slots.sort_unstable();
+                    candidate_slots.dedup();
+
+                    let mut scored: SmallVec<[ScoredWitness; 512]> =
+                        SmallVec::with_capacity(candidate_slots.len());
+                    let query_complex = vec.complex_data();
+
+                    for &cand in &candidate_slots {
+                        let cand_vec = &vectors[cand as usize];
+                        let sim = match dist_fn {
+                            DistanceFunction::Cosine => {
+                                let dot = dot_product_complex_simd(
+                                    query_complex,
+                                    cand_vec.complex_data(),
+                                );
+                                let denom =
+                                    (vec.norm_squared() * cand_vec.norm_squared()).max(1e-12);
+                                (dot.re / denom.sqrt()).clamp(-1.0, 1.0)
+                            }
+                            DistanceFunction::ProjectiveOverlap => complex_projective_overlap_fast(
+                                query_complex,
+                                cand_vec.complex_data(),
+                            ),
+                            DistanceFunction::ProjectiveSineDistance => {
+                                let p = complex_projective_overlap_fast(
+                                    query_complex,
+                                    cand_vec.complex_data(),
+                                );
+                                1.0 - (1.0 - p).max(0.0).sqrt()
+                            }
+                            DistanceFunction::PhaseAlignedChordalDistance => {
+                                let p = complex_projective_overlap_fast(
+                                    query_complex,
+                                    cand_vec.complex_data(),
+                                );
+                                2.0 - (2.0 * (1.0 - p.sqrt())).max(0.0).sqrt()
+                            }
+                            DistanceFunction::Euclidean => {
+                                let dot = dot_product_complex_simd(
+                                    query_complex,
+                                    cand_vec.complex_data(),
+                                );
+                                let dist_sq = (vec.norm_squared() + cand_vec.norm_squared()
+                                    - 2.0 * dot.re)
+                                    .max(0.0);
+                                -dist_sq.sqrt()
+                            }
+                        };
+                        scored.push(ScoredWitness {
+                            index: cand,
+                            similarity: sim,
+                        });
                     }
-                }
 
-                candidate_slots.sort_unstable();
-                candidate_slots.dedup();
+                    let mut top_seeds = rivero_witness::select_top(&mut scored, degree);
 
-                let mut scored: SmallVec<[ScoredWitness; 512]> =
-                    SmallVec::with_capacity(candidate_slots.len());
-                let query_complex = vec.complex_data();
+                    // Stage A Quality Gate: Use Voronoi and SimHash co-residents directly
+                    if !force_stage_b || !top_seeds.is_empty() {
+                        stage_a_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        return (current_slot, top_seeds);
+                    }
 
-                for &cand in &candidate_slots {
-                    let cand_vec = &vectors[cand as usize];
-                    let sim = match dist_fn {
-                        DistanceFunction::Cosine => {
-                            let dot =
-                                dot_product_complex_simd(query_complex, cand_vec.complex_data());
-                            let denom = (vec.norm_squared() * cand_vec.norm_squared()).max(1e-12);
-                            (dot.re / denom.sqrt()).clamp(-1.0, 1.0)
+                    // STAGE B: Broad Lookup-Family Delta Expansion
+                    stage_b_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    let mut delta_slots: SmallVec<[NodeIndex; 512]> = SmallVec::new();
+
+                    for (foundation, coords) in
+                        addr.foundations[..foundations_count].iter().enumerate()
+                    {
+                        let query_code = pack_projected_code(coords);
+                        let (signatures, count) = lookup_sigs(coords, 0);
+
+                        for &signature in &signatures[..count] {
+                            let key = cell_key(foundation, signature);
+                            let cell_slice = flat_table.get_residents(key);
+                            if cell_slice.len() <= budget {
+                                for r in cell_slice {
+                                    if r.slot != current_slot && !candidate_slots.contains(&r.slot)
+                                    {
+                                        delta_slots.push(r.slot);
+                                    }
+                                }
+                            } else {
+                                let mut best: SmallVec<[(i16, NodeIndex); 64]> = SmallVec::new();
+                                for r in cell_slice {
+                                    if r.slot != current_slot && !candidate_slots.contains(&r.slot)
+                                    {
+                                        let (dot, _) =
+                                            projected_similarity(query_code, r.projected_code());
+                                        best.push((dot, r.slot));
+                                    }
+                                }
+                                if best.len() > budget {
+                                    best.select_nth_unstable_by(budget - 1, |a, b| b.0.cmp(&a.0));
+                                    for &(_, s) in &best[..budget] {
+                                        delta_slots.push(s);
+                                    }
+                                } else {
+                                    for &(_, s) in &best {
+                                        delta_slots.push(s);
+                                    }
+                                }
+                            }
                         }
-                        DistanceFunction::ProjectiveOverlap => {
-                            complex_projective_overlap_fast(query_complex, cand_vec.complex_data())
-                        }
-                        DistanceFunction::ProjectiveSineDistance => {
-                            let p = complex_projective_overlap_fast(query_complex, cand_vec.complex_data());
-                            1.0 - (1.0 - p).max(0.0).sqrt()
-                        }
-                        DistanceFunction::PhaseAlignedChordalDistance => {
-                            let p = complex_projective_overlap_fast(query_complex, cand_vec.complex_data());
-                            2.0 - (2.0 * (1.0 - p.sqrt())).max(0.0).sqrt()
-                        }
-                        DistanceFunction::Euclidean => {
-                            let dot =
-                                dot_product_complex_simd(query_complex, cand_vec.complex_data());
-                            let dist_sq = (vec.norm_squared() + cand_vec.norm_squared() - 2.0 * dot.re).max(0.0);
-                            -dist_sq.sqrt()
-                        }
-                    };
-                    scored.push(ScoredWitness {
-                        index: cand,
-                        similarity: sim,
-                    });
-                }
 
-                let mut top_seeds = rivero_witness::select_top(&mut scored, degree);
-
-                // Stage A Quality Gate: Use Voronoi and SimHash co-residents directly
-                if !force_stage_b || !top_seeds.is_empty() {
-                    stage_a_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    return (current_slot, top_seeds);
-                }
-
-                // STAGE B: Broad Lookup-Family Delta Expansion
-                stage_b_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                let mut delta_slots: SmallVec<[NodeIndex; 512]> = SmallVec::new();
-
-                for (foundation, coords) in addr.foundations[..foundations_count].iter().enumerate()
-                {
-                    let query_code = pack_projected_code(coords);
-                    let (signatures, count) = lookup_sigs(coords, 0);
-
-                    for &signature in &signatures[..count] {
-                        let key = cell_key(foundation, signature);
-                        let cell_slice = flat_table.get_residents(key);
-                        if cell_slice.len() <= budget {
-                            for r in cell_slice {
+                        let (signature, _, margins) = simhash_signature(coords, foundation);
+                        let probes = simhash_probe_signatures(signature, &margins);
+                        for &probe in probes.iter().take(simhash_probes) {
+                            let key = simhash_cell_key(foundation, probe);
+                            let cell_slice = flat_table.get_residents(key);
+                            for r in cell_slice.iter().take(budget) {
                                 if r.slot != current_slot && !candidate_slots.contains(&r.slot) {
                                     delta_slots.push(r.slot);
                                 }
                             }
-                        } else {
-                            let mut best: SmallVec<[(i16, NodeIndex); 64]> = SmallVec::new();
-                            for r in cell_slice {
-                                if r.slot != current_slot && !candidate_slots.contains(&r.slot) {
-                                    let (dot, _) =
-                                        projected_similarity(query_code, r.projected_code());
-                                    best.push((dot, r.slot));
-                                }
-                            }
-                            if best.len() > budget {
-                                best.select_nth_unstable_by(budget - 1, |a, b| b.0.cmp(&a.0));
-                                for &(_, s) in &best[..budget] {
-                                    delta_slots.push(s);
-                                }
-                            } else {
-                                for &(_, s) in &best {
-                                    delta_slots.push(s);
-                                }
-                            }
                         }
                     }
 
-                    let (signature, _, margins) = simhash_signature(coords, foundation);
-                    let probes = simhash_probe_signatures(signature, &margins);
-                    for &probe in probes.iter().take(simhash_probes) {
-                        let key = simhash_cell_key(foundation, probe);
-                        let cell_slice = flat_table.get_residents(key);
-                        for r in cell_slice.iter().take(budget) {
-                            if r.slot != current_slot && !candidate_slots.contains(&r.slot) {
-                                delta_slots.push(r.slot);
+                    delta_slots.sort_unstable();
+                    delta_slots.dedup();
+
+                    for &cand in &delta_slots {
+                        let cand_vec = &vectors[cand as usize];
+                        let sim = match dist_fn {
+                            DistanceFunction::Cosine => {
+                                let dot = dot_product_complex_simd(
+                                    query_complex,
+                                    cand_vec.complex_data(),
+                                );
+                                let denom =
+                                    (vec.norm_squared() * cand_vec.norm_squared()).max(1e-12);
+                                (dot.re / denom.sqrt()).clamp(-1.0, 1.0)
                             }
-                        }
+                            DistanceFunction::ProjectiveOverlap => complex_projective_overlap_fast(
+                                query_complex,
+                                cand_vec.complex_data(),
+                            ),
+                            DistanceFunction::ProjectiveSineDistance => {
+                                let p = complex_projective_overlap_fast(
+                                    query_complex,
+                                    cand_vec.complex_data(),
+                                );
+                                1.0 - (1.0 - p).max(0.0).sqrt()
+                            }
+                            DistanceFunction::PhaseAlignedChordalDistance => {
+                                let p = complex_projective_overlap_fast(
+                                    query_complex,
+                                    cand_vec.complex_data(),
+                                );
+                                2.0 - (2.0 * (1.0 - p.sqrt())).max(0.0).sqrt()
+                            }
+                            DistanceFunction::Euclidean => {
+                                let dot = dot_product_complex_simd(
+                                    query_complex,
+                                    cand_vec.complex_data(),
+                                );
+                                let dist_sq = (vec.norm_squared() + cand_vec.norm_squared()
+                                    - 2.0 * dot.re)
+                                    .max(0.0);
+                                -dist_sq.sqrt()
+                            }
+                        };
+                        scored.push(ScoredWitness {
+                            index: cand,
+                            similarity: sim,
+                        });
                     }
-                }
 
-                delta_slots.sort_unstable();
-                delta_slots.dedup();
-
-                for &cand in &delta_slots {
-                    let cand_vec = &vectors[cand as usize];
-                    let sim = match dist_fn {
-                        DistanceFunction::Cosine => {
-                            let dot =
-                                dot_product_complex_simd(query_complex, cand_vec.complex_data());
-                            let denom = (vec.norm_squared() * cand_vec.norm_squared()).max(1e-12);
-                            (dot.re / denom.sqrt()).clamp(-1.0, 1.0)
-                        }
-                        DistanceFunction::ProjectiveOverlap => {
-                            complex_projective_overlap_fast(query_complex, cand_vec.complex_data())
-                        }
-                        DistanceFunction::ProjectiveSineDistance => {
-                            let p = complex_projective_overlap_fast(query_complex, cand_vec.complex_data());
-                            1.0 - (1.0 - p).max(0.0).sqrt()
-                        }
-                        DistanceFunction::PhaseAlignedChordalDistance => {
-                            let p = complex_projective_overlap_fast(query_complex, cand_vec.complex_data());
-                            2.0 - (2.0 * (1.0 - p.sqrt())).max(0.0).sqrt()
-                        }
-                        DistanceFunction::Euclidean => {
-                            let dot =
-                                dot_product_complex_simd(query_complex, cand_vec.complex_data());
-                            let dist_sq = (vec.norm_squared() + cand_vec.norm_squared() - 2.0 * dot.re).max(0.0);
-                            -dist_sq.sqrt()
-                        }
-                    };
-                    scored.push(ScoredWitness {
-                        index: cand,
-                        similarity: sim,
-                    });
-                }
-
-                top_seeds = rivero_witness::select_top(&mut scored, degree);
-                (current_slot, top_seeds)
-            })
-            .collect()
+                    top_seeds = rivero_witness::select_top(&mut scored, degree);
+                    (current_slot, top_seeds)
+                })
+                .collect()
         };
         let time_witness_routing_ms = t3.elapsed().as_secs_f64() * 1000.0;
 
@@ -587,24 +624,24 @@ impl RiveroBulkBuilder {
                     let mut incoming: Vec<ScoredWitness> = Vec::with_capacity(degree * 2);
                     incoming.extend_from_slice(&directed_proposals[dest].1);
 
-                incoming.sort_unstable_by(|a, b| {
-                    b.similarity
-                        .total_cmp(&a.similarity)
-                        .then_with(|| a.index.cmp(&b.index))
-                });
+                    incoming.sort_unstable_by(|a, b| {
+                        b.similarity
+                            .total_cmp(&a.similarity)
+                            .then_with(|| a.index.cmp(&b.index))
+                    });
 
-                let mut unique: Vec<ScoredWitness> = Vec::with_capacity(degree);
-                for cand in incoming {
-                    if !unique.iter().any(|existing| existing.index == cand.index) {
-                        unique.push(cand);
-                        if unique.len() >= degree {
-                            break;
+                    let mut unique: Vec<ScoredWitness> = Vec::with_capacity(degree);
+                    for cand in incoming {
+                        if !unique.iter().any(|existing| existing.index == cand.index) {
+                            unique.push(cand);
+                            if unique.len() >= degree {
+                                break;
+                            }
                         }
                     }
-                }
-                unique
-            })
-            .collect()
+                    unique
+                })
+                .collect()
         };
         let time_witness_scoring_ms = t4.elapsed().as_secs_f64() * 1000.0;
 

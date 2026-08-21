@@ -125,7 +125,10 @@ impl<'src> Parser<'src> {
             vector_match: None,
             patterns: Vec::new(),
             where_clause: WhereClause::default(),
-            return_clause: ReturnClause { items: Vec::new(), limit: None },
+            return_clause: ReturnClause {
+                items: Vec::new(),
+                limit: None,
+            },
             mutations: Vec::new(),
             unwind: None,
             subqueries: Vec::new(),
@@ -241,7 +244,12 @@ impl<'src> Parser<'src> {
             _ => VectorContract::Certified,
         };
 
-        Ok(VectorMatchClause { binding, query_param, k, contract })
+        Ok(VectorMatchClause {
+            binding,
+            query_param,
+            k,
+            contract,
+        })
     }
 
     // ── MATCH pattern list ────────────────────────────────────────────────
@@ -288,8 +296,8 @@ impl<'src> Parser<'src> {
         loop {
             // A relationship starts with `<-` or `-`.
             let direction_start = match self.lex.peek()? {
-                Token::Dash => Direction::Outgoing,  // will refine after `]`
-                Token::Lt => Direction::Incoming,     // `<-[...]-`
+                Token::Dash => Direction::Outgoing, // will refine after `]`
+                Token::Lt => Direction::Incoming,   // `<-[...]-`
                 _ => break,
             };
 
@@ -428,9 +436,7 @@ impl<'src> Parser<'src> {
     }
 
     /// Parses `r:TYPE*min..max]` (opening `[` already consumed).
-    fn parse_rel_spec(
-        &mut self,
-    ) -> Result<(Option<String>, Option<u16>, u8, u8), ParseError> {
+    fn parse_rel_spec(&mut self) -> Result<(Option<String>, Option<u16>, u8, u8), ParseError> {
         let rel_alias = match self.lex.peek()? {
             Token::Ident(_) => Some(self.expect_ident()?),
             _ => None,
@@ -493,7 +499,10 @@ impl<'src> Parser<'src> {
             let val = self.parse_literal_value()?;
             let alias_str = alias.unwrap_or("_").to_string();
             preds.push(ScalarPredicate::Eq(
-                PredicateValue::PropertyRef { alias: alias_str, key },
+                PredicateValue::PropertyRef {
+                    alias: alias_str,
+                    key,
+                },
                 PredicateValue::Literal(val),
             ));
             if let Token::Comma = self.lex.peek()? {
@@ -601,8 +610,12 @@ impl<'src> Parser<'src> {
                 let name = self.expect_ident()?;
                 Ok(PredicateValue::Parameter(name))
             }
-            Token::StringLit(_) | Token::IntLit(_) | Token::FloatLit(_)
-            | Token::True | Token::False | Token::Null => {
+            Token::StringLit(_)
+            | Token::IntLit(_)
+            | Token::FloatLit(_)
+            | Token::True
+            | Token::False
+            | Token::Null => {
                 let val = self.parse_literal_value()?;
                 Ok(PredicateValue::Literal(val))
             }
@@ -700,7 +713,11 @@ impl<'src> Parser<'src> {
                     std::collections::HashMap::new()
                 };
                 self.expect_rparen()?;
-                mutations.push(GraphMutationClause::CreateNode { alias, labels, properties: props });
+                mutations.push(GraphMutationClause::CreateNode {
+                    alias,
+                    labels,
+                    properties: props,
+                });
             } else {
                 break;
             }
@@ -774,25 +791,27 @@ impl<'src> Parser<'src> {
             // context (GraphQuery allows `n.where`, `r.return`, etc.).
             Token::Ident(s) => Ok(s.to_string()),
             // Allow keyword tokens to act as identifiers where unambiguous.
-            Token::Match     => Ok("match".to_string()),
-            Token::Where     => Ok("where".to_string()),
-            Token::Return    => Ok("return".to_string()),
-            Token::With      => Ok("with".to_string()),
-            Token::As        => Ok("as".to_string()),
-            Token::Set       => Ok("set".to_string()),
-            Token::Create    => Ok("create".to_string()),
-            Token::Delete    => Ok("delete".to_string()),
-            Token::Merge     => Ok("merge".to_string()),
-            Token::True      => Ok("true".to_string()),
-            Token::False     => Ok("false".to_string()),
-            Token::Null      => Ok("null".to_string()),
+            Token::Match => Ok("match".to_string()),
+            Token::Where => Ok("where".to_string()),
+            Token::Return => Ok("return".to_string()),
+            Token::With => Ok("with".to_string()),
+            Token::As => Ok("as".to_string()),
+            Token::Set => Ok("set".to_string()),
+            Token::Create => Ok("create".to_string()),
+            Token::Delete => Ok("delete".to_string()),
+            Token::Merge => Ok("merge".to_string()),
+            Token::True => Ok("true".to_string()),
+            Token::False => Ok("false".to_string()),
+            Token::Null => Ok("null".to_string()),
             _ => Err(self.err("Expected identifier")),
         }
     }
 
     fn expect_uint(&mut self) -> Result<usize, ParseError> {
         match self.lex.advance()? {
-            Token::IntLit(s) => s.parse::<usize>().map_err(|_| self.err("Expected unsigned integer")),
+            Token::IntLit(s) => s
+                .parse::<usize>()
+                .map_err(|_| self.err("Expected unsigned integer")),
             _ => Err(self.err("Expected integer literal")),
         }
     }
@@ -898,10 +917,19 @@ mod tests {
         let src = "MATCH (p:Person)-[r:WORKS_AT]->(c:Company) RETURN p, c";
         let ast = parse_query(src, &lc, &rc).unwrap();
 
-        let expand = ast.patterns.iter().find(|p| matches!(p, GraphPattern::Expand { .. }));
+        let expand = ast
+            .patterns
+            .iter()
+            .find(|p| matches!(p, GraphPattern::Expand { .. }));
         assert!(expand.is_some(), "Expected an Expand pattern");
 
-        if let Some(GraphPattern::Expand { direction, min_hops, max_hops, .. }) = expand {
+        if let Some(GraphPattern::Expand {
+            direction,
+            min_hops,
+            max_hops,
+            ..
+        }) = expand
+        {
             assert_eq!(*direction, Direction::Outgoing);
             assert_eq!(*min_hops, 1);
             assert_eq!(*max_hops, 1);
@@ -925,13 +953,23 @@ mod tests {
         assert_eq!(expands.len(), 2, "Expected 2 Expand steps");
 
         // First expand: p -> c (outgoing)
-        if let GraphPattern::Expand { direction, dst_alias, .. } = expands[0] {
+        if let GraphPattern::Expand {
+            direction,
+            dst_alias,
+            ..
+        } = expands[0]
+        {
             assert_eq!(*direction, Direction::Outgoing);
             assert_eq!(dst_alias, "c");
         }
 
         // Second expand: c <- v (incoming on c, so direction is Incoming)
-        if let GraphPattern::Expand { direction, dst_alias, .. } = expands[1] {
+        if let GraphPattern::Expand {
+            direction,
+            dst_alias,
+            ..
+        } = expands[1]
+        {
             assert_eq!(*direction, Direction::Incoming);
             assert_eq!(dst_alias, "v");
         }
@@ -947,9 +985,15 @@ mod tests {
         let src = "MATCH (a)-[:WORKS_AT*1..3]->(b) RETURN a, b";
         let ast = parse_query(src, &lc, &rc).unwrap();
 
-        let expand = ast.patterns.iter().find(|p| matches!(p, GraphPattern::Expand { .. }));
+        let expand = ast
+            .patterns
+            .iter()
+            .find(|p| matches!(p, GraphPattern::Expand { .. }));
         assert!(expand.is_some());
-        if let Some(GraphPattern::Expand { min_hops, max_hops, .. }) = expand {
+        if let Some(GraphPattern::Expand {
+            min_hops, max_hops, ..
+        }) = expand
+        {
             assert_eq!(*min_hops, 1);
             assert_eq!(*max_hops, 3);
         }
@@ -979,7 +1023,10 @@ mod tests {
         let src = "MATCH (p:Person) WHERE p.age > 30 RETURN p";
         let ast = parse_query(src, &lc, &rc).unwrap();
         assert!(!ast.where_clause.predicates.is_empty());
-        assert!(matches!(ast.where_clause.predicates[0], ScalarPredicate::Gt(..)));
+        assert!(matches!(
+            ast.where_clause.predicates[0],
+            ScalarPredicate::Gt(..)
+        ));
     }
 
     // ── Parser: LIMIT ─────────────────────────────────────────────────────
@@ -1016,7 +1063,11 @@ mod tests {
         let compiled = QueryPlanner::compile(src, &lc, &rc, None).unwrap();
 
         // Physical plan must have at least: NodeScan + 2 × Expand + Project + Limit
-        assert!(compiled.plan.ops.len() >= 4, "Expected ≥4 physical ops, got {}", compiled.plan.ops.len());
+        assert!(
+            compiled.plan.ops.len() >= 4,
+            "Expected ≥4 physical ops, got {}",
+            compiled.plan.ops.len()
+        );
 
         // Column names should be [p, c, v]
         assert_eq!(compiled.column_names, vec!["p", "c", "v"]);
@@ -1027,11 +1078,18 @@ mod tests {
     #[test]
     fn test_planner_where_and_limit() {
         let (lc, rc) = catalogs();
-        let src = "MATCH (p:Person)-[:WORKS_AT]->(c:Company) WHERE p.name = 'Alice' RETURN p, c LIMIT 5";
+        let src =
+            "MATCH (p:Person)-[:WORKS_AT]->(c:Company) WHERE p.name = 'Alice' RETURN p, c LIMIT 5";
         let compiled = QueryPlanner::compile(src, &lc, &rc, None).unwrap();
         assert_eq!(compiled.column_names, vec!["p", "c"]);
         // Should have a Limit op at the tail.
         use crate::graph::query::physical::PhysicalOp;
-        assert!(compiled.plan.ops.iter().any(|op| matches!(op, PhysicalOp::Limit { .. })));
+        assert!(
+            compiled
+                .plan
+                .ops
+                .iter()
+                .any(|op| matches!(op, PhysicalOp::Limit { .. }))
+        );
     }
 }

@@ -9,12 +9,12 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::time::Instant;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use std::time::Instant;
 
-use crate::storage::wal::WalMutation;
 use crate::HNSQRResult;
+use crate::storage::wal::WalMutation;
 
 /// Continuous Disaster Recovery SLA metrics.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -55,7 +55,11 @@ impl DisasterRecoveryCoordinator {
         }
     }
 
-    pub fn replicate_wal_batch(&self, start_lsn: u64, mutations: &[WalMutation]) -> HNSQRResult<u64> {
+    pub fn replicate_wal_batch(
+        &self,
+        start_lsn: u64,
+        mutations: &[WalMutation],
+    ) -> HNSQRResult<u64> {
         let end_lsn = start_lsn + mutations.len() as u64;
         let mut guard = self.secondary_replicated_lsn.write();
         *guard = end_lsn;

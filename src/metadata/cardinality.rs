@@ -10,10 +10,10 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::{HNSQRError, HNSQRResult};
 
@@ -82,7 +82,12 @@ impl CardinalityGuard {
     }
 
     /// Evaluates admission for a new metadata term under tenant budgets.
-    pub fn check_admission(&self, tenant_id: &str, is_new_term: bool, term_bytes: usize) -> HNSQRResult<()> {
+    pub fn check_admission(
+        &self,
+        tenant_id: &str,
+        is_new_term: bool,
+        term_bytes: usize,
+    ) -> HNSQRResult<()> {
         let budget = self
             .budgets
             .read()
@@ -102,14 +107,20 @@ impl CardinalityGuard {
                 )));
             }
             tracker.term_count.fetch_add(1, Ordering::Relaxed);
-            tracker.dictionary_bytes.fetch_add(term_bytes, Ordering::Relaxed);
+            tracker
+                .dictionary_bytes
+                .fetch_add(term_bytes, Ordering::Relaxed);
         }
 
         Ok(())
     }
 
     /// Selects optimal posting representation at segment seal based on term density.
-    pub fn select_representation(total_docs: usize, matching_docs: usize, distinct_values: usize) -> PostingRepresentation {
+    pub fn select_representation(
+        total_docs: usize,
+        matching_docs: usize,
+        distinct_values: usize,
+    ) -> PostingRepresentation {
         if total_docs == 0 {
             return PostingRepresentation::SortedPostings;
         }

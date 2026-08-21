@@ -26,8 +26,8 @@
 
 use rayon::prelude::*;
 
-use crate::graph::analytics::projection::GraphProjection;
 use crate::NodeIndex;
+use crate::graph::analytics::projection::GraphProjection;
 
 /// Result of a PageRank computation.
 #[derive(Debug)]
@@ -58,7 +58,11 @@ impl PageRankEngine {
     ) -> PageRankResult {
         let n = projection.node_count();
         if n == 0 {
-            return PageRankResult { ranks: Vec::new(), iterations: 0, converged: true };
+            return PageRankResult {
+                ranks: Vec::new(),
+                iterations: 0,
+                converged: true,
+            };
         }
 
         let init = 1.0f32 / n as f32;
@@ -93,7 +97,11 @@ impl PageRankEngine {
                 for (i, &src) in srcs.iter().enumerate() {
                     let src_od = out_degrees[src as usize];
                     if src_od > 0 {
-                        let w = if weights.is_empty() { 1.0f32 } else { weights[i] };
+                        let w = if weights.is_empty() {
+                            1.0f32
+                        } else {
+                            weights[i]
+                        };
                         // Weighted PageRank: weight normalised by total out-weight.
                         // For unweighted graphs w = 1.0 and src_od is the divisor.
                         incoming += ranks[src as usize] * w / src_od as f32;
@@ -117,6 +125,10 @@ impl PageRankEngine {
             }
         }
 
-        PageRankResult { ranks, iterations, converged }
+        PageRankResult {
+            ranks,
+            iterations,
+            converged,
+        }
     }
 }

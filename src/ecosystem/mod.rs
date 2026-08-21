@@ -9,9 +9,9 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use serde::{Deserialize, Serialize};
 
 use crate::metadata::index::MetadataValue;
 use crate::{HNSQRResult, SimilarityScore, VectorEmbedding};
@@ -63,7 +63,11 @@ impl<S: HNSQRVectorStore> LangChainAdapter<S> {
         Self { store }
     }
 
-    pub fn similarity_search(&self, query: &VectorEmbedding, k: usize) -> HNSQRResult<Vec<FrameworkDocument>> {
+    pub fn similarity_search(
+        &self,
+        query: &VectorEmbedding,
+        k: usize,
+    ) -> HNSQRResult<Vec<FrameworkDocument>> {
         self.store.similarity_search(query, k, true)
     }
 }
@@ -78,7 +82,11 @@ impl<S: HNSQRVectorStore> LlamaIndexAdapter<S> {
         Self { store }
     }
 
-    pub fn query(&self, query: &VectorEmbedding, similarity_top_k: usize) -> HNSQRResult<Vec<FrameworkDocument>> {
+    pub fn query(
+        &self,
+        query: &VectorEmbedding,
+        similarity_top_k: usize,
+    ) -> HNSQRResult<Vec<FrameworkDocument>> {
         self.store.similarity_search(query, similarity_top_k, true)
     }
 }
@@ -93,7 +101,11 @@ impl<S: HNSQRVectorStore> HaystackAdapter<S> {
         Self { store }
     }
 
-    pub fn run_retrieval(&self, query: &VectorEmbedding, top_k: usize) -> HNSQRResult<Vec<FrameworkDocument>> {
+    pub fn run_retrieval(
+        &self,
+        query: &VectorEmbedding,
+        top_k: usize,
+    ) -> HNSQRResult<Vec<FrameworkDocument>> {
         self.store.similarity_search(query, top_k, true)
     }
 }

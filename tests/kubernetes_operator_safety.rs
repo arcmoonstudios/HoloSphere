@@ -74,6 +74,14 @@ fn test_operator_reconciliation_scale_out() {
     };
 
     let actions = KubernetesOperator::reconcile_scale(&spec, &status).unwrap();
-    assert!(actions.iter().any(|a| a.contains("Provision 2 new learner pods")));
-    assert!(actions.iter().any(|a| a.contains("Scale out 2 read learner replicas")));
+    assert!(
+        actions
+            .iter()
+            .any(|a| a.contains("Provision 2 new learner pods"))
+    );
+    assert!(
+        actions
+            .iter()
+            .any(|a| a.contains("Scale out 2 read learner replicas"))
+    );
 }

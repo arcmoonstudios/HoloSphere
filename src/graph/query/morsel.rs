@@ -18,7 +18,7 @@
 /*▫~•◦------------------------------------------------------------------------------------‣
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
- 
+
 use smallvec::SmallVec;
 
 use crate::NodeIndex;
@@ -79,7 +79,11 @@ impl Morsel {
         let selection = vec![true; rows];
         let mut columns = SmallVec::new();
         columns.push(BindingColumn::Node(nodes));
-        Self { rows, columns, selection }
+        Self {
+            rows,
+            columns,
+            selection,
+        }
     }
 
     /// Returns the number of logically active (non-filtered) rows.
@@ -115,7 +119,11 @@ impl Morsel {
             })
             .collect();
 
-        Morsel { rows, columns, selection }
+        Morsel {
+            rows,
+            columns,
+            selection,
+        }
     }
 
     /// Appends a new Node column (e.g. after an Expand step).

@@ -51,7 +51,8 @@ fn generate_clustered_dataset(
     _num_clusters: usize,
 ) -> (Vec<(NodeId, VectorEmbedding)>, Vec<VectorEmbedding>, usize) {
     let (base_path, query_path, _) = common::find_best_matching_dataset(dim * 2);
-    let (mut corpus_vecs, _) = common::read_fvecs(&base_path, Some(num_vectors)).unwrap_or_default();
+    let (mut corpus_vecs, _) =
+        common::read_fvecs(&base_path, Some(num_vectors)).unwrap_or_default();
     let (mut query_vecs, _) = common::read_fvecs(&query_path, Some(200)).unwrap_or_default();
 
     if corpus_vecs.is_empty() {
@@ -406,7 +407,9 @@ fn run_full_benchmark(
     };
     let t_div = Instant::now();
     for q in queries {
-        let _ = index_seq.intent_rerank_search(q, k, &intent_diverse).unwrap();
+        let _ = index_seq
+            .intent_rerank_search(q, k, &intent_diverse)
+            .unwrap();
     }
     let dur_div = t_div.elapsed();
     println!(
@@ -425,7 +428,9 @@ fn run_full_benchmark(
     };
     let t_att = Instant::now();
     for q in queries {
-        let _ = index_seq.intent_rerank_search(q, k, &intent_attention).unwrap();
+        let _ = index_seq
+            .intent_rerank_search(q, k, &intent_attention)
+            .unwrap();
     }
     let dur_att = t_att.elapsed();
     println!(
@@ -491,7 +496,8 @@ fn main() {
     print!(
         "Generating 5,000 clustered phase-encoded complex embeddings (50 semantic clusters)... "
     );
-    let (dataset_clust, queries_clust, actual_dim) = generate_clustered_dataset(num_vectors, dim, 50);
+    let (dataset_clust, queries_clust, actual_dim) =
+        generate_clustered_dataset(num_vectors, dim, 50);
     println!("Done.\n");
 
     run_full_benchmark(
@@ -683,7 +689,9 @@ fn main() {
 
     let t_filter_search = Instant::now();
     for q in &queries_clust {
-        let _ = index_meta.intent_rerank_search(q, k, &intent_filtered).unwrap();
+        let _ = index_meta
+            .intent_rerank_search(q, k, &intent_filtered)
+            .unwrap();
     }
     let dur_filter_search = t_filter_search.elapsed();
     let qps_filter = num_queries as f64 / dur_filter_search.as_secs_f64();

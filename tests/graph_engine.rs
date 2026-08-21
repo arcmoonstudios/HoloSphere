@@ -28,21 +28,23 @@
 
 use std::sync::Arc;
 
+use hnsqr::DataMutation;
 use hnsqr::graph::analytics::projection::{CsrProjection, GraphProjection};
 use hnsqr::graph::analytics::{
-    BfsResult, ConnectedComponents, KCoreDecomposition, LouvainEngine,
-    PageRankEngine, PathfindingEngine, TriangleCount,
+    BfsResult, ConnectedComponents, KCoreDecomposition, LouvainEngine, PageRankEngine,
+    PathfindingEngine, TriangleCount,
 };
 use hnsqr::graph::mutation::command::GraphMutation;
+use hnsqr::graph::query::ast::{
+    Direction, GraphPattern, QueryAst, ReturnClause, ReturnItem, WhereClause,
+};
+use hnsqr::graph::query::semantic::SemanticAnalyzer;
+use hnsqr::graph::query::symbols::SymbolTable;
 use hnsqr::graph::stats::cardinality::GraphCardinalityStats;
 use hnsqr::graph::storage::csr::{CscAdjacency, CsrAdjacency};
 use hnsqr::graph::storage::edge_delta::{EdgeDelta, EdgeRecord, NULL_EDGE};
 use hnsqr::graph::storage::generation::GraphGeneration;
 use hnsqr::graph::storage::node_arena::{GraphNodeRecord, NodeArena};
-use hnsqr::graph::query::ast::{Direction, GraphPattern, QueryAst, ReturnClause, ReturnItem, WhereClause};
-use hnsqr::graph::query::semantic::SemanticAnalyzer;
-use hnsqr::graph::query::symbols::SymbolTable;
-use hnsqr::DataMutation;
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -238,7 +240,9 @@ fn test_connected_components_two_islands() {
     // 0-1-2  and  3-4 (disconnected)
     let n = 5usize;
     let arena = NodeArena::new();
-    for _ in 0..n { arena.alloc(GraphNodeRecord::default()); }
+    for _ in 0..n {
+        arena.alloc(GraphNodeRecord::default());
+    }
     let delta = EdgeDelta::new();
     delta.append(EdgeRecord::new(0, 0, 1, 1.0, 0));
     delta.append(EdgeRecord::new(0, 1, 2, 1.0, 0));
@@ -315,7 +319,9 @@ fn test_k_core_isolated_node() {
     // 0-1 edge, node 2 is isolated
     let n = 3usize;
     let arena = NodeArena::new();
-    for _ in 0..n { arena.alloc(GraphNodeRecord::default()); }
+    for _ in 0..n {
+        arena.alloc(GraphNodeRecord::default());
+    }
     let delta = EdgeDelta::new();
     delta.append(EdgeRecord::new(0, 0, 1, 1.0, 0));
     delta.append(EdgeRecord::new(0, 1, 0, 1.0, 0)); // bidirectional for k-core
@@ -325,7 +331,10 @@ fn test_k_core_isolated_node() {
 
     let kc = KCoreDecomposition::compute(&proj);
     assert_eq!(kc.coreness[2], 0, "Isolated node must have coreness 0");
-    assert!(kc.coreness[0] >= 1, "Connected node must have coreness >= 1");
+    assert!(
+        kc.coreness[0] >= 1,
+        "Connected node must have coreness >= 1"
+    );
 }
 
 // ─── 15. Triangle count on a chain is zero ───────────────────────────────────
@@ -344,7 +353,10 @@ fn test_triangle_count_clique_is_one() {
     // The sorted-merge algorithm on a 3-clique with 6 directed edges (all bidirectional)
     // processes each (u<v) pair and counts their common neighbours — yielding 3,
     // one per unique pair (0-1), (0-2), (1-2).
-    assert_eq!(tc.triangles, 3, "3-clique sorted-merge must count 3 triangle instances");
+    assert_eq!(
+        tc.triangles, 3,
+        "3-clique sorted-merge must count 3 triangle instances"
+    );
 }
 
 // ─── 17. DataMutation::Graph roundtrips through state machine ────────────────
@@ -363,7 +375,9 @@ fn test_graph_mutation_roundtrips_through_state_machine() {
         vector_slot: None,
     });
 
-    let receipt = sm.apply(1, &create_node).expect("Graph CreateNode must succeed");
+    let receipt = sm
+        .apply(1, &create_node)
+        .expect("Graph CreateNode must succeed");
     assert_eq!(receipt.applied_index, 1);
     assert!(receipt.applied_generation > 0);
 
@@ -374,7 +388,8 @@ fn test_graph_mutation_roundtrips_through_state_machine() {
         properties: Default::default(),
         vector_slot: None,
     });
-    sm.apply(2, &create_beta).expect("CreateNode beta must succeed");
+    sm.apply(2, &create_beta)
+        .expect("CreateNode beta must succeed");
 
     let create_rel = DataMutation::new_graph(GraphMutation::CreateRelationship {
         relationship_id: 1,
@@ -384,7 +399,8 @@ fn test_graph_mutation_roundtrips_through_state_machine() {
         properties: Default::default(),
         weight: 1.0,
     });
-    sm.apply(3, &create_rel).expect("CreateRelationship must succeed");
+    sm.apply(3, &create_rel)
+        .expect("CreateRelationship must succeed");
 
     // Verify via GraphMutationApplier.
     let graph = sm.graph.as_ref().expect("Graph applier must be present");
@@ -401,7 +417,10 @@ fn test_symbol_table_intern_resolve() {
     let id_p2 = table.intern("p"); // should return same id
 
     assert_eq!(id_p, id_p2, "Same alias must produce same SymbolId");
-    assert_ne!(id_p, id_c, "Different aliases must produce different SymbolIds");
+    assert_ne!(
+        id_p, id_c,
+        "Different aliases must produce different SymbolIds"
+    );
     assert_eq!(table.name_of(id_p), Some("p"));
     assert_eq!(table.name_of(id_c), Some("c"));
     assert_eq!(table.get("missing"), None);
@@ -442,7 +461,10 @@ fn test_semantic_analyzer_valid_query() {
     };
 
     let result = SemanticAnalyzer::analyse(&ast);
-    assert!(result.is_ok(), "Valid query must pass semantic analysis: {result:?}");
+    assert!(
+        result.is_ok(),
+        "Valid query must pass semantic analysis: {result:?}"
+    );
     let symbols = result.unwrap();
     assert!(symbols.get("p").is_some());
     assert!(symbols.get("c").is_some());
@@ -455,13 +477,11 @@ fn test_semantic_analyzer_rejects_undeclared_alias() {
 
     let ast = QueryAst {
         vector_match: None,
-        patterns: vec![
-            GraphPattern::NodePattern {
-                alias: "p".to_string(),
-                label: None,
-                predicates: vec![],
-            },
-        ],
+        patterns: vec![GraphPattern::NodePattern {
+            alias: "p".to_string(),
+            label: None,
+            predicates: vec![],
+        }],
         where_clause: WhereClause::default(),
         return_clause: ReturnClause {
             items: vec![ReturnItem::Alias("ghost".to_string())],
@@ -473,10 +493,15 @@ fn test_semantic_analyzer_rejects_undeclared_alias() {
     };
 
     let result = SemanticAnalyzer::analyse(&ast);
-    assert!(result.is_err(), "Undeclared alias in RETURN must be rejected");
+    assert!(
+        result.is_err(),
+        "Undeclared alias in RETURN must be rejected"
+    );
     let errors = result.unwrap_err();
     assert!(
-        errors.iter().any(|e| matches!(e, SemanticError::UndeclaredAlias(a) if a == "ghost")),
+        errors
+            .iter()
+            .any(|e| matches!(e, SemanticError::UndeclaredAlias(a) if a == "ghost")),
         "Must produce UndeclaredAlias error for 'ghost'"
     );
 }

@@ -12,14 +12,17 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
+use hnsqr::VectorEmbedding;
 use hnsqr::storage::backup::{BackupManager, BackupType};
 use hnsqr::storage::manifest::UnifiedSnapshotEngine;
 use hnsqr::storage::wal::{DurabilityPolicy, WalManager, WalMutation};
-use hnsqr::VectorEmbedding;
 use num_complex::Complex32;
 
 fn temp_dir(name: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!("hnsqr_backup_test_{name}_{:x}", rand::random::<u64>()));
+    let d = std::env::temp_dir().join(format!(
+        "hnsqr_backup_test_{name}_{:x}",
+        rand::random::<u64>()
+    ));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     d
@@ -38,16 +41,22 @@ fn test_full_and_incremental_backup_with_pitr() {
     std::fs::create_dir_all(&wal_dir).unwrap();
 
     let dim = 4;
-    let v1 = VectorEmbedding::from_complex(vec![Complex32::new(1.0, 0.0), Complex32::new(0.0, 1.0)]).into_normalized();
+    let v1 =
+        VectorEmbedding::from_complex(vec![Complex32::new(1.0, 0.0), Complex32::new(0.0, 1.0)])
+            .into_normalized();
 
     // 1. Initialize WAL and append 10 base records (LSN 1..=10)
     let wal = WalManager::open(&wal_dir).unwrap();
     for i in 1..=10 {
-        wal.append(&WalMutation::Upsert {
-            external_id: format!("doc_base_{i}"),
-            vector: v1.clone(),
-            metadata: None,
-        }, DurabilityPolicy::WalSync).unwrap();
+        wal.append(
+            &WalMutation::Upsert {
+                external_id: format!("doc_base_{i}"),
+                vector: v1.clone(),
+                metadata: None,
+            },
+            DurabilityPolicy::WalSync,
+        )
+        .unwrap();
     }
     assert_eq!(wal.current_lsn(), 10);
 
@@ -63,43 +72,67 @@ fn test_full_and_incremental_backup_with_pitr() {
         None,
         None,
         None,
-    ).unwrap();
+    )
+    .unwrap();
 
     // 3. Perform Full Backup
-    let full_meta = BackupManager::create_full_backup(&snap_dir, &backup_dir, "backup_full_gen1").unwrap();
+    let full_meta =
+        BackupManager::create_full_backup(&snap_dir, &backup_dir, "backup_full_gen1").unwrap();
     assert_eq!(full_meta.backup_type, BackupType::Full);
     assert_eq!(full_meta.end_lsn, 10);
 
     // 4. Append WAL mutations for LSN 11, 12, 13, 14
-    let lsn11 = wal.append(&WalMutation::Upsert {
-        external_id: "doc_11".to_string(),
-        vector: v1.clone(),
-        metadata: None,
-    }, DurabilityPolicy::WalSync).unwrap();
+    let lsn11 = wal
+        .append(
+            &WalMutation::Upsert {
+                external_id: "doc_11".to_string(),
+                vector: v1.clone(),
+                metadata: None,
+            },
+            DurabilityPolicy::WalSync,
+        )
+        .unwrap();
 
-    let lsn12 = wal.append(&WalMutation::Upsert {
-        external_id: "doc_12".to_string(),
-        vector: v1.clone(),
-        metadata: None,
-    }, DurabilityPolicy::WalSync).unwrap();
+    let lsn12 = wal
+        .append(
+            &WalMutation::Upsert {
+                external_id: "doc_12".to_string(),
+                vector: v1.clone(),
+                metadata: None,
+            },
+            DurabilityPolicy::WalSync,
+        )
+        .unwrap();
 
-    let _lsn13 = wal.append(&WalMutation::Upsert {
-        external_id: "doc_13".to_string(),
-        vector: v1.clone(),
-        metadata: None,
-    }, DurabilityPolicy::WalSync).unwrap();
+    let _lsn13 = wal
+        .append(
+            &WalMutation::Upsert {
+                external_id: "doc_13".to_string(),
+                vector: v1.clone(),
+                metadata: None,
+            },
+            DurabilityPolicy::WalSync,
+        )
+        .unwrap();
 
-    let _lsn14 = wal.append(&WalMutation::Upsert {
-        external_id: "doc_14".to_string(),
-        vector: v1.clone(),
-        metadata: None,
-    }, DurabilityPolicy::WalSync).unwrap();
+    let _lsn14 = wal
+        .append(
+            &WalMutation::Upsert {
+                external_id: "doc_14".to_string(),
+                vector: v1.clone(),
+                metadata: None,
+            },
+            DurabilityPolicy::WalSync,
+        )
+        .unwrap();
 
     assert_eq!(lsn11, 11);
     assert_eq!(lsn12, 12);
 
     // 5. Create Incremental Backup spanning LSN 11..=14
-    let inc_meta = BackupManager::create_incremental_backup(&wal_dir, &backup_dir, "backup_inc_1", 11, 14).unwrap();
+    let inc_meta =
+        BackupManager::create_incremental_backup(&wal_dir, &backup_dir, "backup_inc_1", 11, 14)
+            .unwrap();
     assert_eq!(inc_meta.backup_type, BackupType::Incremental);
     assert_eq!(inc_meta.start_lsn, 11);
     assert_eq!(inc_meta.end_lsn, 14);
@@ -116,7 +149,8 @@ fn test_full_and_incremental_backup_with_pitr() {
             restored_mutations.push((lsn, mutation));
             Ok(())
         },
-    ).unwrap();
+    )
+    .unwrap();
 
     assert_eq!(summary.last_applied_lsn, 12);
     assert_eq!(restored_mutations.len(), 2);

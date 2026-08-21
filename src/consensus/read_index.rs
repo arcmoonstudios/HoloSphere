@@ -136,8 +136,13 @@ impl ReadIndexEngine {
     }
 
     /// Registers a new active ReadIndex round for the specified term.
-    pub fn start_read_index_round(&self, term: u64, leader_id: RaftNodeId) -> (ReadContextId, ReadIndexRequest) {
-        self.readindex_requests_total.fetch_add(1, Ordering::Relaxed);
+    pub fn start_read_index_round(
+        &self,
+        term: u64,
+        leader_id: RaftNodeId,
+    ) -> (ReadContextId, ReadIndexRequest) {
+        self.readindex_requests_total
+            .fetch_add(1, Ordering::Relaxed);
         let ctx = ReadContextId::generate();
         let mut confirmations = HashSet::new();
         confirmations.insert(leader_id); // Leader votes for itself
@@ -161,7 +166,8 @@ impl ReadIndexEngine {
         quorum_size: usize,
     ) -> HNSQRResult<bool> {
         if conf.term != current_term {
-            self.readindex_term_invalidations.fetch_add(1, Ordering::Relaxed);
+            self.readindex_term_invalidations
+                .fetch_add(1, Ordering::Relaxed);
             return Err(HNSQRError::Internal(format!(
                 "ReadIndex confirmation term mismatch: received {}, current {current_term}",
                 conf.term
@@ -175,7 +181,8 @@ impl ReadIndexEngine {
             if state.term != current_term {
                 let stale_term = state.term;
                 rounds.remove(&conf.context);
-                self.readindex_term_invalidations.fetch_add(1, Ordering::Relaxed);
+                self.readindex_term_invalidations
+                    .fetch_add(1, Ordering::Relaxed);
                 return Err(HNSQRError::Internal(format!(
                     "ReadIndex round invalidated due to term change from {stale_term} to {current_term}"
                 )));
@@ -189,7 +196,8 @@ impl ReadIndexEngine {
 
             if state.confirmations.len() >= quorum_size {
                 let elapsed_us = state.created_at.elapsed().as_micros() as u64;
-                self.readindex_quorum_latency_us.store(elapsed_us, Ordering::Relaxed);
+                self.readindex_quorum_latency_us
+                    .store(elapsed_us, Ordering::Relaxed);
                 rounds.remove(&conf.context);
                 return Ok(true);
             }
@@ -290,4 +298,3 @@ impl ReadIndexEngine {
         }
     }
 }
-

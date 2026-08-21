@@ -20,8 +20,8 @@ use std::time::Instant;
 use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 
-use crate::cluster::state_machine::{DataMutation, ReplicatedStateMachine};
 use crate::cluster::ShardId;
+use crate::cluster::state_machine::{DataMutation, ReplicatedStateMachine};
 use crate::consensus::pending::{
     ApplyError, CommitReceipt, DurabilityLevel, PendingProposals, ProposalId,
 };
@@ -293,11 +293,15 @@ impl RaftNode {
         initial_voting_peers: Vec<RaftNodeId>,
         storage: Arc<dyn RaftStorage>,
     ) -> Self {
-        Self::try_with_storage(id, initial_voting_peers, storage).expect("Failed to initialize RaftNode from storage")
+        Self::try_with_storage(id, initial_voting_peers, storage)
+            .expect("Failed to initialize RaftNode from storage")
     }
 
     /// Reconstructs volatile state machine from durable Raft log entries up to committed index ONLY.
-    pub fn recover_node_state(&self, state_machine: &Arc<dyn ReplicatedStateMachine>) -> HNSQRResult<u64> {
+    pub fn recover_node_state(
+        &self,
+        state_machine: &Arc<dyn ReplicatedStateMachine>,
+    ) -> HNSQRResult<u64> {
         let progress = self.storage.load_progress()?;
         let entries = self.storage.load_log_entries(progress.snapshot_index + 1)?;
         let mut applied_count = 0;
@@ -347,7 +351,9 @@ impl RaftNode {
                 }
             }
             ReadConsistency::Committed => {}
-            ReadConsistency::BoundedStaleness { max_lag_entries, .. } => {
+            ReadConsistency::BoundedStaleness {
+                max_lag_entries, ..
+            } => {
                 let commit = *self.commit_index.read();
                 let applied = *self.last_applied.read();
                 let lag = commit.saturating_sub(applied);
@@ -371,10 +377,14 @@ impl RaftNode {
 
         let mut current_term = *self.current_term.read();
         if args.term > current_term {
-            if self.storage.save_hard_state(&RaftHardState {
-                current_term: args.term,
-                voted_for: None,
-            }).is_err() {
+            if self
+                .storage
+                .save_hard_state(&RaftHardState {
+                    current_term: args.term,
+                    voted_for: None,
+                })
+                .is_err()
+            {
                 return RequestVoteReply {
                     term: current_term,
                     vote_granted: false,
@@ -405,10 +415,14 @@ impl RaftNode {
             && log_up_to_date;
 
         if can_vote {
-            if self.storage.save_hard_state(&RaftHardState {
-                current_term,
-                voted_for: Some(args.candidate_id),
-            }).is_err() {
+            if self
+                .storage
+                .save_hard_state(&RaftHardState {
+                    current_term,
+                    voted_for: Some(args.candidate_id),
+                })
+                .is_err()
+            {
                 return RequestVoteReply {
                     term: current_term,
                     vote_granted: false,
@@ -431,10 +445,14 @@ impl RaftNode {
     pub fn handle_append_entries(&self, args: &AppendEntriesArgs) -> AppendEntriesReply {
         let mut current_term = *self.current_term.read();
         if args.term > current_term {
-            if self.storage.save_hard_state(&RaftHardState {
-                current_term: args.term,
-                voted_for: None,
-            }).is_err() {
+            if self
+                .storage
+                .save_hard_state(&RaftHardState {
+                    current_term: args.term,
+                    voted_for: None,
+                })
+                .is_err()
+            {
                 return AppendEntriesReply {
                     term: current_term,
                     success: false,
@@ -513,7 +531,11 @@ impl RaftNode {
                                     match_index: 0,
                                 };
                             }
-                            if self.storage.append_entries(std::slice::from_ref(entry)).is_err() {
+                            if self
+                                .storage
+                                .append_entries(std::slice::from_ref(entry))
+                                .is_err()
+                            {
                                 return AppendEntriesReply {
                                     term: current_term,
                                     success: false,
@@ -524,7 +546,11 @@ impl RaftNode {
                             log.push(entry.clone());
                         }
                     } else {
-                        if self.storage.append_entries(std::slice::from_ref(entry)).is_err() {
+                        if self
+                            .storage
+                            .append_entries(std::slice::from_ref(entry))
+                            .is_err()
+                        {
                             return AppendEntriesReply {
                                 term: current_term,
                                 success: false,
@@ -669,7 +695,10 @@ impl RaftNode {
         let mutation_id = mutation.mutation_id().clone();
         let cmd = RaftCommand::Data(mutation);
         let index = self.propose(cmd)?;
-        let proposal_id = ProposalId { term, log_index: index };
+        let proposal_id = ProposalId {
+            term,
+            log_index: index,
+        };
 
         let rx = self.pending_proposals.register(proposal_id, mutation_id)?;
         Ok(rx)
@@ -699,7 +728,10 @@ impl RaftNode {
         self.linearizable_read_index_with_mode(LinearizableReadMode::ReadIndex)
     }
 
-    pub fn linearizable_read_index_with_mode(&self, mode: LinearizableReadMode) -> HNSQRResult<u64> {
+    pub fn linearizable_read_index_with_mode(
+        &self,
+        mode: LinearizableReadMode,
+    ) -> HNSQRResult<u64> {
         if !self.is_leader() {
             return Err(HNSQRError::Internal(format!(
                 "Node {} cannot serve linearizable read: not leader (leader is {:?})",
@@ -723,9 +755,17 @@ impl RaftNode {
                 }
                 Ok(read_idx)
             }
-            LinearizableReadMode::LeaseRead { lease_duration_ms, max_clock_drift_ms } => {
-                ReadIndexEngine::validate_lease_contract(lease_duration_ms, max_clock_drift_ms, 1000)?;
-                self.read_index_engine.verify_lease_read(term, std::time::Duration::from_millis(lease_duration_ms))?;
+            LinearizableReadMode::LeaseRead {
+                lease_duration_ms,
+                max_clock_drift_ms,
+            } => {
+                ReadIndexEngine::validate_lease_contract(
+                    lease_duration_ms,
+                    max_clock_drift_ms,
+                    1000,
+                )?;
+                self.read_index_engine
+                    .verify_lease_read(term, std::time::Duration::from_millis(lease_duration_ms))?;
                 let read_idx = *self.commit_index.read();
                 let last_applied = *self.last_applied.read();
                 if last_applied < read_idx {
@@ -829,7 +869,8 @@ impl RaftNode {
 
         // Complete/Fail proposals outside the lock
         for (proposal_id, term, applied_idx, ep, durability) in to_complete {
-            self.pending_proposals.complete_applied(proposal_id, term, applied_idx, ep, durability);
+            self.pending_proposals
+                .complete_applied(proposal_id, term, applied_idx, ep, durability);
         }
         for (proposal_id, err) in to_fail {
             self.pending_proposals.fail_proposal(proposal_id, err);
@@ -855,7 +896,11 @@ impl RaftCluster {
         let node_ids: Vec<RaftNodeId> = storages.keys().copied().collect();
         let mut nodes = HashMap::new();
         for (&id, storage) in &storages {
-            let node = Arc::new(RaftNode::with_storage(id, node_ids.clone(), storage.clone()));
+            let node = Arc::new(RaftNode::with_storage(
+                id,
+                node_ids.clone(),
+                storage.clone(),
+            ));
             nodes.insert(id, node);
         }
         Self { nodes }
@@ -873,10 +918,14 @@ impl RaftCluster {
         };
 
         let new_term = *candidate.current_term.read() + 1;
-        if candidate.storage.save_hard_state(&RaftHardState {
-            current_term: new_term,
-            voted_for: Some(node_id),
-        }).is_err() {
+        if candidate
+            .storage
+            .save_hard_state(&RaftHardState {
+                current_term: new_term,
+                voted_for: Some(node_id),
+            })
+            .is_err()
+        {
             return false;
         }
 
@@ -977,8 +1026,14 @@ impl RaftCluster {
                 let reply = peer_node.handle_append_entries(&args);
                 if reply.success {
                     successful_responses += 1;
-                    leader.next_index.write().insert(peer_id, reply.match_index + 1);
-                    leader.match_index.write().insert(peer_id, reply.match_index);
+                    leader
+                        .next_index
+                        .write()
+                        .insert(peer_id, reply.match_index + 1);
+                    leader
+                        .match_index
+                        .write()
+                        .insert(peer_id, reply.match_index);
                 }
             }
         }
@@ -997,7 +1052,10 @@ impl RaftCluster {
 
         for (&id, node) in &self.nodes {
             let is_warm = node.warm_proof_shards.read().contains(&shard_id);
-            let lag = node.commit_index.read().saturating_sub(*node.last_applied.read());
+            let lag = node
+                .commit_index
+                .read()
+                .saturating_sub(*node.last_applied.read());
 
             if is_warm && lag < lowest_lag {
                 lowest_lag = lag;
@@ -1028,10 +1086,17 @@ impl RaftCluster {
     }
 
     /// Performs a Raft-safe graceful leadership transfer to the healthiest candidate.
-    pub fn transfer_leadership_to_healthiest(&self, current_leader_id: RaftNodeId) -> HNSQRResult<Option<RaftNodeId>> {
+    pub fn transfer_leadership_to_healthiest(
+        &self,
+        current_leader_id: RaftNodeId,
+    ) -> HNSQRResult<Option<RaftNodeId>> {
         let leader = match self.nodes.get(&current_leader_id) {
             Some(n) if n.is_leader() => n.clone(),
-            _ => return Err(HNSQRError::Internal(format!("Node {current_leader_id} is not leader"))),
+            _ => {
+                return Err(HNSQRError::Internal(format!(
+                    "Node {current_leader_id} is not leader"
+                )));
+            }
         };
 
         if let Some(target_id) = self.get_healthiest_candidate(current_leader_id) {
@@ -1040,7 +1105,9 @@ impl RaftCluster {
                 leader.pipeline_telemetry.write().leadership_transfers_total += 1;
                 Ok(Some(target_id))
             } else {
-                Err(HNSQRError::Internal(format!("Leadership transfer to {target_id} failed quorum election")))
+                Err(HNSQRError::Internal(format!(
+                    "Leadership transfer to {target_id} failed quorum election"
+                )))
             }
         } else {
             Ok(None)
@@ -1056,7 +1123,10 @@ impl RaftCluster {
         None
     }
 
-    pub fn propose_data_mutation(&self, mutation: DataMutation) -> HNSQRResult<tokio::sync::oneshot::Receiver<Result<CommitReceipt, ApplyError>>> {
+    pub fn propose_data_mutation(
+        &self,
+        mutation: DataMutation,
+    ) -> HNSQRResult<tokio::sync::oneshot::Receiver<Result<CommitReceipt, ApplyError>>> {
         let leader_id = self.get_leader().unwrap_or_else(|| {
             let first_id = *self.nodes.keys().next().unwrap();
             self.trigger_election(first_id);
@@ -1072,7 +1142,10 @@ impl RaftCluster {
         self.linearizable_read_index_with_mode(LinearizableReadMode::ReadIndex)
     }
 
-    pub fn linearizable_read_index_with_mode(&self, mode: LinearizableReadMode) -> HNSQRResult<u64> {
+    pub fn linearizable_read_index_with_mode(
+        &self,
+        mode: LinearizableReadMode,
+    ) -> HNSQRResult<u64> {
         let leader_id = self.get_leader().ok_or_else(|| {
             HNSQRError::Internal("No active Raft leader to coordinate ReadIndex".to_string())
         })?;
@@ -1081,7 +1154,9 @@ impl RaftCluster {
         match mode {
             LinearizableReadMode::ReadIndex => {
                 let term = *leader.current_term.read();
-                let (_ctx, req) = leader.read_index_engine.start_read_index_round(term, leader_id);
+                let (_ctx, req) = leader
+                    .read_index_engine
+                    .start_read_index_round(term, leader_id);
 
                 let peers: Vec<RaftNodeId> = leader.voting_peers.read().iter().copied().collect();
                 let quorum_required = (peers.len() / 2) + 1;
@@ -1093,7 +1168,11 @@ impl RaftCluster {
                     }
                     if let Some(peer_node) = self.nodes.get(peer_id) {
                         let confirmation = peer_node.handle_read_index_request(&req);
-                        if leader.read_index_engine.handle_confirmation(&confirmation, term, quorum_required)? {
+                        if leader.read_index_engine.handle_confirmation(
+                            &confirmation,
+                            term,
+                            quorum_required,
+                        )? {
                             quorum_reached = true;
                         }
                     }
@@ -1101,14 +1180,18 @@ impl RaftCluster {
 
                 if !quorum_reached {
                     return Err(HNSQRError::Internal(
-                        "ReadIndex round failed to achieve voting quorum confirmation from peers".into(),
+                        "ReadIndex round failed to achieve voting quorum confirmation from peers"
+                            .into(),
                     ));
                 }
 
                 // Invalidate if term changed during confirmation exchange
                 let term_after = *leader.current_term.read();
                 if term_after != term {
-                    leader.read_index_engine.readindex_term_invalidations.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    leader
+                        .read_index_engine
+                        .readindex_term_invalidations
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     return Err(HNSQRError::Internal(format!(
                         "ReadIndex round invalidated: term changed from {term} to {term_after}"
                     )));
@@ -1125,11 +1208,20 @@ impl RaftCluster {
                 }
                 Ok(read_idx)
             }
-            LinearizableReadMode::LeaseRead { lease_duration_ms, max_clock_drift_ms } => {
-                ReadIndexEngine::validate_lease_contract(lease_duration_ms, max_clock_drift_ms, 1000)?;
+            LinearizableReadMode::LeaseRead {
+                lease_duration_ms,
+                max_clock_drift_ms,
+            } => {
+                ReadIndexEngine::validate_lease_contract(
+                    lease_duration_ms,
+                    max_clock_drift_ms,
+                    1000,
+                )?;
                 self.broadcast_heartbeats(leader_id);
                 let term = *leader.current_term.read();
-                leader.read_index_engine.verify_lease_read(term, std::time::Duration::from_millis(lease_duration_ms))?;
+                leader
+                    .read_index_engine
+                    .verify_lease_read(term, std::time::Duration::from_millis(lease_duration_ms))?;
 
                 let read_idx = *leader.commit_index.read();
                 let last_applied = *leader.last_applied.read();

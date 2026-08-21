@@ -83,7 +83,6 @@ pub struct DenseExactProof {
     pub globally_exact: bool,
 
     // ── Deadline telemetry ───────────────────────────────────────────────
-
     /// Set to `true` when the query deadline fired before the proof frontier
     /// was fully exhausted.  Distinct from `globally_exact` so callers can
     /// tell the difference between "proof incomplete due to budget" and any
@@ -255,7 +254,11 @@ impl TopKAccumulator {
     /// Consumes the accumulator and returns sorted finalists `(score DESC, slot ASC)`.
     pub fn into_sorted_vec(self) -> Vec<(NodeIndex, SimilarityScore)> {
         let mut list: Vec<Finalist> = self.heap.into_vec();
-        list.sort_unstable_by(|a, b| b.score.total_cmp(&a.score).then_with(|| a.slot.cmp(&b.slot)));
+        list.sort_unstable_by(|a, b| {
+            b.score
+                .total_cmp(&a.score)
+                .then_with(|| a.slot.cmp(&b.slot))
+        });
         list.into_iter().map(|f| (f.slot, f.score)).collect()
     }
 }
@@ -320,7 +323,10 @@ impl GlobalExactProofSearch {
         let t_start = std::time::Instant::now();
 
         let mut proof = DenseExactProof::default();
-        let total_corpus: usize = segments.iter().map(|s| s.tree.total_vectors()).sum::<usize>()
+        let total_corpus: usize = segments
+            .iter()
+            .map(|s| s.tree.total_vectors())
+            .sum::<usize>()
             + mutable_candidates.len();
         proof.corpus_size = total_corpus;
 
@@ -711,7 +717,10 @@ impl GlobalPacProofSearch {
     ) -> (Vec<(NodeIndex, SimilarityScore)>, DenseExactProof) {
         let t_start = std::time::Instant::now();
         let mut proof = DenseExactProof::default();
-        let total_corpus: usize = segments.iter().map(|s| s.tree.total_vectors()).sum::<usize>()
+        let total_corpus: usize = segments
+            .iter()
+            .map(|s| s.tree.total_vectors())
+            .sum::<usize>()
             + mutable_candidates.len();
         proof.corpus_size = total_corpus;
 

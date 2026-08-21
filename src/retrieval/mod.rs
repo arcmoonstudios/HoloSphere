@@ -12,6 +12,10 @@ pub mod multivector;
 pub mod sparse;
 
 pub use hybrid::{HybridFusionEngine, HybridFusionMethod, ModalityRankings, RRF_DEFAULT_K};
-pub use linguistic::{FuzzyLevenshteinAutomaton, LanguageMode, MorphologicalStemmer, PhoneticMatcher};
+pub use linguistic::{
+    FuzzyLevenshteinAutomaton, LanguageMode, MorphologicalStemmer, PhoneticMatcher,
+};
 pub use multivector::{MultiVectorEmbedding, MultiVectorIndex};
-pub use sparse::{InvertedPostingList, PostingChunk, PostingEntry, SparseInvertedIndex, SparseVector};
+pub use sparse::{
+    InvertedPostingList, PostingChunk, PostingEntry, SparseInvertedIndex, SparseVector,
+};

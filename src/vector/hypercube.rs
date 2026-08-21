@@ -10,9 +10,9 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::collections::HashMap;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 use crate::{HNSQRError, HNSQRResult};
 
@@ -36,7 +36,10 @@ impl HypercubeBoundingBox {
                 return None;
             }
         }
-        Some(Self { min_coords, max_coords })
+        Some(Self {
+            min_coords,
+            max_coords,
+        })
     }
 
     /// Evaluates whether a coordinate point falls inside this hypercube subvolume.
@@ -373,10 +376,7 @@ mod tests {
         space.set_voxel(vec![8, 4, 120, 200], 215.30).unwrap();
 
         // Slice subvolume: t in [0..5], level in [0..2], lat in [30..50], lon in [70..80]
-        let bbox = HypercubeBoundingBox::new(
-            vec![0, 0, 30, 70],
-            vec![5, 2, 50, 80],
-        ).unwrap();
+        let bbox = HypercubeBoundingBox::new(vec![0, 0, 30, 70], vec![5, 2, 50, 80]).unwrap();
 
         let slice = space.slice_subvolume(&bbox).unwrap();
         assert_eq!(slice.len(), 1);

@@ -9,11 +9,11 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
+use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
-use parking_lot::RwLock;
-use serde::{Deserialize, Serialize};
 
 use crate::HNSQRResult;
 
@@ -90,7 +90,11 @@ impl ServerlessQueryRouter {
         }
 
         // 2. Scale-up: Provision a new ephemeral worker with instant attach
-        let worker_id = format!("worker-{}-{}", tenant_id, self.active_worker_count.fetch_add(1, Ordering::Relaxed));
+        let worker_id = format!(
+            "worker-{}-{}",
+            tenant_id,
+            self.active_worker_count.fetch_add(1, Ordering::Relaxed)
+        );
         self.total_scale_events.fetch_add(1, Ordering::Relaxed);
 
         let new_worker = EphemeralWorker {
@@ -126,13 +130,12 @@ impl ServerlessQueryRouter {
         let mut workers = self.workers.write();
         let now = Instant::now().elapsed().as_secs();
         let initial_count = workers.len();
-        
-        workers.retain(|_, w| {
-            w.active_queries > 0 || w.lease_expires_at > now
-        });
+
+        workers.retain(|_, w| w.active_queries > 0 || w.lease_expires_at > now);
 
         let reaped = initial_count - workers.len();
-        self.active_worker_count.fetch_sub(reaped, Ordering::Relaxed);
+        self.active_worker_count
+            .fetch_sub(reaped, Ordering::Relaxed);
         reaped
     }
 

@@ -34,8 +34,8 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use crate::graph::analytics::projection::GraphProjection;
 use crate::NodeIndex;
+use crate::graph::analytics::projection::GraphProjection;
 
 /// Result of the Louvain community-detection phase.
 #[derive(Debug, Default)]
@@ -56,10 +56,7 @@ pub struct LouvainEngine;
 impl LouvainEngine {
     /// Runs the full hierarchical Louvain algorithm: Phase 1 (greedy local moves)
     /// followed by Phase 2 (graph coarsening) for up to `max_levels` levels.
-    pub fn detect(
-        projection: &dyn GraphProjection,
-        max_passes: usize,
-    ) -> LouvainResult {
+    pub fn detect(projection: &dyn GraphProjection, max_passes: usize) -> LouvainResult {
         Self::detect_hierarchical(projection, max_passes, 3)
     }
 
@@ -120,10 +117,7 @@ impl LouvainEngine {
 
     /// Runs Phase 1 (greedy local moves) up to `max_passes` times or until
     /// no improvement is found.
-    fn run_phase1(
-        projection: &dyn GraphProjection,
-        max_passes: usize,
-    ) -> LouvainResult {
+    fn run_phase1(projection: &dyn GraphProjection, max_passes: usize) -> LouvainResult {
         let n = projection.node_count();
         if n == 0 {
             return LouvainResult::default();
@@ -180,7 +174,11 @@ impl LouvainEngine {
                 let mut comm_weights: std::collections::HashMap<usize, f64> =
                     std::collections::HashMap::new();
                 for (idx, &nb) in neighbors.iter().enumerate() {
-                    let w = if weights.is_empty() { 1.0 } else { weights[idx] as f64 };
+                    let w = if weights.is_empty() {
+                        1.0
+                    } else {
+                        weights[idx] as f64
+                    };
                     let cn = community[nb as usize] as usize;
                     *comm_weights.entry(cn).or_insert(0.0) += w;
                 }
@@ -246,11 +244,7 @@ impl LouvainEngine {
     }
 
     /// Computes modularity Q = (1/2m) Σ_{ij} [A_{ij} - k_i k_j / 2m] δ(c_i, c_j).
-    fn compute_modularity(
-        community: &[u32],
-        projection: &dyn GraphProjection,
-        m: f64,
-    ) -> f64 {
+    fn compute_modularity(community: &[u32], projection: &dyn GraphProjection, m: f64) -> f64 {
         if m < 1e-12 {
             return 0.0;
         }
@@ -272,7 +266,11 @@ impl LouvainEngine {
             let weights = projection.out_weights(i);
             for (idx, &j) in neighbors.iter().enumerate() {
                 if community[i as usize] == community[j as usize] {
-                    let w = if weights.is_empty() { 1.0 } else { weights[idx] as f64 };
+                    let w = if weights.is_empty() {
+                        1.0
+                    } else {
+                        weights[idx] as f64
+                    };
                     q += w - k[i as usize] * k[j as usize] / (2.0 * m);
                 }
             }
@@ -301,11 +299,7 @@ impl CoarsenedProjection {
     /// Builds the coarsened projection from a base projection and a community
     /// assignment vector.  `num_communities` is the number of distinct IDs in
     /// `community`.
-    fn build(
-        projection: &dyn GraphProjection,
-        community: &[u32],
-        num_communities: usize,
-    ) -> Self {
+    fn build(projection: &dyn GraphProjection, community: &[u32], num_communities: usize) -> Self {
         // Aggregate inter-community edge weights into a sparse matrix.
         let mut matrix: Vec<std::collections::HashMap<NodeIndex, f32>> =
             vec![std::collections::HashMap::new(); num_communities];
@@ -319,16 +313,20 @@ impl CoarsenedProjection {
                 if cu == cv {
                     continue; // skip intra-community (self-loop on super-node)
                 }
-                let w = if weights.is_empty() { 1.0 } else { weights[idx] };
+                let w = if weights.is_empty() {
+                    1.0
+                } else {
+                    weights[idx]
+                };
                 *matrix[cu as usize].entry(cv).or_insert(0.0) += w;
             }
         }
 
         let mut out_neighbors = vec![Vec::<NodeIndex>::new(); num_communities];
-        let mut out_weights   = vec![Vec::<f32>::new();      num_communities];
-        let mut in_neighbors  = vec![Vec::<NodeIndex>::new(); num_communities];
-        let mut in_weights    = vec![Vec::<f32>::new();      num_communities];
-        let mut total_edges   = 0usize;
+        let mut out_weights = vec![Vec::<f32>::new(); num_communities];
+        let mut in_neighbors = vec![Vec::<NodeIndex>::new(); num_communities];
+        let mut in_weights = vec![Vec::<f32>::new(); num_communities];
+        let mut total_edges = 0usize;
 
         for (cu, row) in matrix.iter().enumerate() {
             for (&cv, &w) in row {

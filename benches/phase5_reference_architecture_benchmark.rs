@@ -12,15 +12,15 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::sync::Arc;
-use std::time::Instant;
 use num_complex::Complex32;
 use rayon::prelude::*;
+use std::sync::Arc;
+use std::time::Instant;
 
+use hnsqr::VectorEmbedding;
 use hnsqr::cluster::state_machine::DataMutation;
 use hnsqr::consensus::raft::RaftCluster;
 use hnsqr::storage::two_tier_cache::TwoTierCache;
-use hnsqr::VectorEmbedding;
 
 fn main() {
     println!("╔═════════════════════════════════════════════════════════════════════════════╗");
@@ -33,10 +33,10 @@ fn main() {
     // Warmup
     println!("\n🔥 1. EXECUTING HIGH-CONCURRENCY PIPELINED RAFT BENCHMARK:");
     for _ in 0..100 {
-        let v = VectorEmbedding::from_complex((0..dim).map(|i| Complex32::new(i as f32, 0.0)).collect());
-        let _ = cluster.propose_data_mutation(
-            DataMutation::new_upsert("warmup_doc", v)
+        let v = VectorEmbedding::from_complex(
+            (0..dim).map(|i| Complex32::new(i as f32, 0.0)).collect(),
         );
+        let _ = cluster.propose_data_mutation(DataMutation::new_upsert("warmup_doc", v));
     }
 
     let writer_concurrencies = [1, 8, 32, 128, 512];
@@ -52,17 +52,17 @@ fn main() {
                     .collect(),
             )
             .into_normalized();
-            let res = cluster.propose_data_mutation(
-                DataMutation::new_upsert(key, v)
-            );
+            let res = cluster.propose_data_mutation(DataMutation::new_upsert(key, v));
             assert!(res.is_ok());
         });
         let elapsed = t0.elapsed().as_secs_f64();
         let ops_sec = (ops_per_concurrency as f64) / elapsed;
         let avg_lat_us = (elapsed / (ops_per_concurrency as f64)) * 1e6;
 
-        println!("   • Writers: {:>3} | Throughput: {:>10.1} writes/sec | Avg Latency: {:>8.2} µs",
-            concurrency, ops_sec, avg_lat_us);
+        println!(
+            "   • Writers: {:>3} | Throughput: {:>10.1} writes/sec | Avg Latency: {:>8.2} µs",
+            concurrency, ops_sec, avg_lat_us
+        );
     }
 
     // 2. Two-Tier Cache TinyLFU Performance
@@ -73,13 +73,15 @@ fn main() {
     let t1 = Instant::now();
     for i in 0..num_lookups {
         let block_id = (i % 256) as u64; // Zipf-like skew to 256 hot blocks
-        let _ = cache.get_or_fetch_tier_1("tenant_a", block_id, |_| {
-            Ok(vec![0u8; 1024])
-        });
+        let _ = cache.get_or_fetch_tier_1("tenant_a", block_id, |_| Ok(vec![0u8; 1024]));
     }
     let cache_elapsed_us = (t1.elapsed().as_secs_f64() * 1e6) / (num_lookups as f64);
-    println!("   • Lookups: {:>6} | Hit Rate: {:>6.2}% | Avg Lookup: {:>6.2} µs",
-        num_lookups, cache.hit_rate() * 100.0, cache_elapsed_us);
+    println!(
+        "   • Lookups: {:>6} | Hit Rate: {:>6.2}% | Avg Lookup: {:>6.2} µs",
+        num_lookups,
+        cache.hit_rate() * 100.0,
+        cache_elapsed_us
+    );
 
     println!("\n✨ REFERENCE ARCHITECTURE BENCHMARKS CONCLUDED SUCCESSFULLY.\n");
 }

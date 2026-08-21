@@ -10,8 +10,8 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use crate::{HNSQRError, HNSQRResult};
 
@@ -54,7 +54,8 @@ impl BackpressureController {
     pub fn try_admit_mutation(&self) -> HNSQRResult<MutationPermit<'_>> {
         if self.read_only_mode.load(Ordering::Relaxed) {
             return Err(HNSQRError::Internal(
-                "Engine is in read-only fail-safe mode due to storage resource pressure".to_string(),
+                "Engine is in read-only fail-safe mode due to storage resource pressure"
+                    .to_string(),
             ));
         }
 
@@ -67,9 +68,7 @@ impl BackpressureController {
         }
 
         self.current_inflight.fetch_add(1, Ordering::Relaxed);
-        Ok(MutationPermit {
-            controller: self,
-        })
+        Ok(MutationPermit { controller: self })
     }
 
     /// Sets or clears read-only emergency state.
@@ -93,6 +92,8 @@ pub struct MutationPermit<'a> {
 
 impl<'a> Drop for MutationPermit<'a> {
     fn drop(&mut self) {
-        self.controller.current_inflight.fetch_sub(1, Ordering::Relaxed);
+        self.controller
+            .current_inflight
+            .fetch_sub(1, Ordering::Relaxed);
     }
 }

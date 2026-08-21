@@ -55,8 +55,8 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::{Deserialize, Serialize};
 
@@ -285,9 +285,7 @@ pub enum InferenceConfigError {
 impl Display for InferenceConfigError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::EmptyModelName => {
-                f.write_str("model_name must not be empty")
-            }
+            Self::EmptyModelName => f.write_str("model_name must not be empty"),
 
             Self::OutputDimensionTooSmall { dimension } => {
                 write!(
@@ -308,9 +306,7 @@ impl Display for InferenceConfigError {
             }
 
             Self::TokenizerMaxWordCharsZero => {
-                f.write_str(
-                    "static tokenizer max_input_chars_per_word must be greater than zero",
-                )
+                f.write_str("static tokenizer max_input_chars_per_word must be greater than zero")
             }
 
             Self::ArchitectureMismatch { required, supplied } => {
@@ -328,18 +324,11 @@ impl Display for InferenceConfigError {
             }
 
             Self::VocabRead { path, message } => {
-                write!(
-                    f,
-                    "failed to read vocabulary {}: {message}",
-                    path.display()
-                )
+                write!(f, "failed to read vocabulary {}: {message}", path.display())
             }
 
             Self::VocabIndexOverflow { index } => {
-                write!(
-                    f,
-                    "vocabulary index {index} cannot be represented as u32"
-                )
+                write!(f, "vocabulary index {index} cannot be represented as u32")
             }
 
             Self::MissingUnknownToken { path } => {
@@ -526,11 +515,7 @@ impl HashingTokenizer {
                 continue;
             }
 
-            self.flush_token(
-                &mut current,
-                &mut tokens,
-                max_len,
-            );
+            self.flush_token(&mut current, &mut tokens, max_len);
 
             if tokens.len() >= max_len {
                 break;
@@ -538,22 +523,13 @@ impl HashingTokenizer {
         }
 
         if tokens.len() < max_len {
-            self.flush_token(
-                &mut current,
-                &mut tokens,
-                max_len,
-            );
+            self.flush_token(&mut current, &mut tokens, max_len);
         }
 
         tokens
     }
 
-    fn flush_token(
-        &self,
-        current: &mut String,
-        tokens: &mut Vec<u32>,
-        max_len: usize,
-    ) {
+    fn flush_token(&self, current: &mut String, tokens: &mut Vec<u32>, max_len: usize) {
         if current.is_empty() || tokens.len() >= max_len {
             current.clear();
             return;
@@ -586,17 +562,14 @@ impl GreedyWordPieceTokenizer {
         config: StaticTokenizerConfig,
     ) -> Result<Self, InferenceConfigError> {
         if config.max_input_chars_per_word == 0 {
-            return Err(
-                InferenceConfigError::TokenizerMaxWordCharsZero,
-            );
+            return Err(InferenceConfigError::TokenizerMaxWordCharsZero);
         }
 
-        let contents = std::fs::read_to_string(path).map_err(|error| {
-            InferenceConfigError::VocabRead {
+        let contents =
+            std::fs::read_to_string(path).map_err(|error| InferenceConfigError::VocabRead {
                 path: path.to_path_buf(),
                 message: error.to_string(),
-            }
-        })?;
+            })?;
 
         let mut vocab = HashMap::new();
         let mut max_vocab_id = 0_u32;
@@ -608,24 +581,18 @@ impl GreedyWordPieceTokenizer {
                 continue;
             }
 
-            let token_id = u32::try_from(index).map_err(|_| {
-                InferenceConfigError::VocabIndexOverflow {
-                    index,
-                }
-            })?;
+            let token_id = u32::try_from(index)
+                .map_err(|_| InferenceConfigError::VocabIndexOverflow { index })?;
 
             max_vocab_id = max_vocab_id.max(token_id);
             vocab.insert(token.to_string(), token_id);
         }
 
-        let unk_token_id = vocab
-            .get("[UNK]")
-            .copied()
-            .ok_or_else(|| {
-                InferenceConfigError::MissingUnknownToken {
-                    path: path.to_path_buf(),
-                }
-            })?;
+        let unk_token_id = vocab.get("[UNK]").copied().ok_or_else(|| {
+            InferenceConfigError::MissingUnknownToken {
+                path: path.to_path_buf(),
+            }
+        })?;
 
         Ok(Self {
             vocab,
@@ -639,11 +606,7 @@ impl GreedyWordPieceTokenizer {
         self.max_vocab_id as usize + 1
     }
 
-    fn tokenize(
-        &self,
-        text: &str,
-        max_len: usize,
-    ) -> Vec<u32> {
+    fn tokenize(&self, text: &str, max_len: usize) -> Vec<u32> {
         if max_len == 0 {
             return Vec::new();
         }
@@ -676,10 +639,7 @@ impl GreedyWordPieceTokenizer {
 
         for character in text.chars() {
             if character.is_whitespace() || character.is_control() {
-                push_nonempty_token(
-                    &mut current,
-                    &mut tokens,
-                );
+                push_nonempty_token(&mut current, &mut tokens);
 
                 continue;
             }
@@ -696,15 +656,10 @@ impl GreedyWordPieceTokenizer {
                 continue;
             }
 
-            push_nonempty_token(
-                &mut current,
-                &mut tokens,
-            );
+            push_nonempty_token(&mut current, &mut tokens);
 
             let punctuation = if self.config.lowercase {
-                character
-                    .to_lowercase()
-                    .collect::<String>()
+                character.to_lowercase().collect::<String>()
             } else {
                 character.to_string()
             };
@@ -712,18 +667,13 @@ impl GreedyWordPieceTokenizer {
             tokens.push(punctuation);
         }
 
-        push_nonempty_token(
-            &mut current,
-            &mut tokens,
-        );
+        push_nonempty_token(&mut current, &mut tokens);
 
         tokens
     }
 
     fn tokenize_word(&self, word: &str) -> Vec<u32> {
-        if word.chars().count()
-            > self.config.max_input_chars_per_word
-        {
+        if word.chars().count() > self.config.max_input_chars_per_word {
             return vec![self.unk_token_id];
         }
 
@@ -740,24 +690,19 @@ impl GreedyWordPieceTokenizer {
             let mut matched = None;
 
             while start < end {
-                let body = characters[start..end]
-                    .iter()
-                    .collect::<String>();
+                let body = characters[start..end].iter().collect::<String>();
 
                 let candidate = if start == 0 {
                     body
                 } else {
-                    let mut continuation =
-                        String::with_capacity(body.len() + 2);
+                    let mut continuation = String::with_capacity(body.len() + 2);
 
                     continuation.push_str("##");
                     continuation.push_str(&body);
                     continuation
                 };
 
-                if let Some(token_id) =
-                    self.vocab.get(&candidate).copied()
-                {
+                if let Some(token_id) = self.vocab.get(&candidate).copied() {
                     matched = Some((token_id, end));
                     break;
                 }
@@ -796,9 +741,7 @@ struct HashProjectionBackend {
 }
 
 impl HashProjectionBackend {
-    fn new(
-        config: &InferenceModelConfig,
-    ) -> Result<Self, InferenceConfigError> {
+    fn new(config: &InferenceModelConfig) -> Result<Self, InferenceConfigError> {
         let weights = build_hash_projection_weights(
             config.model_name.as_str(),
             config.output_dimension,
@@ -806,9 +749,7 @@ impl HashProjectionBackend {
         )?;
 
         Ok(Self {
-            tokenizer: HashingTokenizer::new(
-                HASH_BUCKET_COUNT,
-            ),
+            tokenizer: HashingTokenizer::new(HASH_BUCKET_COUNT),
             weights,
             rows: HASH_BUCKET_COUNT,
         })
@@ -823,9 +764,7 @@ impl HashProjectionBackend {
     ) {
         output.fill(0.0);
 
-        let token_ids =
-            self.tokenizer
-                .tokenize(text, max_sequence_length);
+        let token_ids = self.tokenizer.tokenize(text, max_sequence_length);
 
         pool_token_rows(
             &token_ids,
@@ -861,33 +800,25 @@ impl StaticProjectionBackend {
         output_dimension: usize,
     ) -> Result<Self, InferenceConfigError> {
         if token_embeddings.is_empty() {
-            return Err(
-                InferenceConfigError::ProjectionWeightsEmpty,
-            );
+            return Err(InferenceConfigError::ProjectionWeightsEmpty);
         }
 
         if token_embeddings.len() % output_dimension != 0 {
-            return Err(
-                InferenceConfigError::ProjectionShapeMismatch {
-                    weights: token_embeddings.len(),
-                    output_dimension,
-                },
-            );
+            return Err(InferenceConfigError::ProjectionShapeMismatch {
+                weights: token_embeddings.len(),
+                output_dimension,
+            });
         }
 
-        let rows =
-            token_embeddings.len() / output_dimension;
+        let rows = token_embeddings.len() / output_dimension;
 
-        let required_rows =
-            tokenizer.required_projection_rows();
+        let required_rows = tokenizer.required_projection_rows();
 
         if rows < required_rows {
-            return Err(
-                InferenceConfigError::ProjectionTableTooSmall {
-                    rows,
-                    required_rows,
-                },
-            );
+            return Err(InferenceConfigError::ProjectionTableTooSmall {
+                rows,
+                required_rows,
+            });
         }
 
         Ok(Self {
@@ -906,9 +837,7 @@ impl StaticProjectionBackend {
     ) {
         output.fill(0.0);
 
-        let token_ids =
-            self.tokenizer
-                .tokenize(text, max_sequence_length);
+        let token_ids = self.tokenizer.tokenize(text, max_sequence_length);
 
         pool_token_rows(
             &token_ids,
@@ -923,9 +852,7 @@ impl StaticProjectionBackend {
 enum InferenceBackend {
     HashProjection(HashProjectionBackend),
     StaticProjection(StaticProjectionBackend),
-    Transformer(
-        Arc<dyn TransformerInferenceBackend>,
-    ),
+    Transformer(Arc<dyn TransformerInferenceBackend>),
 }
 
 /// In-process text embedder.
@@ -949,16 +876,12 @@ impl InProcessModelEmbedder {
     ///
     /// Panics if the configuration is invalid or specifies an architecture other
     /// than [`ModelArchitecture::HashProjection`].
-    pub fn new(
-        config: InferenceModelConfig,
-    ) -> Self {
+    pub fn new(config: InferenceModelConfig) -> Self {
         match Self::try_new(config) {
             Ok(embedder) => embedder,
 
             Err(error) => {
-                panic!(
-                    "invalid in-process hash projection configuration: {error}"
-                )
+                panic!("invalid in-process hash projection configuration: {error}")
             }
         }
     }
@@ -967,30 +890,21 @@ impl InProcessModelEmbedder {
     ///
     /// This constructor deliberately refuses MiniLM/BGE/CustomProjector
     /// configurations rather than mutating or downgrading them.
-    pub fn try_new(
-        config: InferenceModelConfig,
-    ) -> Result<Self, InferenceConfigError> {
+    pub fn try_new(config: InferenceModelConfig) -> Result<Self, InferenceConfigError> {
         Self::new_hash_projection(config)
     }
 
     /// Explicit constructor for [`ModelArchitecture::HashProjection`].
-    pub fn new_hash_projection(
-        config: InferenceModelConfig,
-    ) -> Result<Self, InferenceConfigError> {
+    pub fn new_hash_projection(config: InferenceModelConfig) -> Result<Self, InferenceConfigError> {
         config.validate()?;
 
-        require_architecture(
-            config.architecture,
-            ModelArchitecture::HashProjection,
-        )?;
+        require_architecture(config.architecture, ModelArchitecture::HashProjection)?;
 
-        let backend =
-            HashProjectionBackend::new(&config)?;
+        let backend = HashProjectionBackend::new(&config)?;
 
         Ok(Self {
             config,
-            backend:
-                InferenceBackend::HashProjection(backend),
+            backend: InferenceBackend::HashProjection(backend),
             total_inferences: AtomicU64::new(0),
         })
     }
@@ -1031,27 +945,16 @@ impl InProcessModelEmbedder {
     ) -> Result<Self, InferenceConfigError> {
         config.validate()?;
 
-        require_architecture(
-            config.architecture,
-            ModelArchitecture::CustomProjector,
-        )?;
+        require_architecture(config.architecture, ModelArchitecture::CustomProjector)?;
 
-        let tokenizer =
-            GreedyWordPieceTokenizer::from_vocab_file(
-                vocab_path,
-                tokenizer_config,
-            )?;
+        let tokenizer = GreedyWordPieceTokenizer::from_vocab_file(vocab_path, tokenizer_config)?;
 
-        let backend = StaticProjectionBackend::new(
-            tokenizer,
-            token_embeddings,
-            config.output_dimension,
-        )?;
+        let backend =
+            StaticProjectionBackend::new(tokenizer, token_embeddings, config.output_dimension)?;
 
         Ok(Self {
             config,
-            backend:
-                InferenceBackend::StaticProjection(backend),
+            backend: InferenceBackend::StaticProjection(backend),
             total_inferences: AtomicU64::new(0),
         })
     }
@@ -1073,89 +976,56 @@ impl InProcessModelEmbedder {
     where
         B: TransformerInferenceBackend + 'static,
     {
-        Self::with_shared_transformer_backend(
-            config,
-            Arc::new(backend),
-        )
+        Self::with_shared_transformer_backend(config, Arc::new(backend))
     }
 
     /// Shared-backend variant of
     /// [`Self::with_transformer_backend`].
     pub fn with_shared_transformer_backend(
         config: InferenceModelConfig,
-        backend: Arc<
-            dyn TransformerInferenceBackend,
-        >,
+        backend: Arc<dyn TransformerInferenceBackend>,
     ) -> Result<Self, InferenceConfigError> {
         config.validate()?;
 
         match config.architecture {
-            ModelArchitecture::BertMiniLM
-            | ModelArchitecture::BgeDense => {}
+            ModelArchitecture::BertMiniLM | ModelArchitecture::BgeDense => {}
 
             architecture => {
-                return Err(
-                    InferenceConfigError::ExplicitBackendRequired {
-                        architecture,
-                    },
-                );
+                return Err(InferenceConfigError::ExplicitBackendRequired { architecture });
             }
         }
 
-        if backend.architecture()
-            != config.architecture
-        {
-            return Err(
-                InferenceConfigError::TransformerArchitectureMismatch {
-                    configured: config.architecture,
-                    backend: backend.architecture(),
-                },
-            );
+        if backend.architecture() != config.architecture {
+            return Err(InferenceConfigError::TransformerArchitectureMismatch {
+                configured: config.architecture,
+                backend: backend.architecture(),
+            });
         }
 
-        if backend.model_name()
-            != config.model_name
-        {
-            return Err(
-                InferenceConfigError::TransformerModelNameMismatch {
-                    configured:
-                        config.model_name.clone(),
-                    backend:
-                        backend.model_name().to_string(),
-                },
-            );
+        if backend.model_name() != config.model_name {
+            return Err(InferenceConfigError::TransformerModelNameMismatch {
+                configured: config.model_name.clone(),
+                backend: backend.model_name().to_string(),
+            });
         }
 
-        if backend.output_dimension()
-            != config.output_dimension
-        {
-            return Err(
-                InferenceConfigError::TransformerDimensionMismatch {
-                    configured:
-                        config.output_dimension,
-                    backend:
-                        backend.output_dimension(),
-                },
-            );
+        if backend.output_dimension() != config.output_dimension {
+            return Err(InferenceConfigError::TransformerDimensionMismatch {
+                configured: config.output_dimension,
+                backend: backend.output_dimension(),
+            });
         }
 
-        if config.max_sequence_length
-            > backend.max_sequence_length()
-        {
-            return Err(
-                InferenceConfigError::TransformerSequenceLengthExceeded {
-                    configured:
-                        config.max_sequence_length,
-                    backend_maximum:
-                        backend.max_sequence_length(),
-                },
-            );
+        if config.max_sequence_length > backend.max_sequence_length() {
+            return Err(InferenceConfigError::TransformerSequenceLengthExceeded {
+                configured: config.max_sequence_length,
+                backend_maximum: backend.max_sequence_length(),
+            });
         }
 
         Ok(Self {
             config,
-            backend:
-                InferenceBackend::Transformer(backend),
+            backend: InferenceBackend::Transformer(backend),
             total_inferences: AtomicU64::new(0),
         })
     }
@@ -1168,20 +1038,13 @@ impl InProcessModelEmbedder {
     ///
     /// All paths converge on optional normalization followed by direct
     /// `ComplexWeaver` folding.
-    pub fn embed_text(
-        &self,
-        text: &str,
-    ) -> HNSQRResult<VectorEmbedding> {
-        let dimension =
-            self.config.output_dimension;
+    pub fn embed_text(&self, text: &str) -> HNSQRResult<VectorEmbedding> {
+        let dimension = self.config.output_dimension;
 
-        let mut real_embedding =
-            vec![0.0_f32; dimension];
+        let mut real_embedding = vec![0.0_f32; dimension];
 
         match &self.backend {
-            InferenceBackend::HashProjection(
-                backend,
-            ) => {
+            InferenceBackend::HashProjection(backend) => {
                 backend.embed_into(
                     text,
                     self.config.max_sequence_length,
@@ -1190,9 +1053,7 @@ impl InProcessModelEmbedder {
                 );
             }
 
-            InferenceBackend::StaticProjection(
-                backend,
-            ) => {
+            InferenceBackend::StaticProjection(backend) => {
                 backend.embed_into(
                     text,
                     self.config.max_sequence_length,
@@ -1201,9 +1062,7 @@ impl InProcessModelEmbedder {
                 );
             }
 
-            InferenceBackend::Transformer(
-                backend,
-            ) => {
+            InferenceBackend::Transformer(backend) => {
                 backend.embed_text_into(
                     text,
                     self.config.max_sequence_length,
@@ -1213,28 +1072,19 @@ impl InProcessModelEmbedder {
         }
 
         if self.config.normalize_embeddings {
-            l2_normalize_in_place(
-                &mut real_embedding,
-            );
+            l2_normalize_in_place(&mut real_embedding);
         }
 
-        let embedding =
-            ComplexWeaver::fold_token_embeddings_in_place(
-                &real_embedding,
-                dimension,
-            );
+        let embedding = ComplexWeaver::fold_token_embeddings_in_place(&real_embedding, dimension);
 
-        self.total_inferences
-            .fetch_add(1, Ordering::Relaxed);
+        self.total_inferences.fetch_add(1, Ordering::Relaxed);
 
         Ok(embedding)
     }
 
     /// Number of successful embedding operations.
     pub fn total_inferences(&self) -> u64 {
-        self.total_inferences.load(
-            Ordering::Relaxed,
-        )
+        self.total_inferences.load(Ordering::Relaxed)
     }
 
     /// Real-valued dimensionality before complex folding.
@@ -1281,12 +1131,7 @@ fn require_architecture(
         return Ok(());
     }
 
-    Err(
-        InferenceConfigError::ArchitectureMismatch {
-            required,
-            supplied,
-        },
-    )
+    Err(InferenceConfigError::ArchitectureMismatch { required, supplied })
 }
 
 /// Pools token-table rows using deterministic position weighting.
@@ -1309,10 +1154,7 @@ fn pool_token_rows(
     dimension: usize,
     output: &mut [f32],
 ) {
-    debug_assert_eq!(
-        output.len(),
-        dimension
-    );
+    debug_assert_eq!(output.len(), dimension);
 
     output.fill(0.0);
 
@@ -1322,44 +1164,26 @@ fn pool_token_rows(
 
     let mut total_weight = 0.0_f32;
 
-    for (
-        position,
-        token_id,
-    ) in token_ids.iter().copied().enumerate()
-    {
+    for (position, token_id) in token_ids.iter().copied().enumerate() {
         let row = token_id as usize;
 
-        debug_assert!(
-            row < rows,
-            "token row must be validated before pooling"
-        );
+        debug_assert!(row < rows, "token row must be validated before pooling");
 
         let offset = row * dimension;
 
-        let projection_row =
-            &table[offset..offset + dimension];
+        let projection_row = &table[offset..offset + dimension];
 
-        let weight =
-            1.0 / ((position + 1) as f32).sqrt();
+        let weight = 1.0 / ((position + 1) as f32).sqrt();
 
         total_weight += weight;
 
-        for (
-            destination,
-            source,
-        ) in output
-            .iter_mut()
-            .zip(
-                projection_row.iter().copied(),
-            )
-        {
+        for (destination, source) in output.iter_mut().zip(projection_row.iter().copied()) {
             *destination += source * weight;
         }
     }
 
     if total_weight > f32::EPSILON {
-        let inverse =
-            total_weight.recip();
+        let inverse = total_weight.recip();
 
         for value in output {
             *value *= inverse;
@@ -1379,62 +1203,35 @@ fn build_hash_projection_weights(
     rows: usize,
 ) -> Result<Vec<f32>, InferenceConfigError> {
     let elements =
-        rows.checked_mul(dimension).ok_or(
-            InferenceConfigError::ProjectionSizeOverflow {
+        rows.checked_mul(dimension)
+            .ok_or(InferenceConfigError::ProjectionSizeOverflow {
                 rows,
                 output_dimension: dimension,
-            },
-        )?;
+            })?;
 
     let mut weights = Vec::new();
 
     weights
         .try_reserve_exact(elements)
-        .map_err(|_| {
-            InferenceConfigError::ProjectionAllocationFailed {
-                elements,
-            }
-        })?;
+        .map_err(|_| InferenceConfigError::ProjectionAllocationFailed { elements })?;
 
-    let model_seed =
-        stable_hash64(model_name.as_bytes())
-            ^ 0x484e_5351_525f_4850;
+    let model_seed = stable_hash64(model_name.as_bytes()) ^ 0x484e_5351_525f_4850;
 
-    let dimension_scale =
-        (dimension as f32).sqrt().recip();
+    let dimension_scale = (dimension as f32).sqrt().recip();
 
     for row in 0..rows {
-        let row_seed = splitmix64(
-            model_seed
-                ^ (row as u64)
-                    .wrapping_mul(
-                        0xa076_1d64_78bd_642f,
-                    ),
-        );
+        let row_seed = splitmix64(model_seed ^ (row as u64).wrapping_mul(0xa076_1d64_78bd_642f));
 
         for column in 0..dimension {
-            let mixed = splitmix64(
-                row_seed
-                    ^ (column as u64)
-                        .wrapping_mul(
-                            0xe703_7ed1_a0b4_28db,
-                        ),
-            );
+            let mixed = splitmix64(row_seed ^ (column as u64).wrapping_mul(0xe703_7ed1_a0b4_28db));
 
-            let sample =
-                ((mixed >> 40) & 0x00ff_ffff)
-                    as u32;
+            let sample = ((mixed >> 40) & 0x00ff_ffff) as u32;
 
-            let unit =
-                sample as f32
-                    / 16_777_215.0_f32;
+            let unit = sample as f32 / 16_777_215.0_f32;
 
-            let signed =
-                unit.mul_add(2.0, -1.0);
+            let signed = unit.mul_add(2.0, -1.0);
 
-            weights.push(
-                signed * dimension_scale,
-            );
+            weights.push(signed * dimension_scale);
         }
     }
 
@@ -1445,9 +1242,7 @@ fn build_hash_projection_weights(
 ///
 /// Accumulation uses `f64` to reduce avoidable norm error while retaining
 /// `f32` storage/output.
-fn l2_normalize_in_place(
-    values: &mut [f32],
-) {
+fn l2_normalize_in_place(values: &mut [f32]) {
     let norm_squared = values
         .iter()
         .map(|value| {
@@ -1460,65 +1255,43 @@ fn l2_normalize_in_place(
         return;
     }
 
-    let inverse_norm =
-        norm_squared.sqrt().recip() as f32;
+    let inverse_norm = norm_squared.sqrt().recip() as f32;
 
     for value in values {
         *value *= inverse_norm;
     }
 }
 
-fn push_nonempty_token(
-    current: &mut String,
-    output: &mut Vec<String>,
-) {
+fn push_nonempty_token(current: &mut String, output: &mut Vec<String>) {
     if current.is_empty() {
         return;
     }
 
-    output.push(
-        std::mem::take(current),
-    );
+    output.push(std::mem::take(current));
 }
 
 /// Stable FNV-1a hash.
 ///
 /// This is used for reproducible lexical hashing and deterministic namespace
 /// seeding, not cryptographic integrity.
-fn stable_hash64(
-    bytes: &[u8],
-) -> u64 {
+fn stable_hash64(bytes: &[u8]) -> u64 {
     let mut hash = FNV64_OFFSET;
 
     for byte in bytes {
         hash ^= u64::from(*byte);
-        hash =
-            hash.wrapping_mul(FNV64_PRIME);
+        hash = hash.wrapping_mul(FNV64_PRIME);
     }
 
     hash
 }
 
 /// SplitMix64 mixing step.
-fn splitmix64(
-    mut value: u64,
-) -> u64 {
-    value =
-        value.wrapping_add(
-            SPLITMIX_INCREMENT,
-        );
+fn splitmix64(mut value: u64) -> u64 {
+    value = value.wrapping_add(SPLITMIX_INCREMENT);
 
-    value =
-        (value ^ (value >> 30))
-            .wrapping_mul(
-                0xbf58_476d_1ce4_e5b9,
-            );
+    value = (value ^ (value >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
 
-    value =
-        (value ^ (value >> 27))
-            .wrapping_mul(
-                0x94d0_49bb_1331_11eb,
-            );
+    value = (value ^ (value >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
 
     value ^ (value >> 31)
 }
@@ -1529,52 +1302,33 @@ mod tests {
 
     fn hash_config() -> InferenceModelConfig {
         InferenceModelConfig {
-            model_name:
-                "test-hash-projection".to_string(),
-            architecture:
-                ModelArchitecture::HashProjection,
+            model_name: "test-hash-projection".to_string(),
+            architecture: ModelArchitecture::HashProjection,
             output_dimension: 384,
             max_sequence_length: 128,
             normalize_embeddings: true,
         }
     }
 
-    fn temporary_vocab(
-        contents: &str,
-    ) -> PathBuf {
-        static NEXT_ID: AtomicU64 =
-            AtomicU64::new(0);
+    fn temporary_vocab(contents: &str) -> PathBuf {
+        static NEXT_ID: AtomicU64 = AtomicU64::new(0);
 
-        let id =
-            NEXT_ID.fetch_add(
-                1,
-                Ordering::Relaxed,
-            );
+        let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
 
-        let path =
-            std::env::temp_dir().join(
-                format!(
-                    "hnsqr_inference_vocab_{}_{}.txt",
-                    std::process::id(),
-                    id,
-                ),
-            );
+        let path = std::env::temp_dir().join(format!(
+            "hnsqr_inference_vocab_{}_{}.txt",
+            std::process::id(),
+            id,
+        ));
 
-        std::fs::write(
-            &path,
-            contents,
-        )
-        .unwrap();
+        std::fs::write(&path, contents).unwrap();
 
         path
     }
 
     #[test]
     fn config_accepts_valid_hash_configuration() {
-        assert_eq!(
-            hash_config().validate(),
-            Ok(())
-        );
+        assert_eq!(hash_config().validate(), Ok(()));
     }
 
     #[test]
@@ -1584,11 +1338,7 @@ mod tests {
 
         assert_eq!(
             config.validate(),
-            Err(
-                InferenceConfigError::OutputDimensionTooSmall {
-                    dimension: 0,
-                }
-            )
+            Err(InferenceConfigError::OutputDimensionTooSmall { dimension: 0 })
         );
     }
 
@@ -1599,11 +1349,7 @@ mod tests {
 
         assert_eq!(
             config.validate(),
-            Err(
-                InferenceConfigError::OutputDimensionMustBeEven {
-                    dimension: 383,
-                }
-            )
+            Err(InferenceConfigError::OutputDimensionMustBeEven { dimension: 383 })
         );
     }
 
@@ -1614,111 +1360,61 @@ mod tests {
 
         assert_eq!(
             config.validate(),
-            Err(
-                InferenceConfigError::SequenceLengthZero
-            )
+            Err(InferenceConfigError::SequenceLengthZero)
         );
     }
 
     #[test]
     fn hash_projection_is_deterministic() {
-        let embedder =
-            InProcessModelEmbedder::new_hash_projection(
-                hash_config(),
-            )
-            .unwrap();
+        let embedder = InProcessModelEmbedder::new_hash_projection(hash_config()).unwrap();
 
         let first = embedder
-            .embed_text(
-                "Search for legal compliance documents",
-            )
+            .embed_text("Search for legal compliance documents")
             .unwrap();
 
         let second = embedder
-            .embed_text(
-                "Search for legal compliance documents",
-            )
+            .embed_text("Search for legal compliance documents")
             .unwrap();
 
-        assert_eq!(
-            first.dimension(),
-            192
-        );
+        assert_eq!(first.dimension(), 192);
 
-        assert_eq!(
-            first.complex_data(),
-            second.complex_data()
-        );
+        assert_eq!(first.complex_data(), second.complex_data());
     }
 
     #[test]
     fn hash_projection_is_content_sensitive_at_equal_token_count() {
-        let embedder =
-            InProcessModelEmbedder::new_hash_projection(
-                hash_config(),
-            )
-            .unwrap();
+        let embedder = InProcessModelEmbedder::new_hash_projection(hash_config()).unwrap();
 
         let first = embedder
-            .embed_text(
-                "quarterly revenue exceeded forecast",
-            )
+            .embed_text("quarterly revenue exceeded forecast")
             .unwrap();
 
         let second = embedder
-            .embed_text(
-                "purple elephants dislike cold soup",
-            )
+            .embed_text("purple elephants dislike cold soup")
             .unwrap();
 
-        assert_eq!(
-            first.dimension(),
-            second.dimension()
-        );
+        assert_eq!(first.dimension(), second.dimension());
 
-        assert_ne!(
-            first.complex_data(),
-            second.complex_data()
-        );
+        assert_ne!(first.complex_data(), second.complex_data());
     }
 
     #[test]
     fn hash_projection_model_name_namespaces_embedding_space() {
-        let mut first_config =
-            hash_config();
+        let mut first_config = hash_config();
 
-        first_config.model_name =
-            "hash-space-a".to_string();
+        first_config.model_name = "hash-space-a".to_string();
 
-        let mut second_config =
-            hash_config();
+        let mut second_config = hash_config();
 
-        second_config.model_name =
-            "hash-space-b".to_string();
+        second_config.model_name = "hash-space-b".to_string();
 
-        let first =
-            InProcessModelEmbedder::new_hash_projection(
-                first_config,
-            )
-            .unwrap();
+        let first = InProcessModelEmbedder::new_hash_projection(first_config).unwrap();
 
-        let second =
-            InProcessModelEmbedder::new_hash_projection(
-                second_config,
-            )
-            .unwrap();
+        let second = InProcessModelEmbedder::new_hash_projection(second_config).unwrap();
 
-        let first_embedding = first
-            .embed_text(
-                "identical lexical input",
-            )
-            .unwrap();
+        let first_embedding = first.embed_text("identical lexical input").unwrap();
 
-        let second_embedding = second
-            .embed_text(
-                "identical lexical input",
-            )
-            .unwrap();
+        let second_embedding = second.embed_text("identical lexical input").unwrap();
 
         assert_ne!(
             first_embedding.complex_data(),
@@ -1728,151 +1424,94 @@ mod tests {
 
     #[test]
     fn hash_constructor_refuses_non_hash_architecture() {
-        let mut config =
-            hash_config();
+        let mut config = hash_config();
 
-        config.architecture =
-            ModelArchitecture::BertMiniLM;
+        config.architecture = ModelArchitecture::BertMiniLM;
 
-        let result =
-            InProcessModelEmbedder::new_hash_projection(
-                config,
-            );
+        let result = InProcessModelEmbedder::new_hash_projection(config);
 
         assert!(matches!(
             result,
-            Err(
-                InferenceConfigError::ArchitectureMismatch {
-                    required:
-                        ModelArchitecture::HashProjection,
-                    supplied:
-                        ModelArchitecture::BertMiniLM,
-                }
-            )
+            Err(InferenceConfigError::ArchitectureMismatch {
+                required: ModelArchitecture::HashProjection,
+                supplied: ModelArchitecture::BertMiniLM,
+            })
         ));
     }
 
     #[test]
     fn static_wordpiece_projection_uses_exact_vocab_rows() {
-        let vocab =
-            temporary_vocab(
-                "[UNK]\nplay\n##ing\nthe\n",
-            );
+        let vocab = temporary_vocab("[UNK]\nplay\n##ing\nthe\n");
 
-        let config =
-            InferenceModelConfig {
-                model_name:
-                    "static-wordpiece-test"
-                        .to_string(),
-                architecture:
-                    ModelArchitecture::CustomProjector,
-                output_dimension: 8,
-                max_sequence_length: 32,
-                normalize_embeddings: true,
-            };
+        let config = InferenceModelConfig {
+            model_name: "static-wordpiece-test".to_string(),
+            architecture: ModelArchitecture::CustomProjector,
+            output_dimension: 8,
+            max_sequence_length: 32,
+            normalize_embeddings: true,
+        };
 
-        let token_embeddings =
-            (0..(4 * 8))
-                .map(|index| {
-                    index as f32 / 32.0
-                })
-                .collect::<Vec<_>>();
+        let token_embeddings = (0..(4 * 8))
+            .map(|index| index as f32 / 32.0)
+            .collect::<Vec<_>>();
 
         let embedder =
-            InProcessModelEmbedder::with_static_projection(
-                config,
-                &vocab,
-                token_embeddings,
-            )
-            .unwrap();
-
-        let embedding =
-            embedder
-                .embed_text(
-                    "the playing",
-                )
+            InProcessModelEmbedder::with_static_projection(config, &vocab, token_embeddings)
                 .unwrap();
 
-        assert_eq!(
-            embedding.dimension(),
-            4
-        );
+        let embedding = embedder.embed_text("the playing").unwrap();
 
-        let _ =
-            std::fs::remove_file(vocab);
+        assert_eq!(embedding.dimension(), 4);
+
+        let _ = std::fs::remove_file(vocab);
     }
 
     #[test]
     fn static_projection_rejects_missing_vocab_rows() {
-        let vocab =
-            temporary_vocab(
-                "[UNK]\nplay\n##ing\nthe\n",
-            );
+        let vocab = temporary_vocab("[UNK]\nplay\n##ing\nthe\n");
 
-        let config =
-            InferenceModelConfig {
-                model_name:
-                    "static-wordpiece-test"
-                        .to_string(),
-                architecture:
-                    ModelArchitecture::CustomProjector,
-                output_dimension: 8,
-                max_sequence_length: 32,
-                normalize_embeddings: true,
-            };
+        let config = InferenceModelConfig {
+            model_name: "static-wordpiece-test".to_string(),
+            architecture: ModelArchitecture::CustomProjector,
+            output_dimension: 8,
+            max_sequence_length: 32,
+            normalize_embeddings: true,
+        };
 
         // Vocabulary requires rows 0 through 3,
         // but this table only supplies rows 0 through 2.
-        let token_embeddings =
-            vec![0.1_f32; 3 * 8];
+        let token_embeddings = vec![0.1_f32; 3 * 8];
 
         let result =
-            InProcessModelEmbedder::with_static_projection(
-                config,
-                &vocab,
-                token_embeddings,
-            );
+            InProcessModelEmbedder::with_static_projection(config, &vocab, token_embeddings);
 
         assert!(matches!(
             result,
-            Err(
-                InferenceConfigError::ProjectionTableTooSmall {
-                    rows: 3,
-                    required_rows: 4,
-                }
-            )
+            Err(InferenceConfigError::ProjectionTableTooSmall {
+                rows: 3,
+                required_rows: 4,
+            })
         ));
 
-        let _ =
-            std::fs::remove_file(vocab);
+        let _ = std::fs::remove_file(vocab);
     }
 
     struct MockMiniLmBackend;
 
-    impl TransformerInferenceBackend
-        for MockMiniLmBackend
-    {
-        fn architecture(
-            &self,
-        ) -> ModelArchitecture {
+    impl TransformerInferenceBackend for MockMiniLmBackend {
+        fn architecture(&self) -> ModelArchitecture {
             ModelArchitecture::BertMiniLM
         }
 
-        fn model_name(
-            &self,
-        ) -> &str {
+        fn model_name(&self) -> &str {
             "mock-minilm"
         }
 
-        fn output_dimension(
-            &self,
-        ) -> usize {
+        fn output_dimension(&self) -> usize {
             8
         }
 
-        fn max_sequence_length(
-            &self,
-        ) -> usize {
+        fn max_sequence_length(&self) -> usize {
             128
         }
 
@@ -1882,18 +1521,10 @@ mod tests {
             max_sequence_length: usize,
             output: &mut [f32],
         ) -> HNSQRResult<()> {
-            let lexical_signal =
-                text.len() as f32
-                    + max_sequence_length as f32;
+            let lexical_signal = text.len() as f32 + max_sequence_length as f32;
 
-            for (
-                index,
-                value,
-            ) in output.iter_mut().enumerate()
-            {
-                *value =
-                    lexical_signal
-                        + index as f32;
+            for (index, value) in output.iter_mut().enumerate() {
+                *value = lexical_signal + index as f32;
             }
 
             Ok(())
@@ -1902,117 +1533,64 @@ mod tests {
 
     #[test]
     fn transformer_backend_requires_exact_contract_match() {
-        let config =
-            InferenceModelConfig {
-                model_name:
-                    "mock-minilm".to_string(),
-                architecture:
-                    ModelArchitecture::BertMiniLM,
-                output_dimension: 8,
-                max_sequence_length: 64,
-                normalize_embeddings: true,
-            };
+        let config = InferenceModelConfig {
+            model_name: "mock-minilm".to_string(),
+            architecture: ModelArchitecture::BertMiniLM,
+            output_dimension: 8,
+            max_sequence_length: 64,
+            normalize_embeddings: true,
+        };
 
         let embedder =
-            InProcessModelEmbedder::with_transformer_backend(
-                config,
-                MockMiniLmBackend,
-            )
-            .unwrap();
+            InProcessModelEmbedder::with_transformer_backend(config, MockMiniLmBackend).unwrap();
 
-        let embedding =
-            embedder
-                .embed_text(
-                    "contextual transformer test",
-                )
-                .unwrap();
+        let embedding = embedder.embed_text("contextual transformer test").unwrap();
 
-        assert_eq!(
-            embedding.dimension(),
-            4
-        );
+        assert_eq!(embedding.dimension(), 4);
 
-        assert_eq!(
-            embedder.total_inferences(),
-            1
-        );
+        assert_eq!(embedder.total_inferences(), 1);
     }
 
     #[test]
     fn transformer_backend_architecture_mismatch_is_rejected() {
-        let config =
-            InferenceModelConfig {
-                model_name:
-                    "mock-minilm".to_string(),
-                architecture:
-                    ModelArchitecture::BgeDense,
-                output_dimension: 8,
-                max_sequence_length: 64,
-                normalize_embeddings: true,
-            };
+        let config = InferenceModelConfig {
+            model_name: "mock-minilm".to_string(),
+            architecture: ModelArchitecture::BgeDense,
+            output_dimension: 8,
+            max_sequence_length: 64,
+            normalize_embeddings: true,
+        };
 
-        let result =
-            InProcessModelEmbedder::with_transformer_backend(
-                config,
-                MockMiniLmBackend,
-            );
+        let result = InProcessModelEmbedder::with_transformer_backend(config, MockMiniLmBackend);
 
         assert!(matches!(
             result,
-            Err(
-                InferenceConfigError::TransformerArchitectureMismatch {
-                    configured:
-                        ModelArchitecture::BgeDense,
-                    backend:
-                        ModelArchitecture::BertMiniLM,
-                }
-            )
+            Err(InferenceConfigError::TransformerArchitectureMismatch {
+                configured: ModelArchitecture::BgeDense,
+                backend: ModelArchitecture::BertMiniLM,
+            })
         ));
     }
 
     #[test]
     fn successful_inference_counter_only_advances_after_success() {
-        let embedder =
-            InProcessModelEmbedder::new_hash_projection(
-                hash_config(),
-            )
-            .unwrap();
+        let embedder = InProcessModelEmbedder::new_hash_projection(hash_config()).unwrap();
 
-        assert_eq!(
-            embedder.total_inferences(),
-            0
-        );
+        assert_eq!(embedder.total_inferences(), 0);
 
-        embedder
-            .embed_text("first")
-            .unwrap();
+        embedder.embed_text("first").unwrap();
 
-        embedder
-            .embed_text("second")
-            .unwrap();
+        embedder.embed_text("second").unwrap();
 
-        assert_eq!(
-            embedder.total_inferences(),
-            2
-        );
+        assert_eq!(embedder.total_inferences(), 2);
     }
 
     #[test]
     fn complex_dimension_matches_real_dimension_contract() {
-        let embedder =
-            InProcessModelEmbedder::new_hash_projection(
-                hash_config(),
-            )
-            .unwrap();
+        let embedder = InProcessModelEmbedder::new_hash_projection(hash_config()).unwrap();
 
-        assert_eq!(
-            embedder.output_dimension(),
-            384
-        );
+        assert_eq!(embedder.output_dimension(), 384);
 
-        assert_eq!(
-            embedder.complex_output_dimension(),
-            192
-        );
+        assert_eq!(embedder.complex_output_dimension(), 192);
     }
 }

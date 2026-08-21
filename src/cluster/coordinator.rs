@@ -8,8 +8,8 @@
 
 use parking_lot::RwLock;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::cluster::state_machine::{DataMutation, ShardStateMachine};
 use crate::consensus::raft::RaftCluster;
@@ -148,15 +148,23 @@ impl DistributedCoordinator {
         // 2. Asynchronously await verified commit and state application receipt with timeout
         let receipt_res = tokio::time::timeout(std::time::Duration::from_secs(5), rx)
             .await
-            .map_err(|_| HNSQRError::Internal("Proposal timed out waiting for quorum commit".to_string()))?
-            .map_err(|_| HNSQRError::Internal("Proposal channel closed unexpectedly".to_string()))?;
+            .map_err(|_| {
+                HNSQRError::Internal("Proposal timed out waiting for quorum commit".to_string())
+            })?
+            .map_err(|_| {
+                HNSQRError::Internal("Proposal channel closed unexpectedly".to_string())
+            })?;
 
         let receipt = receipt_res.map_err(HNSQRError::from)?;
         Ok(receipt)
     }
 
     /// Standard unfenced async insert helper.
-    pub async fn insert(&self, id: impl Into<NodeId>, vector: VectorEmbedding) -> HNSQRResult<crate::consensus::pending::CommitReceipt> {
+    pub async fn insert(
+        &self,
+        id: impl Into<NodeId>,
+        vector: VectorEmbedding,
+    ) -> HNSQRResult<crate::consensus::pending::CommitReceipt> {
         self.insert_fenced(id, vector, None).await
     }
 
@@ -183,8 +191,12 @@ impl DistributedCoordinator {
 
         let receipt_res = tokio::time::timeout(std::time::Duration::from_secs(5), rx)
             .await
-            .map_err(|_| HNSQRError::Internal("Proposal timed out waiting for quorum commit".to_string()))?
-            .map_err(|_| HNSQRError::Internal("Proposal channel closed unexpectedly".to_string()))?;
+            .map_err(|_| {
+                HNSQRError::Internal("Proposal timed out waiting for quorum commit".to_string())
+            })?
+            .map_err(|_| {
+                HNSQRError::Internal("Proposal channel closed unexpectedly".to_string())
+            })?;
 
         receipt_res.map_err(HNSQRError::from)
     }
@@ -218,7 +230,8 @@ impl DistributedCoordinator {
 
             let mutation = DataMutation::new_upsert(node_id.to_string(), vector);
             let rx = self.raft_cluster.propose_data_mutation(mutation)?;
-            let receipt_res = rx.blocking_recv()
+            let receipt_res = rx
+                .blocking_recv()
                 .map_err(|_| HNSQRError::Internal("Proposal channel closed".to_string()))?;
             receipt_res.map_err(HNSQRError::from)
         } else {
@@ -229,7 +242,10 @@ impl DistributedCoordinator {
     }
 
     /// Synchronous blocking delete helper for non-async clients and deterministic test harnesses.
-    pub fn delete_blocking(&self, id: &str) -> HNSQRResult<crate::consensus::pending::CommitReceipt> {
+    pub fn delete_blocking(
+        &self,
+        id: &str,
+    ) -> HNSQRResult<crate::consensus::pending::CommitReceipt> {
         let shard_id = { self.topology.read().shard_for_key(id) };
         let shards = self.local_shards.read();
         if let Some(shard) = shards.get(&shard_id) {
@@ -241,7 +257,8 @@ impl DistributedCoordinator {
 
             let mutation = DataMutation::new_delete(id);
             let rx = self.raft_cluster.propose_data_mutation(mutation)?;
-            let receipt_res = rx.blocking_recv()
+            let receipt_res = rx
+                .blocking_recv()
                 .map_err(|_| HNSQRError::Internal("Proposal channel closed".to_string()))?;
             receipt_res.map_err(HNSQRError::from)
         } else {
@@ -256,13 +273,17 @@ impl DistributedCoordinator {
         let current_epoch = self.epoch();
         let read_index = match consistency {
             ReadConsistency::Linearizable => self.raft_cluster.linearizable_read_index()?,
-            ReadConsistency::LinearizableWithMode(mode) => self.raft_cluster.linearizable_read_index_with_mode(mode)?,
+            ReadConsistency::LinearizableWithMode(mode) => {
+                self.raft_cluster.linearizable_read_index_with_mode(mode)?
+            }
             ReadConsistency::Committed => {
                 let leader_id = self.raft_cluster.get_leader().unwrap_or(1);
                 let leader = self.raft_cluster.nodes.get(&leader_id).unwrap();
                 *leader.commit_index.read()
             }
-            ReadConsistency::BoundedStaleness { max_lag_entries, .. } => {
+            ReadConsistency::BoundedStaleness {
+                max_lag_entries, ..
+            } => {
                 let leader_id = self.raft_cluster.get_leader().unwrap_or(1);
                 let leader = self.raft_cluster.nodes.get(&leader_id).unwrap();
                 let commit = *leader.commit_index.read();
@@ -270,7 +291,8 @@ impl DistributedCoordinator {
                 if commit.saturating_sub(applied) > max_lag_entries {
                     return Err(HNSQRError::Internal(format!(
                         "Observed lag {} exceeds bounded staleness limit {}",
-                        commit.saturating_sub(applied), max_lag_entries
+                        commit.saturating_sub(applied),
+                        max_lag_entries
                     )));
                 }
                 applied
@@ -283,7 +305,13 @@ impl DistributedCoordinator {
             *leader.last_applied.read()
         };
 
-        let active_gen = self.local_shards.read().values().next().map(|s| s.engine.active_generation()).unwrap_or(1);
+        let active_gen = self
+            .local_shards
+            .read()
+            .values()
+            .next()
+            .map(|s| s.engine.active_generation())
+            .unwrap_or(1);
 
         Ok(ReadSnapshot {
             topology_epoch: current_epoch,
@@ -392,14 +420,12 @@ impl DistributedCoordinator {
 
         let mut global_candidates = Vec::with_capacity(shards.len() * k);
         for shard in shards {
-            let shard_topk = if let Some((immutables, active)) = snapshot.all_shard_snapshots.get(&shard.shard_id) {
-                shard.engine.search_pinned(
-                    immutables,
-                    active,
-                    query,
-                    k,
-                    rerank_plan,
-                )
+            let shard_topk = if let Some((immutables, active)) =
+                snapshot.all_shard_snapshots.get(&shard.shard_id)
+            {
+                shard
+                    .engine
+                    .search_pinned(immutables, active, query, k, rerank_plan)
             } else {
                 shard.engine.search_pinned(
                     &snapshot.immutable_segments,

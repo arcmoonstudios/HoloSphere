@@ -32,8 +32,8 @@ use std::time::Instant;
 
 use hnsqr::vector::folding::ComplexWeaver;
 use hnsqr::{
-    AdaptivePolicy, HNSQRIndex, NodeIndex, RiveroBulkBuilder, RiveroProfile,
-    SnapshotOpenOptions, VectorEmbedding, VerificationMode,
+    AdaptivePolicy, HNSQRIndex, NodeIndex, RiveroBulkBuilder, RiveroProfile, SnapshotOpenOptions,
+    VectorEmbedding, VerificationMode,
 };
 use num_complex::Complex32;
 use rand::rngs::StdRng;
@@ -42,7 +42,7 @@ use rayon::prelude::*;
 
 mod common;
 
-use common::{generate_realistic_text_corpus, open_prebuilt_index, TextRetrievalCorpus};
+use common::{TextRetrievalCorpus, generate_realistic_text_corpus, open_prebuilt_index};
 
 const SEED: u64 = 0x484e_5351_525f_5641; // "HNSQR_VA"
 
@@ -745,13 +745,15 @@ fn run_persistence_deep_dive(corpus: &TextRetrievalCorpus, index: &HNSQRIndex) {
         "════════════════════════════════════════════════════════════════════════════════════════"
     );
 
-    let snap_path = std::env::temp_dir().join(format!(
-        "prod_val_snap_{}.hnsqr",
-        corpus.corpus_raw.len()
-    ));
+    let snap_path =
+        std::env::temp_dir().join(format!("prod_val_snap_{}.hnsqr", corpus.corpus_raw.len()));
     let save_stats = index.save_snapshot_v2(&snap_path).unwrap();
 
-    let bytes_per_vec = save_stats.file_size_bytes as f64 / save_stats.vector_count.max(corpus.corpus_raw.len() as u64).max(1) as f64;
+    let bytes_per_vec = save_stats.file_size_bytes as f64
+        / save_stats
+            .vector_count
+            .max(corpus.corpus_raw.len() as u64)
+            .max(1) as f64;
     println!(
         "  * Snapshot File: {:.2} MB ({} bytes)",
         save_stats.file_size_bytes as f64 / (1024.0 * 1024.0),

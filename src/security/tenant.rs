@@ -98,9 +98,10 @@ impl TenantManager {
 
     /// Registers a tenant with custom quota.
     pub fn register_tenant(&self, tenant_id: &str, quota: TenantQuota) {
-        self.tenants
-            .write()
-            .insert(tenant_id.to_string(), (quota, Arc::new(TenantUsage::default())));
+        self.tenants.write().insert(
+            tenant_id.to_string(),
+            (quota, Arc::new(TenantUsage::default())),
+        );
     }
 
     /// Checks if a tenant has capacity to insert `num_vectors` and `bytes`.
@@ -129,8 +130,12 @@ impl TenantManager {
                 )));
             }
 
-            usage.current_vectors.fetch_add(num_vectors, Ordering::Relaxed);
-            usage.current_memory_bytes.fetch_add(bytes, Ordering::Relaxed);
+            usage
+                .current_vectors
+                .fetch_add(num_vectors, Ordering::Relaxed);
+            usage
+                .current_memory_bytes
+                .fetch_add(bytes, Ordering::Relaxed);
         }
         Ok(())
     }

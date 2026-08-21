@@ -14,14 +14,14 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::collections::HashMap;
-use std::sync::Arc;
+use crate::NodeIndex;
 use crate::graph::catalog::labels::LabelCatalogSnapshot;
 use crate::graph::catalog::relationships::RelTypeCatalogSnapshot;
 use crate::graph::storage::edge_delta::EdgeRecord;
 use crate::graph::storage::node_arena::GraphNodeRecord;
 use crate::graph::storage::properties::GraphPropertyStore;
-use crate::NodeIndex;
+use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Lightweight snapshot descriptor for graph topology at a point in time.
 ///

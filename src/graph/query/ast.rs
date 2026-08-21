@@ -9,7 +9,7 @@
 /*▫~•◦------------------------------------------------------------------------------------‣
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
- 
+
 use crate::graph::catalog::labels::LabelId;
 use crate::graph::catalog::relationships::RelTypeId;
 

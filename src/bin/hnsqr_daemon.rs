@@ -79,7 +79,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 1. QIR0 Binary TCP Protocol
     let tcp_server = HNSQRServer::new(index.clone(), tcp_addr);
-    println!("🚀 Starting Async Binary TCP Server (QIR0) on: {}", tcp_addr);
+    println!(
+        "🚀 Starting Async Binary TCP Server (QIR0) on: {}",
+        tcp_addr
+    );
     let tcp_handle = tokio::spawn(async move {
         if let Err(e) = tcp_server.run().await {
             eprintln!("❌ TCP Server Error: {}", e);
@@ -89,9 +92,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 2. HTTP REST Gateway & Web Console
     let gateway_router = Arc::new(GatewayRouter::new(&data_dir, false));
     let app = create_http_router(gateway_router);
-    println!("🌐 Starting HTTP REST & LLM Gateway on:      http://{}", http_addr);
-    println!("📊 Embedded Web Console & Dashboard at:       http://{}/dashboard", http_addr);
-    println!("📖 Interactive OpenAPI 3.1 Swagger UI at:     http://{}/docs", http_addr);
+    println!(
+        "🌐 Starting HTTP REST & LLM Gateway on:      http://{}",
+        http_addr
+    );
+    println!(
+        "📊 Embedded Web Console & Dashboard at:       http://{}/dashboard",
+        http_addr
+    );
+    println!(
+        "📖 Interactive OpenAPI 3.1 Swagger UI at:     http://{}/docs",
+        http_addr
+    );
     let http_handle = tokio::spawn(async move {
         let listener = tokio::net::TcpListener::bind(http_addr)
             .await
@@ -102,7 +114,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     // 3. Redis RESP Wire Server
-    println!("⚡ Starting Redis RESP Wire Protocol on:       {}", resp_addr);
+    println!(
+        "⚡ Starting Redis RESP Wire Protocol on:       {}",
+        resp_addr
+    );
     let resp_handle = tokio::spawn(async move {
         let listener = match tokio::net::TcpListener::bind(resp_addr).await {
             Ok(l) => l,

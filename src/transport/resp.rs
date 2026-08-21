@@ -10,11 +10,11 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::collections::{HashMap, VecDeque};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, VecDeque};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::ecosystem::kv_cache::{KvValue, MemoryKvStore};
 
@@ -102,7 +102,8 @@ impl PubSubBroker {
 
     /// Publishes a message to all active channel subscribers.
     pub fn publish(&self, channel: &str, message: &str) -> usize {
-        self.total_messages_published.fetch_add(1, Ordering::Relaxed);
+        self.total_messages_published
+            .fetch_add(1, Ordering::Relaxed);
         let mut channels = self.channels.write();
         if let Some(subscribers) = channels.get_mut(channel) {
             subscribers.retain(|tx| tx.send(message.to_string()).is_ok());
@@ -145,7 +146,14 @@ impl RedisStreamEngine {
     pub fn xadd(&self, stream: &str, fields: HashMap<String, String>) -> String {
         let mut streams = self.streams.write();
         let queue = streams.entry(stream.to_string()).or_default();
-        let id = format!("{}-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis(), queue.len());
+        let id = format!(
+            "{}-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis(),
+            queue.len()
+        );
 
         queue.push_back(StreamEntry {
             entry_id: id.clone(),
@@ -159,7 +167,12 @@ impl RedisStreamEngine {
     pub fn xread(&self, stream: &str, start_index: usize, count: usize) -> Vec<StreamEntry> {
         let streams = self.streams.read();
         if let Some(queue) = streams.get(stream) {
-            queue.iter().skip(start_index).take(count).cloned().collect()
+            queue
+                .iter()
+                .skip(start_index)
+                .take(count)
+                .cloned()
+                .collect()
         } else {
             Vec::new()
         }
@@ -312,7 +325,8 @@ impl RespServer {
             if args.len() < 3 {
                 return RespFrame::Error("ERR wrong number of arguments for 'set' command".into());
             }
-            self.kv_store.set_raw(args[1], KvValue::Bytes(args[2].to_vec()), None);
+            self.kv_store
+                .set_raw(args[1], KvValue::Bytes(args[2].to_vec()), None);
             RespFrame::SimpleString("OK".into())
         } else if cmd.eq_ignore_ascii_case(b"GET") {
             if args.len() < 2 {
@@ -321,8 +335,12 @@ impl RespServer {
             match self.kv_store.get_raw(args[1]) {
                 Some(KvValue::Bytes(b)) => RespFrame::BulkString(Some(b)),
                 Some(KvValue::String(s)) => RespFrame::BulkString(Some(s.into_bytes())),
-                Some(KvValue::Integer(i)) => RespFrame::BulkString(Some(i.to_string().into_bytes())),
-                Some(_) => RespFrame::Error("WRONGTYPE Operation against a key holding the wrong kind of value".into()),
+                Some(KvValue::Integer(i)) => {
+                    RespFrame::BulkString(Some(i.to_string().into_bytes()))
+                }
+                Some(_) => RespFrame::Error(
+                    "WRONGTYPE Operation against a key holding the wrong kind of value".into(),
+                ),
                 None => RespFrame::Null,
             }
         } else if cmd.eq_ignore_ascii_case(b"INCR") {
@@ -339,14 +357,19 @@ impl RespServer {
             RespFrame::Integer(count)
         } else if cmd.eq_ignore_ascii_case(b"PUBLISH") {
             if args.len() < 3 {
-                return RespFrame::Error("ERR wrong number of arguments for 'publish' command".into());
+                return RespFrame::Error(
+                    "ERR wrong number of arguments for 'publish' command".into(),
+                );
             }
             let chan = String::from_utf8_lossy(args[1]);
             let msg = String::from_utf8_lossy(args[2]);
             let recipients = self.pubsub.publish(&chan, &msg);
             RespFrame::Integer(recipients as i64)
         } else {
-            RespFrame::Error(format!("ERR unknown command '{}'", String::from_utf8_lossy(args[0])))
+            RespFrame::Error(format!(
+                "ERR unknown command '{}'",
+                String::from_utf8_lossy(args[0])
+            ))
         }
     }
 
@@ -387,7 +410,10 @@ mod tests {
         let server = RespServer::new(kv);
 
         // PING
-        assert_eq!(server.handle_command(&["PING".into()]), RespFrame::SimpleString("PONG".into()));
+        assert_eq!(
+            server.handle_command(&["PING".into()]),
+            RespFrame::SimpleString("PONG".into())
+        );
 
         // SET & GET
         server.handle_command(&["SET".into(), "mykey".into(), "myval".into()]);

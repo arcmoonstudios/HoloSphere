@@ -9,8 +9,8 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use crate::graph::analytics::projection::GraphProjection;
 use crate::NodeIndex;
+use crate::graph::analytics::projection::GraphProjection;
 
 /// Triangle count result.
 #[derive(Debug, Default)]
@@ -54,7 +54,8 @@ impl TriangleCount {
                 // Count common neighbours using Leapfrog galloping intersection.
                 let nu = &adj[u as usize];
                 let nv = &adj[v as usize];
-                let common = crate::graph::storage::csr::CsrAdjacency::intersect_sorted_galloping(nu, nv);
+                let common =
+                    crate::graph::storage::csr::CsrAdjacency::intersect_sorted_galloping(nu, nv);
                 triangles += common as u64;
                 local_t[u as usize] += common as u64;
                 local_t[v as usize] += common as u64;
@@ -73,6 +74,9 @@ impl TriangleCount {
             })
             .collect();
 
-        Self { triangles, local_clustering }
+        Self {
+            triangles,
+            local_clustering,
+        }
     }
 }

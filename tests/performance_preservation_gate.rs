@@ -68,7 +68,16 @@ fn test_gate_b3_performance_preservation_under_enterprise_layers() {
 
     // Assert Exact Recall = 100%
     assert_eq!(candidates.len(), k);
-    assert_eq!(candidates, gt, "Candidates must match Ground Truth with 100.0000% exactness");
-    assert!(proof.globally_exact, "Proof must be certified globally exact");
-    assert!(proof.is_accounting_exact(), "Terminal accounting funnel invariant must hold exactly");
+    assert_eq!(
+        candidates, gt,
+        "Candidates must match Ground Truth with 100.0000% exactness"
+    );
+    assert!(
+        proof.globally_exact,
+        "Proof must be certified globally exact"
+    );
+    assert!(
+        proof.is_accounting_exact(),
+        "Terminal accounting funnel invariant must hold exactly"
+    );
 }

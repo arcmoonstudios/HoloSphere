@@ -9,8 +9,8 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::Instant;
 
@@ -22,8 +22,8 @@ use hnsqr::kubernetes::{HNSQRClusterSpec, HNSQRClusterStatus, KubernetesOperator
 use hnsqr::proof::search::GlobalExactProofSearch;
 use hnsqr::proof::tree::SemanticProofTree;
 use hnsqr::service::ReadSnapshot;
-use hnsqr::storage::backup::BackupManager;
 use hnsqr::storage::backpressure::{BackpressureConfig, BackpressureController};
+use hnsqr::storage::backup::BackupManager;
 use hnsqr::storage::manifest::UnifiedSnapshotEngine;
 use hnsqr::storage::remote_cache::RemoteRangeCache;
 use hnsqr::storage::wal::{DurabilityPolicy, WalManager, WalMutation};
@@ -111,7 +111,10 @@ fn test_phase_4_machine_readable_acceptance_oracle() {
         for h in handles {
             h.join().unwrap();
         }
-        assert_eq!(completed.load(Ordering::Relaxed), (writers * ops_per_writer) as u64);
+        assert_eq!(
+            completed.load(Ordering::Relaxed),
+            (writers * ops_per_writer) as u64
+        );
         report.raft_512_writer_pass = true;
         report.zero_avoidable_elections = *leader.role.read() == RaftRole::Leader;
     }
@@ -139,7 +142,9 @@ fn test_phase_4_machine_readable_acceptance_oracle() {
         assert_eq!(fetched.len(), 128);
         report.remote_certified_exact = true;
 
-        let missing = cache.get_or_fetch(999, |_| Err(HNSQRError::Internal("Missing block".to_string())));
+        let missing = cache.get_or_fetch(999, |_| {
+            Err(HNSQRError::Internal("Missing block".to_string()))
+        });
         assert!(missing.is_err());
         report.remote_failure_fails_closed = true;
     }
@@ -159,12 +164,26 @@ fn test_phase_4_machine_readable_acceptance_oracle() {
         };
 
         // Scale Out
-        let status_scale_out = HNSQRClusterStatus { ready_replicas: 3, ready_learners: 0, current_leader_pod: None, active_epoch: 1, is_upgrading: false, ..Default::default() };
+        let status_scale_out = HNSQRClusterStatus {
+            ready_replicas: 3,
+            ready_learners: 0,
+            current_leader_pod: None,
+            active_epoch: 1,
+            is_upgrading: false,
+            ..Default::default()
+        };
         let actions_out = KubernetesOperator::reconcile_scale(&spec, &status_scale_out).unwrap();
         report.kubernetes_scale_out = actions_out.iter().any(|a| a.contains("learner pods"));
 
         // Scale In
-        let status_scale_in = HNSQRClusterStatus { ready_replicas: 7, ready_learners: 2, current_leader_pod: None, active_epoch: 1, is_upgrading: false, ..Default::default() };
+        let status_scale_in = HNSQRClusterStatus {
+            ready_replicas: 7,
+            ready_learners: 2,
+            current_leader_pod: None,
+            active_epoch: 1,
+            is_upgrading: false,
+            ..Default::default()
+        };
         let actions_in = KubernetesOperator::reconcile_scale(&spec, &status_scale_in).unwrap();
         report.kubernetes_scale_in = actions_in.iter().any(|a| a.contains("Demote"));
 
@@ -184,14 +203,20 @@ fn test_phase_4_machine_readable_acceptance_oracle() {
         let responses = vec![
             ClusterProofResponse {
                 region_id: "eu-central-1".to_string(),
-                top_k: vec![("doc_eu_1".to_string(), 0.95), ("doc_eu_2".to_string(), 0.85)],
+                top_k: vec![
+                    ("doc_eu_1".to_string(), 0.95),
+                    ("doc_eu_2".to_string(), 0.85),
+                ],
                 max_unresolved_upper_bound: 0.70,
                 snapshot: ReadSnapshot::default(),
                 is_complete: true,
             },
             ClusterProofResponse {
                 region_id: "us-east-1".to_string(),
-                top_k: vec![("doc_us_1".to_string(), 0.90), ("doc_us_2".to_string(), 0.80)],
+                top_k: vec![
+                    ("doc_us_1".to_string(), 0.90),
+                    ("doc_us_2".to_string(), 0.80),
+                ],
                 max_unresolved_upper_bound: 0.65,
                 snapshot: ReadSnapshot::default(),
                 is_complete: true,
@@ -219,17 +244,45 @@ fn test_phase_4_machine_readable_acceptance_oracle() {
 
         let v = VectorEmbedding::from_complex(vec![Complex32::new(1.0, 0.0)]).into_normalized();
         let wal = WalManager::open(&wal_dir).unwrap();
-        wal.append(&WalMutation::Upsert { external_id: "dr_1".to_string(), vector: v.clone(), metadata: None }, DurabilityPolicy::WalSync).unwrap();
+        wal.append(
+            &WalMutation::Upsert {
+                external_id: "dr_1".to_string(),
+                vector: v.clone(),
+                metadata: None,
+            },
+            DurabilityPolicy::WalSync,
+        )
+        .unwrap();
 
-        UnifiedSnapshotEngine::save_snapshot(&snap_dir, 1, 1, 2, std::slice::from_ref(&v), &["dr_1".to_string()], None, None, None, None).unwrap();
+        UnifiedSnapshotEngine::save_snapshot(
+            &snap_dir,
+            1,
+            1,
+            2,
+            std::slice::from_ref(&v),
+            &["dr_1".to_string()],
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
         BackupManager::create_full_backup(&snap_dir, &backup_dir, "dr_full_1").unwrap();
 
         let rto_start = Instant::now();
         let mut restored = Vec::new();
-        let sum = BackupManager::restore_pitr(&backup_dir, &restore_dir, "dr_full_1", None, 1, |lsn, muta| {
-            restored.push((lsn, muta));
-            Ok(())
-        }).unwrap();
+        let sum = BackupManager::restore_pitr(
+            &backup_dir,
+            &restore_dir,
+            "dr_full_1",
+            None,
+            1,
+            |lsn, muta| {
+                restored.push((lsn, muta));
+                Ok(())
+            },
+        )
+        .unwrap();
         let rto_ms = rto_start.elapsed().as_millis() as u64;
 
         assert_eq!(sum.last_applied_lsn, 1);
@@ -256,11 +309,20 @@ fn test_phase_4_machine_readable_acceptance_oracle() {
         let tree = SemanticProofTree::build(&vectors, &slots, dim);
         let query = &vectors[10];
 
-        let mut gt: Vec<(NodeIndex, f32)> = vectors.iter().enumerate().map(|(i, v)| (i as NodeIndex, v.dot_product_complex(query).re)).collect();
+        let mut gt: Vec<(NodeIndex, f32)> = vectors
+            .iter()
+            .enumerate()
+            .map(|(i, v)| (i as NodeIndex, v.dot_product_complex(query).re))
+            .collect();
         gt.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
         gt.truncate(k);
 
-        let view = SegmentProofView { vectors: &vectors, tombstones: None, tree: &tree, lutz_codes: None };
+        let view = SegmentProofView {
+            vectors: &vectors,
+            tombstones: None,
+            tree: &tree,
+            lutz_codes: None,
+        };
         let (candidates, proof) = GlobalExactProofSearch::search(query, k, &[view], &[], &[], None);
 
         assert_eq!(candidates, gt);
@@ -292,5 +354,8 @@ fn test_phase_4_machine_readable_acceptance_oracle() {
     let json = serde_json::to_string_pretty(&report).unwrap();
     println!("\n=================================================================");
     println!("             PHASE 4 VERIFIED ACCEPTANCE REPORT                  ");
-    println!("=================================================================\n{}", json);
+    println!(
+        "=================================================================\n{}",
+        json
+    );
 }

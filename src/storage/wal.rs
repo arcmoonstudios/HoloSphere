@@ -528,9 +528,10 @@ impl WalManager {
                 offset += (WAL_HEADER_SIZE + payload_len) as u64;
 
                 if header.lsn > snapshot_lsn {
-                    let mutation: WalMutation = bincode::deserialize(&payload_buf).map_err(|e| {
-                        HNSQRError::CorruptedSnapshot(format!("Payload deserialize error: {e}"))
-                    })?;
+                    let mutation: WalMutation =
+                        bincode::deserialize(&payload_buf).map_err(|e| {
+                            HNSQRError::CorruptedSnapshot(format!("Payload deserialize error: {e}"))
+                        })?;
 
                     apply_fn(header.lsn, mutation)?;
                     summary.total_replayed += 1;
@@ -617,8 +618,7 @@ impl WalManager {
             }
         }
 
-        self.last_checkpoint_lsn
-            .store(safe_lsn, Ordering::Release);
+        self.last_checkpoint_lsn.store(safe_lsn, Ordering::Release);
         Ok(deleted_count)
     }
 }

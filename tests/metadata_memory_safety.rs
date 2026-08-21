@@ -11,10 +11,10 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::collections::HashMap;
 use hnsqr::metadata::index::MetadataValue;
 use hnsqr::metadata::store::{MetadataQuotaConfig, MetadataStore};
 use roaring::RoaringBitmap;
+use std::collections::HashMap;
 
 #[test]
 fn test_string_interning_deduplication() {
@@ -26,11 +26,16 @@ fn test_string_interning_deduplication() {
     let store = MetadataStore::new(config);
 
     // Index 5,000 slots with the same 10 categories
-    let categories = ["finance", "tech", "health", "energy", "retail", "legal", "hr", "sales", "ops", "eng"];
+    let categories = [
+        "finance", "tech", "health", "energy", "retail", "legal", "hr", "sales", "ops", "eng",
+    ];
 
     for slot in 0..5000 {
         let mut meta = HashMap::new();
-        meta.insert("category".to_string(), MetadataValue::String(categories[slot % 10].to_string()));
+        meta.insert(
+            "category".to_string(),
+            MetadataValue::String(categories[slot % 10].to_string()),
+        );
         store.index_slot(slot as u32, &meta).unwrap();
     }
 
@@ -55,7 +60,10 @@ fn test_metadata_hard_quota_rejection() {
     let mut accepted = 0;
     for i in 0..100 {
         let mut meta = HashMap::new();
-        meta.insert("unique_key".to_string(), MetadataValue::String(format!("val_{i}")));
+        meta.insert(
+            "unique_key".to_string(),
+            MetadataValue::String(format!("val_{i}")),
+        );
         if store.index_slot(i as u32, &meta).is_ok() {
             accepted += 1;
         }
@@ -73,7 +81,10 @@ fn test_dead_term_compaction_reclamation() {
 
     for i in 0..100 {
         let mut meta = HashMap::new();
-        meta.insert("tag".to_string(), MetadataValue::String(if i < 50 { "active" } else { "deleted" }.to_string()));
+        meta.insert(
+            "tag".to_string(),
+            MetadataValue::String(if i < 50 { "active" } else { "deleted" }.to_string()),
+        );
         store.index_slot(i as u32, &meta).unwrap();
     }
 

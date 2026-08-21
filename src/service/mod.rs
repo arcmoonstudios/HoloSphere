@@ -15,8 +15,8 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::cluster::ring::ShardId;
 use crate::cluster::DistributedCoordinator;
+use crate::cluster::ring::ShardId;
 use crate::consensus::pending::{DurabilityLevel, MutationId};
 use crate::consensus::read_index::ReadConsistency;
 use crate::metadata::index::MetadataValue;
@@ -121,8 +121,16 @@ pub struct MutationReceipt {
 /// Authoritative trait for mutation operations.
 #[async_trait::async_trait]
 pub trait MutationService: Send + Sync {
-    async fn upsert(&self, ctx: &RequestContext, req: UpsertRequest) -> HNSQRResult<MutationReceipt>;
-    async fn delete(&self, ctx: &RequestContext, req: DeleteRequest) -> HNSQRResult<MutationReceipt>;
+    async fn upsert(
+        &self,
+        ctx: &RequestContext,
+        req: UpsertRequest,
+    ) -> HNSQRResult<MutationReceipt>;
+    async fn delete(
+        &self,
+        ctx: &RequestContext,
+        req: DeleteRequest,
+    ) -> HNSQRResult<MutationReceipt>;
 }
 
 /// Authoritative trait for search retrieval operations.
@@ -156,7 +164,10 @@ pub struct StandaloneService {
 
 impl StandaloneService {
     pub fn new(index: Arc<HNSQRIndex>) -> Self {
-        Self { index, slo_manager: None }
+        Self {
+            index,
+            slo_manager: None,
+        }
     }
 
     /// Attaches a `SloManager` for real-time error-budget burn-rate tracking.
@@ -169,16 +180,23 @@ impl StandaloneService {
         &self.index
     }
 
-    pub fn upsert_blocking(&self, ctx: &RequestContext, req: UpsertRequest) -> HNSQRResult<MutationReceipt> {
+    pub fn upsert_blocking(
+        &self,
+        ctx: &RequestContext,
+        req: UpsertRequest,
+    ) -> HNSQRResult<MutationReceipt> {
         if ctx.role == AccessRole::ReadOnly {
             if let Some(slo) = &self.slo_manager {
                 slo.record_query_event(false);
             }
-            return Err(HNSQRError::Unauthorized("Role ReadOnly cannot perform Upsert".to_string()));
+            return Err(HNSQRError::Unauthorized(
+                "Role ReadOnly cannot perform Upsert".to_string(),
+            ));
         }
 
         let res = if let Some(meta) = req.metadata {
-            self.index.insert_with_metadata(req.id.as_str(), req.vector, meta)
+            self.index
+                .insert_with_metadata(req.id.as_str(), req.vector, meta)
         } else {
             self.index.insert(req.id.as_str(), req.vector)
         };
@@ -201,12 +219,18 @@ impl StandaloneService {
         })
     }
 
-    pub fn delete_blocking(&self, ctx: &RequestContext, req: DeleteRequest) -> HNSQRResult<MutationReceipt> {
+    pub fn delete_blocking(
+        &self,
+        ctx: &RequestContext,
+        req: DeleteRequest,
+    ) -> HNSQRResult<MutationReceipt> {
         if ctx.role == AccessRole::ReadOnly {
             if let Some(slo) = &self.slo_manager {
                 slo.record_query_event(false);
             }
-            return Err(HNSQRError::Unauthorized("Role ReadOnly cannot perform Delete".to_string()));
+            return Err(HNSQRError::Unauthorized(
+                "Role ReadOnly cannot perform Delete".to_string(),
+            ));
         }
 
         let res = self.index.remove(&req.id);
@@ -231,11 +255,19 @@ impl StandaloneService {
 
 #[async_trait::async_trait]
 impl MutationService for StandaloneService {
-    async fn upsert(&self, ctx: &RequestContext, req: UpsertRequest) -> HNSQRResult<MutationReceipt> {
+    async fn upsert(
+        &self,
+        ctx: &RequestContext,
+        req: UpsertRequest,
+    ) -> HNSQRResult<MutationReceipt> {
         self.upsert_blocking(ctx, req)
     }
 
-    async fn delete(&self, ctx: &RequestContext, req: DeleteRequest) -> HNSQRResult<MutationReceipt> {
+    async fn delete(
+        &self,
+        ctx: &RequestContext,
+        req: DeleteRequest,
+    ) -> HNSQRResult<MutationReceipt> {
         self.delete_blocking(ctx, req)
     }
 }
@@ -279,7 +311,10 @@ pub struct ClusterService {
 
 impl ClusterService {
     pub fn new(coordinator: Arc<DistributedCoordinator>) -> Self {
-        Self { coordinator, slo_manager: None }
+        Self {
+            coordinator,
+            slo_manager: None,
+        }
     }
 
     pub fn with_slo(mut self, slo: Arc<crate::telemetry::slo::SloManager>) -> Self {
@@ -291,28 +326,38 @@ impl ClusterService {
         &self.coordinator
     }
 
-    pub fn upsert_blocking(&self, ctx: &RequestContext, req: UpsertRequest) -> HNSQRResult<MutationReceipt> {
+    pub fn upsert_blocking(
+        &self,
+        ctx: &RequestContext,
+        req: UpsertRequest,
+    ) -> HNSQRResult<MutationReceipt> {
         if ctx.role == AccessRole::ReadOnly {
             if let Some(slo) = &self.slo_manager {
                 slo.record_query_event(false);
             }
-            return Err(HNSQRError::Unauthorized("Role ReadOnly cannot perform Upsert".to_string()));
+            return Err(HNSQRError::Unauthorized(
+                "Role ReadOnly cannot perform Upsert".to_string(),
+            ));
         }
 
-        let commit_receipt = match self.coordinator.insert_fenced_blocking(req.id.clone(), req.vector, ctx.epoch) {
-            Ok(receipt) => {
-                if let Some(slo) = &self.slo_manager {
-                    slo.record_query_event(true);
+        let commit_receipt =
+            match self
+                .coordinator
+                .insert_fenced_blocking(req.id.clone(), req.vector, ctx.epoch)
+            {
+                Ok(receipt) => {
+                    if let Some(slo) = &self.slo_manager {
+                        slo.record_query_event(true);
+                    }
+                    receipt
                 }
-                receipt
-            }
-            Err(e) => {
-                if let Some(slo) = &self.slo_manager {
-                    slo.record_query_event(false);
+                Err(e) => {
+                    if let Some(slo) = &self.slo_manager {
+                        slo.record_query_event(false);
+                    }
+                    return Err(e);
                 }
-                return Err(e);
-            }
-        };
+            };
         let shard_id = self.coordinator.shard_for_key(&req.id);
 
         Ok(MutationReceipt {
@@ -328,12 +373,18 @@ impl ClusterService {
         })
     }
 
-    pub fn delete_blocking(&self, ctx: &RequestContext, req: DeleteRequest) -> HNSQRResult<MutationReceipt> {
+    pub fn delete_blocking(
+        &self,
+        ctx: &RequestContext,
+        req: DeleteRequest,
+    ) -> HNSQRResult<MutationReceipt> {
         if ctx.role == AccessRole::ReadOnly {
             if let Some(slo) = &self.slo_manager {
                 slo.record_query_event(false);
             }
-            return Err(HNSQRError::Unauthorized("Role ReadOnly cannot perform Delete".to_string()));
+            return Err(HNSQRError::Unauthorized(
+                "Role ReadOnly cannot perform Delete".to_string(),
+            ));
         }
 
         let commit_receipt = match self.coordinator.delete_blocking(&req.id) {
@@ -368,15 +419,25 @@ impl ClusterService {
 
 #[async_trait::async_trait]
 impl MutationService for ClusterService {
-    async fn upsert(&self, ctx: &RequestContext, req: UpsertRequest) -> HNSQRResult<MutationReceipt> {
+    async fn upsert(
+        &self,
+        ctx: &RequestContext,
+        req: UpsertRequest,
+    ) -> HNSQRResult<MutationReceipt> {
         if ctx.role == AccessRole::ReadOnly {
             if let Some(slo) = &self.slo_manager {
                 slo.record_query_event(false);
             }
-            return Err(HNSQRError::Unauthorized("Role ReadOnly cannot perform Upsert".to_string()));
+            return Err(HNSQRError::Unauthorized(
+                "Role ReadOnly cannot perform Upsert".to_string(),
+            ));
         }
 
-        let commit_receipt = match self.coordinator.insert_fenced(req.id.clone(), req.vector, ctx.epoch).await {
+        let commit_receipt = match self
+            .coordinator
+            .insert_fenced(req.id.clone(), req.vector, ctx.epoch)
+            .await
+        {
             Ok(receipt) => {
                 if let Some(slo) = &self.slo_manager {
                     slo.record_query_event(true);
@@ -405,12 +466,18 @@ impl MutationService for ClusterService {
         })
     }
 
-    async fn delete(&self, ctx: &RequestContext, req: DeleteRequest) -> HNSQRResult<MutationReceipt> {
+    async fn delete(
+        &self,
+        ctx: &RequestContext,
+        req: DeleteRequest,
+    ) -> HNSQRResult<MutationReceipt> {
         if ctx.role == AccessRole::ReadOnly {
             if let Some(slo) = &self.slo_manager {
                 slo.record_query_event(false);
             }
-            return Err(HNSQRError::Unauthorized("Role ReadOnly cannot perform Delete".to_string()));
+            return Err(HNSQRError::Unauthorized(
+                "Role ReadOnly cannot perform Delete".to_string(),
+            ));
         }
 
         let commit_receipt = match self.coordinator.delete(&req.id).await {
@@ -451,17 +518,27 @@ impl SearchService for ClusterService {
         k: usize,
         rerank_plan: SemanticRerankPlan,
     ) -> HNSQRResult<Vec<(Arc<str>, SimilarityScore)>> {
-        let pinned = self.coordinator.obtain_cluster_pinned_snapshot(ReadConsistency::Linearizable)?;
-        let res = self.coordinator.search_pinned(&pinned, query, k, rerank_plan);
+        let pinned = self
+            .coordinator
+            .obtain_cluster_pinned_snapshot(ReadConsistency::Linearizable)?;
+        let res = self
+            .coordinator
+            .search_pinned(&pinned, query, k, rerank_plan);
         if let Some(slo) = &self.slo_manager {
             slo.record_query_event(true);
         }
         Ok(res)
     }
 
-    fn graph_query(&self, _ctx: &RequestContext, query: &str) -> HNSQRResult<crate::graph::query::executor::QueryResult> {
+    fn graph_query(
+        &self,
+        _ctx: &RequestContext,
+        query: &str,
+    ) -> HNSQRResult<crate::graph::query::executor::QueryResult> {
         let shards = self.coordinator.local_shards_snapshot();
-        let shard = shards.first().ok_or_else(|| HNSQRError::Internal("No shards available".to_string()))?;
+        let shard = shards
+            .first()
+            .ok_or_else(|| HNSQRError::Internal("No shards available".to_string()))?;
 
         let graph_applier = shard.state_machine.graph.as_ref().ok_or_else(|| {
             HNSQRError::Internal("Graph engine not enabled on this shard".to_string())
@@ -470,8 +547,13 @@ impl SearchService for ClusterService {
         let label_catalog = graph_applier.label_catalog();
         let rel_catalog = graph_applier.rel_catalog();
 
-        let compiled = crate::graph::query::planner::QueryPlanner::compile(query, &label_catalog, &rel_catalog, None)
-            .map_err(|e| HNSQRError::Internal(e.to_string()))?;
+        let compiled = crate::graph::query::planner::QueryPlanner::compile(
+            query,
+            &label_catalog,
+            &rel_catalog,
+            None,
+        )
+        .map_err(|e| HNSQRError::Internal(e.to_string()))?;
 
         let gen_lock = graph_applier.generation();
         let gen_id = gen_lock.read().generation;
@@ -481,13 +563,21 @@ impl SearchService for ClusterService {
         let mut exec_ctx = crate::graph::query::executor::ExecutionContext::new(read_gen);
 
         if !compiled.ast.mutations.is_empty() {
-            let mutations = crate::graph::query::executor::ExecutionContext::compile_mutations(&compiled.ast.mutations);
+            let mutations = crate::graph::query::executor::ExecutionContext::compile_mutations(
+                &compiled.ast.mutations,
+            );
             for m in mutations {
-                let _rx = self.coordinator.raft_cluster.propose_data_mutation(crate::cluster::state_machine::DataMutation::new_graph(m))?;
+                let _rx = self.coordinator.raft_cluster.propose_data_mutation(
+                    crate::cluster::state_machine::DataMutation::new_graph(m),
+                )?;
             }
         }
 
-        let mut result = exec_ctx.execute_with_segmented_engine(&compiled.plan, &shard.state_machine.engine, &std::collections::HashMap::new())?;
+        let mut result = exec_ctx.execute_with_segmented_engine(
+            &compiled.plan,
+            &shard.state_machine.engine,
+            &std::collections::HashMap::new(),
+        )?;
         result.column_names = compiled.column_names;
         Ok(result)
     }

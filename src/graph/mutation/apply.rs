@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use parking_lot::RwLock;
 
-use crate::graph::catalog::labels::{LabelCatalog, LABEL_FAST_SLOTS};
+use crate::graph::catalog::labels::{LABEL_FAST_SLOTS, LabelCatalog};
 use crate::graph::catalog::relationships::RelTypeCatalog;
 use crate::graph::mutation::command::GraphMutation;
 use crate::graph::storage::edge_delta::EdgeRecord;
@@ -53,9 +53,15 @@ impl GraphMutationApplier {
         }
     }
 
-    pub fn label_catalog(&self) -> Arc<LabelCatalog> { self.label_catalog.clone() }
-    pub fn rel_catalog(&self) -> Arc<RelTypeCatalog> { self.rel_catalog.clone() }
-    pub fn generation(&self) -> Arc<RwLock<GraphGeneration>> { self.generation.clone() }
+    pub fn label_catalog(&self) -> Arc<LabelCatalog> {
+        self.label_catalog.clone()
+    }
+    pub fn rel_catalog(&self) -> Arc<RelTypeCatalog> {
+        self.rel_catalog.clone()
+    }
+    pub fn generation(&self) -> Arc<RwLock<GraphGeneration>> {
+        self.generation.clone()
+    }
 
     /// Captures a fully materialized immutable snapshot of the graph at generation/lsn k.
     pub fn snapshot(&self, lsn: u64) -> crate::graph::storage::snapshot::ImmutableGraphSnapshot {
@@ -67,7 +73,14 @@ impl GraphMutationApplier {
             } else {
                 (Vec::new(), Vec::new())
             };
-            (n, ln, e, le, gen_guard.generation, gen_guard.properties.clone())
+            (
+                n,
+                ln,
+                e,
+                le,
+                gen_guard.generation,
+                gen_guard.properties.clone(),
+            )
         };
 
         crate::graph::storage::snapshot::ImmutableGraphSnapshot {
@@ -88,19 +101,25 @@ impl GraphMutationApplier {
     /// Applies a committed `GraphMutation`.  Called from the state machine apply loop.
     pub fn apply(&self, mutation: &GraphMutation) -> HNSQRResult<()> {
         match mutation {
-            GraphMutation::CreateNode { external_id, labels, properties, vector_slot } => {
-                self.create_node(external_id, labels, properties.clone(), *vector_slot)
-            }
+            GraphMutation::CreateNode {
+                external_id,
+                labels,
+                properties,
+                vector_slot,
+            } => self.create_node(external_id, labels, properties.clone(), *vector_slot),
             GraphMutation::DeleteNode { external_id } => self.delete_node(external_id),
-            GraphMutation::SetNodeLabels { external_id, labels } => {
-                self.set_node_labels(external_id, labels, true)
-            }
-            GraphMutation::RemoveNodeLabels { external_id, labels } => {
-                self.set_node_labels(external_id, labels, false)
-            }
-            GraphMutation::PatchNodeProperties { external_id, properties } => {
-                self.patch_node_properties(external_id, properties.clone())
-            }
+            GraphMutation::SetNodeLabels {
+                external_id,
+                labels,
+            } => self.set_node_labels(external_id, labels, true),
+            GraphMutation::RemoveNodeLabels {
+                external_id,
+                labels,
+            } => self.set_node_labels(external_id, labels, false),
+            GraphMutation::PatchNodeProperties {
+                external_id,
+                properties,
+            } => self.patch_node_properties(external_id, properties.clone()),
             GraphMutation::CreateRelationship {
                 relationship_id,
                 src_external_id,
@@ -119,9 +138,10 @@ impl GraphMutationApplier {
             GraphMutation::DeleteRelationship { relationship_id } => {
                 self.delete_relationship(*relationship_id)
             }
-            GraphMutation::PatchRelationshipProperties { relationship_id, properties } => {
-                self.patch_rel_properties(*relationship_id, properties.clone())
-            }
+            GraphMutation::PatchRelationshipProperties {
+                relationship_id,
+                properties,
+            } => self.patch_rel_properties(*relationship_id, properties.clone()),
             GraphMutation::Batch(mutations) => {
                 // Pre-validate the entire batch before applying any mutation.
                 for m in mutations {
@@ -137,7 +157,11 @@ impl GraphMutationApplier {
 
     pub fn prevalidate(&self, mutation: &GraphMutation) -> HNSQRResult<()> {
         match mutation {
-            GraphMutation::CreateRelationship { src_external_id, dst_external_id, .. } => {
+            GraphMutation::CreateRelationship {
+                src_external_id,
+                dst_external_id,
+                ..
+            } => {
                 let map = self.node_id_map.read();
                 if !map.contains_key(src_external_id.as_str()) {
                     return Err(HNSQRError::NodeNotFound(src_external_id.clone()));
@@ -156,10 +180,14 @@ impl GraphMutationApplier {
                 }
                 Ok(())
             }
-            GraphMutation::PatchRelationshipProperties { relationship_id, .. } => {
+            GraphMutation::PatchRelationshipProperties {
+                relationship_id, ..
+            } => {
                 let rels = self.rel_id_map.read();
                 if !rels.contains_key(relationship_id) {
-                    return Err(HNSQRError::InvalidRequest(format!("Relationship {relationship_id} not found")));
+                    return Err(HNSQRError::InvalidRequest(format!(
+                        "Relationship {relationship_id} not found"
+                    )));
                 }
                 Ok(())
             }
@@ -216,7 +244,9 @@ impl GraphMutationApplier {
             }
         }
 
-        self.node_id_map.write().insert(external_id.to_string(), node_idx);
+        self.node_id_map
+            .write()
+            .insert(external_id.to_string(), node_idx);
         Ok(())
     }
 
@@ -237,12 +267,7 @@ impl GraphMutationApplier {
         Ok(())
     }
 
-    fn set_node_labels(
-        &self,
-        external_id: &str,
-        labels: &[u32],
-        add: bool,
-    ) -> HNSQRResult<()> {
+    fn set_node_labels(&self, external_id: &str, labels: &[u32], add: bool) -> HNSQRResult<()> {
         let map = self.node_id_map.read();
         let &node_idx = map
             .get(external_id)
@@ -276,7 +301,9 @@ impl GraphMutationApplier {
             .ok_or_else(|| HNSQRError::NodeNotFound(external_id.to_string()))?;
         drop(map);
         let graph_gen = self.generation.read();
-        graph_gen.properties.patch_node_properties(node_idx, properties);
+        graph_gen
+            .properties
+            .patch_node_properties(node_idx, properties);
         Ok(())
     }
 
@@ -306,10 +333,9 @@ impl GraphMutationApplier {
         };
 
         let graph_gen = self.generation.read();
-        let delta = graph_gen
-            .edge_delta
-            .as_ref()
-            .ok_or_else(|| HNSQRError::Internal("Graph generation is sealed; cannot write".to_string()))?;
+        let delta = graph_gen.edge_delta.as_ref().ok_or_else(|| {
+            HNSQRError::Internal("Graph generation is sealed; cannot write".to_string())
+        })?;
 
         // Build the edge record with zeroed next pointers before linking both adjacency chains.
         let mut edge = EdgeRecord::new(rel_type, src_idx, dst_idx, weight, 0);
@@ -369,12 +395,14 @@ impl GraphMutationApplier {
         properties: crate::graph::mutation::command::GraphProperties,
     ) -> HNSQRResult<()> {
         let map = self.rel_id_map.read();
-        let &delta_id = map
-            .get(&relationship_id)
-            .ok_or_else(|| HNSQRError::Internal(format!("Relationship {relationship_id} not found")))?;
+        let &delta_id = map.get(&relationship_id).ok_or_else(|| {
+            HNSQRError::Internal(format!("Relationship {relationship_id} not found"))
+        })?;
         drop(map);
         let graph_gen = self.generation.read();
-        graph_gen.properties.patch_rel_properties(delta_id, properties);
+        graph_gen
+            .properties
+            .patch_rel_properties(delta_id, properties);
         Ok(())
     }
 

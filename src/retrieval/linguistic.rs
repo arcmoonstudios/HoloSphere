@@ -55,9 +55,13 @@ impl FuzzyLevenshteinAutomaton {
 
         for i in 1..=m {
             for j in 1..=n {
-                let cost = if self.query_chars[i - 1] == cand_chars[j - 1] { 0 } else { 1 };
+                let cost = if self.query_chars[i - 1] == cand_chars[j - 1] {
+                    0
+                } else {
+                    1
+                };
                 dp[i][j] = (dp[i - 1][j] + 1) // deletion
-                    .min(dp[i][j - 1] + 1)   // insertion
+                    .min(dp[i][j - 1] + 1) // insertion
                     .min(dp[i - 1][j - 1] + cost); // substitution
             }
         }
@@ -75,7 +79,10 @@ pub struct MorphologicalStemmer {
 impl MorphologicalStemmer {
     pub fn new() -> Self {
         let mut stopwords = HashSet::new();
-        for word in &["the", "is", "are", "at", "which", "on", "and", "a", "an", "in", "to", "for", "of", "with"] {
+        for word in &[
+            "the", "is", "are", "at", "which", "on", "and", "a", "an", "in", "to", "for", "of",
+            "with",
+        ] {
             stopwords.insert(word.to_string());
         }
         Self { stopwords }
@@ -137,7 +144,11 @@ pub struct PhoneticMatcher;
 impl PhoneticMatcher {
     /// Computes American Soundex representation (e.g. "Robert" -> "R163").
     pub fn soundex(word: &str) -> String {
-        let clean: Vec<char> = word.to_uppercase().chars().filter(|c| c.is_alphabetic()).collect();
+        let clean: Vec<char> = word
+            .to_uppercase()
+            .chars()
+            .filter(|c| c.is_alphabetic())
+            .collect();
         if clean.is_empty() {
             return String::new();
         }
@@ -186,16 +197,17 @@ mod tests {
     #[test]
     fn test_fuzzy_levenshtein_automaton() {
         let dfa = FuzzyLevenshteinAutomaton::new("holosphere", 2);
-        assert!(dfa.matches("holosphere").0);   // exact (0 edits)
-        assert!(dfa.matches("holosfere").0);    // 2 edits (ph -> f)
-        assert!(dfa.matches("holospher").0);    // 1 edit (trailing e dropped)
+        assert!(dfa.matches("holosphere").0); // exact (0 edits)
+        assert!(dfa.matches("holosfere").0); // 2 edits (ph -> f)
+        assert!(dfa.matches("holospher").0); // 1 edit (trailing e dropped)
         assert!(!dfa.matches("completely_other").0);
     }
 
     #[test]
     fn test_morphological_stemmer_and_cjk() {
         let stemmer = MorphologicalStemmer::new();
-        let tokens = stemmer.tokenize_and_stem("The engineering teams are working", LanguageMode::English);
+        let tokens =
+            stemmer.tokenize_and_stem("The engineering teams are working", LanguageMode::English);
         assert_eq!(tokens, vec!["engineer", "team", "work"]);
 
         let cjk = stemmer.tokenize_and_stem("量子計算", LanguageMode::CjkNgram);

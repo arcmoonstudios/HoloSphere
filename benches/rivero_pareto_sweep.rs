@@ -74,7 +74,8 @@ fn load_real_workload(name: &str, count: usize, dim: usize, query_count: usize) 
     let (mut queries, _) = common::read_fvecs(&query_path, Some(query_count)).unwrap_or_default();
 
     if corpus.is_empty() {
-        let text_corpus = common::generate_realistic_text_corpus(count, query_count, dim, SWEEP_SEED);
+        let text_corpus =
+            common::generate_realistic_text_corpus(count, query_count, dim, SWEEP_SEED);
         corpus = text_corpus.folded_corpus;
         queries = text_corpus.folded_queries;
     }
@@ -334,10 +335,9 @@ fn main() {
             workload.corpus.len()
         ));
         let index = if snap_path.exists() {
-            if let Ok(idx) = HNSQRIndex::open_snapshot_v2(
-                &snap_path,
-                hnsqr::SnapshotOpenOptions::default(),
-            ) {
+            if let Ok(idx) =
+                HNSQRIndex::open_snapshot_v2(&snap_path, hnsqr::SnapshotOpenOptions::default())
+            {
                 idx.freeze_rivero_routing();
                 idx
             } else {

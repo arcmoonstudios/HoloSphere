@@ -304,7 +304,11 @@ impl<'a> TreeBuilder<'a> {
         }
     }
 
-    fn build_tree(mut self, leaf_target: usize, profile: ManifoldGeometryProfile) -> SemanticProofTree {
+    fn build_tree(
+        mut self,
+        leaf_target: usize,
+        profile: ManifoldGeometryProfile,
+    ) -> SemanticProofTree {
         let total_slots = self.slots.len();
         self.nodes.push(ProofNode::default());
         self.partition_recursive(0, 0, total_slots, leaf_target);
@@ -519,7 +523,9 @@ impl<'a> TreeBuilder<'a> {
                     min_cos_l = dot;
                 }
             }
-            let sin_l = (1.0f32 - min_cos_l.clamp(-1.0, 1.0).powi(2)).max(0.0).sqrt();
+            let sin_l = (1.0f32 - min_cos_l.clamp(-1.0, 1.0).powi(2))
+                .max(0.0)
+                .sqrt();
 
             let mut min_cos_r = 1.0f32;
             for &s in &cur_right {
@@ -533,7 +539,9 @@ impl<'a> TreeBuilder<'a> {
                     min_cos_r = dot;
                 }
             }
-            let sin_r = (1.0f32 - min_cos_r.clamp(-1.0, 1.0).powi(2)).max(0.0).sqrt();
+            let sin_r = (1.0f32 - min_cos_r.clamp(-1.0, 1.0).powi(2))
+                .max(0.0)
+                .sqrt();
 
             let balance_diff = (cur_left.len() as f32 - cur_right.len() as f32).abs();
             let penalty = (cur_left.len() as f32) * sin_l

@@ -9,7 +9,6 @@
 /*▫~•◦------------------------------------------------------------------------------------‣
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
- 
 
 use crate::graph::catalog::labels::LabelId;
 use crate::graph::catalog::relationships::RelTypeId;
@@ -52,17 +51,11 @@ pub enum PhysicalOp {
         weighted: bool,
     },
     /// Apply scalar predicates; deactivates rows that fail.
-    Filter {
-        predicates: Vec<ScalarPredicate>,
-    },
+    Filter { predicates: Vec<ScalarPredicate> },
     /// Remove inactive rows and truncate to `count`.
-    Limit {
-        count: usize,
-    },
+    Limit { count: usize },
     /// Keep only the listed column indices.
-    Project {
-        keep_cols: Vec<usize>,
-    },
+    Project { keep_cols: Vec<usize> },
 }
 
 /// An ordered sequence of physical operators plus a binding-column registry.
@@ -86,7 +79,11 @@ impl PhysicalPlan {
         Self::lower_node(&plan, &mut ops, &mut col_of, &mut col_counter);
 
         let output_cols = col_of.iter().map(|(_, c)| *c).collect();
-        PhysicalPlan { ops, col_of, output_cols }
+        PhysicalPlan {
+            ops,
+            col_of,
+            output_cols,
+        }
     }
 
     fn lower_node(
@@ -96,7 +93,11 @@ impl PhysicalPlan {
         col_counter: &mut usize,
     ) {
         match plan {
-            LogicalPlan::NodeScan { binding, label_filter, predicates } => {
+            LogicalPlan::NodeScan {
+                binding,
+                label_filter,
+                predicates,
+            } => {
                 let col = *col_counter;
                 *col_counter += 1;
                 col_of.push((*binding, col));
@@ -105,10 +106,17 @@ impl PhysicalPlan {
                     label_filter: *label_filter,
                 });
                 if !predicates.is_empty() {
-                    ops.push(PhysicalOp::Filter { predicates: predicates.clone() });
+                    ops.push(PhysicalOp::Filter {
+                        predicates: predicates.clone(),
+                    });
                 }
             }
-            LogicalPlan::VectorSeed { binding, query_param, k, contract } => {
+            LogicalPlan::VectorSeed {
+                binding,
+                query_param,
+                k,
+                contract,
+            } => {
                 let col = *col_counter;
                 *col_counter += 1;
                 col_of.push((*binding, col));
@@ -202,14 +210,19 @@ impl PhysicalPlan {
             LogicalPlan::Filter { input, predicates } => {
                 Self::lower_node(input, ops, col_of, col_counter);
                 if !predicates.is_empty() {
-                    ops.push(PhysicalOp::Filter { predicates: predicates.clone() });
+                    ops.push(PhysicalOp::Filter {
+                        predicates: predicates.clone(),
+                    });
                 }
             }
             LogicalPlan::Limit { input, count } => {
                 Self::lower_node(input, ops, col_of, col_counter);
                 ops.push(PhysicalOp::Limit { count: *count });
             }
-            LogicalPlan::Project { input, output_bindings } => {
+            LogicalPlan::Project {
+                input,
+                output_bindings,
+            } => {
                 Self::lower_node(input, ops, col_of, col_counter);
                 let keep: Vec<usize> = output_bindings
                     .iter()

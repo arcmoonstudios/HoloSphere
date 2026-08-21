@@ -8,7 +8,7 @@
 /*▫~•◦------------------------------------------------------------------------------------‣
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
- 
+
 use crate::graph::query::ast::{GraphPattern, QueryAst};
 use crate::graph::query::symbols::SymbolTable;
 

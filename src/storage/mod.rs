@@ -37,8 +37,8 @@ pub use io_budget::{IoBudgetManager, IoMaintenanceClass};
 pub use mmap_arena::{MmapArena, MmapHeader};
 pub use predictive_warming::{PredictiveWarmer, ProofHeatMap};
 pub use relational_acid::{
-    AcidTransaction, ColumnDefinition, RelationalRow, RelationalSqlEngine,
-    RowLevelSecurityPolicy, SqlType, SqlValue, TableSchema, TransactionState,
+    AcidTransaction, ColumnDefinition, RelationalRow, RelationalSqlEngine, RowLevelSecurityPolicy,
+    SqlType, SqlValue, TableSchema, TransactionState,
 };
 pub use remote_cache::{CachedChunk, ChunkId, RemoteRangeCache};
 pub use remote_layout::{
@@ -48,12 +48,13 @@ pub use segment::{
     ImmutableSegment, MutableSegment, SegmentId, SegmentState, SegmentStats, SegmentedEngine,
 };
 pub use segment_store::{
-    ImmutableSegmentStore, LocalSegmentStore, S3SegmentStore, SegmentObjectId, SegmentObjectMetadata,
+    ImmutableSegmentStore, LocalSegmentStore, S3SegmentStore, SegmentObjectId,
+    SegmentObjectMetadata,
 };
 pub use sharded_map::ShardedConcurrentMap;
 pub use snapshot::{
-    SectionDescriptor, SnapshotAttachBreakdown, SnapshotHeaderV2,
-    SnapshotOpenOptions, SnapshotStats, VerificationMode,
+    SectionDescriptor, SnapshotAttachBreakdown, SnapshotHeaderV2, SnapshotOpenOptions,
+    SnapshotStats, VerificationMode,
 };
 pub use two_tier_cache::{CacheBlockId, CachedVectorBlock, TwoTierCache};
 pub use wal::{

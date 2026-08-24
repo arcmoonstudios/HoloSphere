@@ -53,6 +53,15 @@ pub struct ScoredWitness {
     pub similarity: SimilarityScore,
 }
 
+/// Result of inserting one side of a reciprocal witness connection.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct ReciprocalInsert {
+    /// Whether the incoming witness survived deterministic degree pruning.
+    pub retained: bool,
+    /// Existing witness displaced by the incoming edge, if any.
+    pub evicted: Option<ScoredWitness>,
+}
+
 impl ScoredWitness {
     const EMPTY: Self = Self {
         index: NodeIndex::MAX,
@@ -135,11 +144,14 @@ pub(crate) fn insert_reciprocal(
     current: &mut SmallVec<[ScoredWitness; RIVERO_WITNESS_INLINE_DEGREE]>,
     incoming: ScoredWitness,
     requested_degree: usize,
-) -> bool {
+) -> ReciprocalInsert {
     let degree = bounded_degree(requested_degree);
     if degree == 0 {
         current.clear();
-        return false;
+        return ReciprocalInsert {
+            retained: false,
+            evicted: None,
+        };
     }
 
     let mut ranked = [ScoredWitness::EMPTY; RIVERO_WITNESS_MAX_DEGREE + 1];
@@ -155,9 +167,14 @@ pub(crate) fn insert_reciprocal(
     len += 1;
     ranked[..len].sort_unstable_by(witness_order);
 
+    let keep_len = len.min(degree);
+    let evicted = (len > keep_len).then_some(ranked[keep_len]);
     current.clear();
-    current.extend_from_slice(&ranked[..len.min(degree)]);
-    current.iter().any(|edge| edge.index == incoming.index)
+    current.extend_from_slice(&ranked[..keep_len]);
+    ReciprocalInsert {
+        retained: current.iter().any(|edge| edge.index == incoming.index),
+        evicted,
+    }
 }
 
 #[cfg(test)]
@@ -207,8 +224,9 @@ mod tests {
             index: 4,
             similarity: 0.85,
         };
-        let retained = insert_reciprocal(&mut current, incoming, 3);
-        assert!(retained);
+        let outcome = insert_reciprocal(&mut current, incoming, 3);
+        assert!(outcome.retained);
+        assert_eq!(outcome.evicted.map(|edge| edge.index), Some(3));
         assert_eq!(
             current.iter().map(|edge| edge.index).collect::<Vec<_>>(),
             [1, 4, 2]

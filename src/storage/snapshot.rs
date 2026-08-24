@@ -968,6 +968,19 @@ impl HNSQRIndex {
                         }
                     }
                 });
+
+            // Snapshot V2 persists only the graph's layer-0 adjacency. Re-establish
+            // a valid layer-0 entry point after restoring those edges; otherwise
+            // graph-only search observes an empty entry-point set and returns no
+            // candidates despite the graph being present on disk.
+            if let Some(entry_point) =
+                (0..vector_count as NodeIndex).find(|&slot| index.arena.is_live(slot))
+            {
+                let mut entry_points = index.entry_points.write();
+                entry_points.clear();
+                entry_points.push(entry_point);
+                index.max_level.store(0, Ordering::Release);
+            }
         }
         let graph_restore_us = t11.elapsed().as_micros() as f64;
 
@@ -1090,6 +1103,12 @@ mod tests {
             assert!((a.1 - b.1).abs() < 1e-6);
         }
         assert_eq!(orig_diag.resident_scans, rest_diag.resident_scans);
+
+        let restored_graph_results = restored.search_indices_graph(&query, 10, None).unwrap();
+        assert!(
+            !restored_graph_results.is_empty(),
+            "Snapshot V2 must restore a usable graph entry point"
+        );
 
         let _ = std::fs::remove_file(snap_path);
     }

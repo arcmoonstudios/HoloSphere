@@ -342,31 +342,19 @@ fn run_full_benchmark(
 
     // Analysis: Compare HNSQR performance vs brute-force baselines
     println!("\n⚠️  PERFORMANCE ANALYSIS (ef_search=10 vs Brute Force):");
-    let ef10_vs_seq = latencies_us_ef10 / sequential_brute_latency_us;
-    let ef10_vs_par = latencies_us_ef10 / parallel_brute_latency_us;
+    let ef10_ratio_seq = latencies_us_ef10 / sequential_brute_latency_us.max(1e-6);
+    let ef10_speedup_seq = sequential_brute_latency_us / latencies_us_ef10.max(1e-6);
+    let ef10_ratio_par = latencies_us_ef10 / parallel_brute_latency_us.max(1e-6);
+    let ef10_speedup_par = parallel_brute_latency_us / latencies_us_ef10.max(1e-6);
     println!(
-        "   HNSQR ef=10 ({:.1} µs) is {:.2}× {} than sequential brute force ({:.1} µs)",
-        latencies_us_ef10,
-        ef10_vs_seq,
-        if ef10_vs_seq > 1.0 {
-            "SLOWER"
-        } else {
-            "faster"
-        },
-        sequential_brute_latency_us
+        "   vs Sequential exact ({:.1} µs): latency ratio = {:.2}× | speedup = {:.2}×",
+        sequential_brute_latency_us, ef10_ratio_seq, ef10_speedup_seq
     );
     println!(
-        "   HNSQR ef=10 ({:.1} µs) is {:.2}× {} than parallel brute force ({:.1} µs)",
-        latencies_us_ef10,
-        ef10_vs_par,
-        if ef10_vs_par > 1.0 {
-            "SLOWER"
-        } else {
-            "faster"
-        },
-        parallel_brute_latency_us
+        "   vs Parallel exact   ({:.1} µs): latency ratio = {:.2}× | speedup = {:.2}×",
+        parallel_brute_latency_us, ef10_ratio_par, ef10_speedup_par
     );
-    if ef10_vs_seq > 1.0 {
+    if ef10_speedup_seq < 1.0 {
         println!(
             "   ⚠️  At N={}, graph overhead dominates. ANN crossover point is higher.",
             num_vectors
@@ -632,17 +620,28 @@ fn main() {
         num_vectors as f64 / dur_mmap_build.as_secs_f64()
     );
 
-    // Mapping attach only. External IDs, metadata, graph state, and Rivero
-    // territories are not reconstructed by the current mmap format.
+    // Mapping attach & cold first query
     drop(mmap_index);
     let t_reboot = Instant::now();
     let reopened_index = HNSQRIndex::open_mmap(&mmap_file).unwrap();
     let dur_reboot = t_reboot.elapsed();
     println!(
-        " • Quantized Mmap File Attach:    {:.2?} ({:.2} µs mapping latency; routing state not restored)",
+        " • Raw Mmap Syscall Attach:       {:.2?} ({:.2} µs mapping syscall)",
         dur_reboot,
         dur_reboot.as_secs_f64() * 1_000_000.0
     );
+
+    let t_first = Instant::now();
+    let _ = reopened_index
+        .search_indices_exact(&dataset_clust[0].1, 10, None)
+        .unwrap();
+    let dur_first = t_first.elapsed();
+    println!(
+        " • Cold First Query (Exact SIMD): {:.2?} ({:.2} µs)",
+        dur_first,
+        dur_first.as_secs_f64() * 1_000_000.0
+    );
+
     drop(reopened_index);
     let _ = std::fs::remove_file(&mmap_file);
 

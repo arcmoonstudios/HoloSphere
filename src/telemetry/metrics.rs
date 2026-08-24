@@ -9,6 +9,8 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
+use parking_lot::RwLock;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
@@ -26,11 +28,20 @@ pub struct EngineMetrics {
     pub wal_fsync_micros_total: Arc<AtomicU64>,
     pub metadata_memory_bytes: Arc<AtomicUsize>,
     pub cluster_epoch: Arc<AtomicU64>,
+    pub tenant_queries: Arc<RwLock<HashMap<String, u64>>>,
+    pub tenant_storage_gb: Arc<RwLock<HashMap<String, f64>>>,
 }
 
 impl EngineMetrics {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Replaces the exported billing snapshot for one tenant.
+    pub fn set_tenant_usage(&self, tenant: impl Into<String>, queries: u64, storage_gb: f64) {
+        let tenant = tenant.into();
+        self.tenant_queries.write().insert(tenant.clone(), queries);
+        self.tenant_storage_gb.write().insert(tenant, storage_gb);
     }
 }
 
@@ -108,6 +119,51 @@ impl PrometheusExporter {
             metrics.cluster_epoch.load(Ordering::Relaxed)
         ));
 
+        if let Some(queries) = metrics.tenant_queries.try_read() {
+            out.push_str("# HELP hnsqr_tenant_queries_total Usage queries per tenant namespace.\n");
+            out.push_str("# TYPE hnsqr_tenant_queries_total counter\n");
+            for (tenant, count) in queries.iter() {
+                out.push_str(&format!(
+                    "hnsqr_tenant_queries_total{{tenant=\"{}\"}} {count}\n",
+                    prometheus_label_value(tenant)
+                ));
+            }
+        }
+        if let Some(storage) = metrics.tenant_storage_gb.try_read() {
+            out.push_str(
+                "# HELP hnsqr_tenant_storage_gb Storage volume per tenant in gigabytes.\n",
+            );
+            out.push_str("# TYPE hnsqr_tenant_storage_gb gauge\n");
+            for (tenant, gb) in storage.iter() {
+                out.push_str(&format!(
+                    "hnsqr_tenant_storage_gb{{tenant=\"{}\"}} {gb:.4}\n",
+                    prometheus_label_value(tenant)
+                ));
+            }
+        }
+
         out
+    }
+}
+
+fn prometheus_label_value(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('\n', "\\n")
+        .replace('"', "\\\"")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exports_escaped_per_tenant_usage() {
+        let metrics = EngineMetrics::new();
+        metrics.set_tenant_usage("tenant\"alpha", 42, 1.25);
+
+        let output = PrometheusExporter::format(&metrics);
+        assert!(output.contains("hnsqr_tenant_queries_total{tenant=\"tenant\\\"alpha\"} 42"));
+        assert!(output.contains("hnsqr_tenant_storage_gb{tenant=\"tenant\\\"alpha\"} 1.2500"));
     }
 }

@@ -615,34 +615,49 @@ impl RiveroBulkBuilder {
 
         // PHASE 5 & 6: DETERMINISTIC RECIPROCAL PRUNING (Guarantees identical SHA-256 across all thread counts)
         let t4 = Instant::now();
-        let proposals_by_dest: Vec<Vec<ScoredWitness>> = if degree == 0 {
-            vec![Vec::new(); n]
-        } else {
-            (0..n)
-                .into_par_iter()
-                .map(|dest| {
-                    let mut incoming: Vec<ScoredWitness> = Vec::with_capacity(degree * 2);
-                    incoming.extend_from_slice(&directed_proposals[dest].1);
+        let mut undirected_proposals: Vec<(NodeIndex, NodeIndex, f32)> =
+            Vec::with_capacity(n.saturating_mul(degree));
+        for (owner, proposals) in &directed_proposals {
+            for proposal in proposals {
+                if *owner == proposal.index {
+                    continue;
+                }
+                let (a, b) = if *owner < proposal.index {
+                    (*owner, proposal.index)
+                } else {
+                    (proposal.index, *owner)
+                };
+                undirected_proposals.push((a, b, proposal.similarity));
+            }
+        }
+        undirected_proposals.sort_unstable_by(|lhs, rhs| {
+            rhs.2
+                .total_cmp(&lhs.2)
+                .then_with(|| lhs.0.cmp(&rhs.0))
+                .then_with(|| lhs.1.cmp(&rhs.1))
+        });
+        undirected_proposals.dedup_by(|next, current| next.0 == current.0 && next.1 == current.1);
 
-                    incoming.sort_unstable_by(|a, b| {
-                        b.similarity
-                            .total_cmp(&a.similarity)
-                            .then_with(|| a.index.cmp(&b.index))
-                    });
-
-                    let mut unique: Vec<ScoredWitness> = Vec::with_capacity(degree);
-                    for cand in incoming {
-                        if !unique.iter().any(|existing| existing.index == cand.index) {
-                            unique.push(cand);
-                            if unique.len() >= degree {
-                                break;
-                            }
-                        }
-                    }
-                    unique
-                })
-                .collect()
-        };
+        // Admit an undirected pair only while both endpoints have capacity.
+        // Reciprocity is therefore a construction invariant, not a best-effort
+        // result of independent per-node pruning.
+        let mut proposals_by_dest: Vec<Vec<ScoredWitness>> = vec![Vec::new(); n];
+        for (a, b, similarity) in undirected_proposals {
+            let a_idx = a as usize;
+            let b_idx = b as usize;
+            if proposals_by_dest[a_idx].len() >= degree || proposals_by_dest[b_idx].len() >= degree
+            {
+                continue;
+            }
+            proposals_by_dest[a_idx].push(ScoredWitness {
+                index: b,
+                similarity,
+            });
+            proposals_by_dest[b_idx].push(ScoredWitness {
+                index: a,
+                similarity,
+            });
+        }
         let time_witness_scoring_ms = t4.elapsed().as_secs_f64() * 1000.0;
 
         let t5 = Instant::now();
@@ -800,6 +815,15 @@ mod tests {
         for i in 0..n {
             assert_eq!(built1.witnesses[i], built4.witnesses[i]);
             assert_eq!(built1.witnesses[i], built8.witnesses[i]);
+            for edge in &built1.witnesses[i] {
+                assert!(
+                    built1.witnesses[edge.index as usize]
+                        .iter()
+                        .any(|reverse| reverse.index == i as NodeIndex),
+                    "bulk witness {i} -> {} is not reciprocal",
+                    edge.index
+                );
+            }
         }
     }
 

@@ -353,21 +353,19 @@ impl<S: HNSQRService + 'static> HNSQRServer<S> {
                                 ..Default::default()
                             };
 
-                            match service.search(
+                            match service.search_with_proof(
                                 &ctx,
                                 &query,
                                 k,
                                 crate::proof::lutz::SemanticRerankPlan::Auto,
                             ) {
-                                Ok(results) => {
+                                Ok(response) => {
                                     let header_pos = write_buf.len();
-                                    // Flag 0x0001 = CertifiedExact. The search trait returns
-                                    // Vec<(id, score)> without a proof struct; default to
-                                    // CertifiedExact unless the service is demonstrably
-                                    // non-certifying (flag left clear = HighRecall / Budget).
-                                    // Full proof propagation requires a proof-carrying search
-                                    // trait variant and is tracked separately.
-                                    let cert_flags: u16 = 0x0001; // CertifiedExact
+                                    // Bit 0: certified exact. Bit 1: proof upper bound follows
+                                    // the result count in the payload. These flags deliberately
+                                    // reflect planner evidence, never result count heuristics.
+                                    let cert_flags = u16::from(response.is_certified)
+                                        | (u16::from(response.proof_upper_bound.is_some()) << 1);
                                     let response_header = MessageHeader {
                                         magic: PROTOCOL_MAGIC,
                                         opcode: OpCode::Search,
@@ -378,8 +376,11 @@ impl<S: HNSQRService + 'static> HNSQRServer<S> {
                                     response_header.encode(&mut write_buf);
 
                                     let payload_start = write_buf.len();
-                                    write_buf.put_u32(results.len() as u32);
-                                    for (res_id, score) in results {
+                                    write_buf.put_u32(response.results.len() as u32);
+                                    if let Some(upper_bound) = response.proof_upper_bound {
+                                        write_buf.put_f32(upper_bound);
+                                    }
+                                    for (res_id, score) in response.results {
                                         let id_bytes = res_id.as_bytes();
                                         write_buf.put_u16(id_bytes.len() as u16);
                                         write_buf.put_slice(id_bytes);
@@ -694,6 +695,15 @@ impl HNSQRClient {
         query: &VectorEmbedding,
         k: usize,
     ) -> HNSQRResult<Vec<(String, SimilarityScore)>> {
+        Ok(self.search_with_proof(query, k).await?.results)
+    }
+
+    /// Performs a search and returns the protocol-level verification evidence.
+    pub async fn search_with_proof(
+        &mut self,
+        query: &VectorEmbedding,
+        k: usize,
+    ) -> HNSQRResult<Qir0SearchResponse> {
         let req_id = self.next_req_id;
         self.next_req_id += 1;
 
@@ -746,6 +756,17 @@ impl HNSQRClient {
             .map_err(|e| HNSQRError::SerializationError(e.to_string()))?;
 
         let count = payload.get_u32() as usize;
+        let is_certified = resp_hdr.flags & 0x0001 != 0;
+        let proof_upper_bound = if resp_hdr.flags & 0x0002 != 0 {
+            if payload.len() < std::mem::size_of::<f32>() {
+                return Err(HNSQRError::SerializationError(
+                    "QIR0 search response declares a proof bound but omits it".to_string(),
+                ));
+            }
+            Some(payload.get_f32())
+        } else {
+            None
+        };
         let mut results = Vec::with_capacity(count);
 
         for _ in 0..count {
@@ -760,8 +781,20 @@ impl HNSQRClient {
             results.push((id_str, score));
         }
 
-        Ok(results)
+        Ok(Qir0SearchResponse {
+            results,
+            is_certified,
+            proof_upper_bound,
+        })
     }
+}
+
+/// Search response received over QIR0, including optional planner verification.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Qir0SearchResponse {
+    pub results: Vec<(String, SimilarityScore)>,
+    pub is_certified: bool,
+    pub proof_upper_bound: Option<f32>,
 }
 
 #[cfg(test)]

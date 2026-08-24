@@ -85,8 +85,8 @@ fn main() {
     let mut config = HNSQRConfig::default();
     config.max_elements = n;
     config.rivero_enabled = true;
-    config.distance_function = hnsqr::DistanceFunction::Cosine;
-    let index = HNSQRIndex::new(config, 32);
+    let dim = adv.corpus.first().map_or(32, |v| v.dimension());
+    let index = HNSQRIndex::new(config, dim);
 
     for (i, (vec, meta)) in adv.corpus.iter().zip(adv.metadata.iter()).enumerate() {
         let v: VectorEmbedding = vec.clone();

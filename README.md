@@ -2,7 +2,7 @@
 
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
 [![Rust: 2024](https://img.shields.io/badge/Rust-2024%20Edition-orange.svg)](https://www.rust-lang.org/)
-[![Tests](https://img.shields.io/badge/Tests-153%2F153%20Passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-269%2F269%20Passing-brightgreen.svg)]()
 [![Clippy](https://img.shields.io/badge/Clippy%20-D%20warnings-clean-brightgreen.svg)]()
 [![PGO: Optimized](https://img.shields.io/badge/PGO-LLVM%20Profile%20Guided-purple.svg)](docs/PROFILE_GUIDED_OPTIMIZATION.md)
 
@@ -13,14 +13,75 @@
 
 HoloSphere is designed around explicit contract-driven retrieval and unified all-or-nothing multi-model state machine replication:
 
-> **When `Certified` retrieval is requested (the system default), HoloSphere establishes the mathematically exact Top-K for the
-> pinned corpus snapshot, or returns an explicit failure instead of silently degrading correctness.**
-> **When a multi-model transaction is committed (`DataMutation::Batch`), all 5 paradigm representations (Vectors, Graphs, Relational SQL, Agent Memory, Hypercube Tensors) advance in a single atomic Raft LSN, visible under one pinned universal snapshot.**
+> **Production Retrieval Baseline**: Exhaustive contiguous AVX2/AVX-512 SIMD scan is the authoritative production retrieval implementation, providing guaranteed 100.000% Recall@10 with zero indexing artifacts.
+> **Empirical Admission Gates**: Non-brute-force indexing mechanisms (Rivero $E_8$ routing, Lutz Proof Tree traversal, and Graph ANN) are experimental research candidates evaluated strictly against the Exact SIMD baseline. Every algorithm must achieve $\ge 95\%$ (then $\ge 99\%$) Recall@10 while remaining materially faster than Exact SIMD.
+> **When a multi-model transaction is committed (`DataMutation::Batch`)**, all 5 paradigm representations (Vectors, Graphs, Relational SQL, Agent Memory, Hypercube Tensors) advance in a single atomic Raft LSN, visible under one pinned universal snapshot.
 
-The system unifies exact dense retrieval, Rivero $E_8$ candidate routing, SemanticProofTree
-geometric bounding, LUTz progressive lookup tables, SIMD exact scoring, sparse/hybrid
-retrieval, multi-vector late interaction, metadata filtering, segmented WAL-backed storage,
-Raft consensus state-machine replication, tenant isolation, and native Graph-RAG convergence.
+The system unifies exact SIMD dense retrieval, continuous multi-lane coordinate folding,
+metadata filtering, segmented WAL-backed storage, Raft consensus state-machine replication,
+tenant isolation, and native Graph-RAG convergence.
+
+---
+
+## Evolutionary Knowledge Hypergraph Layer
+
+HoloSphere as a whole remains a multi-paradigm state engine. Within it, the
+`entity`, `relation`, and `learning` subsystems form an evolutionary knowledge
+hypergraph layer:
+
+- Canonical relations are typed, provenance-bearing N-ary role bindings; binary
+  relationships are the N=2 case and CSR/CSC graph edges are derived projections.
+- `HyperPattern` supports both genuinely symmetric member sets and explicit
+  role-aware matching without imposing an artificial source/target split.
+- Relation versions carry temporal validity and epistemic state. Evolutionary
+  inference produces provisional proposals rather than silently rewriting
+  admitted knowledge.
+- Evidence independence, circularity, staleness, and semantic-deduplication guards
+  prevent N-ary fan-out and swarm echoes from multiplying confidence.
+- Retrieval marked `Certified` is resolved by a complete metric-consistent proof
+  or exhaustive scan before its output can be treated as exact evidence.
+
+### Governed Cross-Domain Discovery
+
+The learning subsystem can now turn repeated, certified problem-solving episodes
+into inspectable resolution proposals without adding executable code:
+
+`project_experience` reads pinned `ExperienceSegment` and entity-provenance snapshots,
+classifies outcomes with deterministic metric rules, and content-addresses context
+features, domains, action plans, and empirical roots into a `DiscoveryCorpus`. An LSN
+cutoff reserves later outcomes for validation, so the engine can operate directly on
+durable experience rather than a caller-authored pattern table.
+
+1. `ConceptProfile` records domain-local concepts using canonical capabilities and
+   N-ary structural roles. `induce_schemas` proposes cross-domain concept classes
+   when those signatures recur across independently evidenced domains.
+2. `mine_motifs` searches a deterministic, policy-bounded space of feature
+   conjunctions for resolutions that succeeded across domains. The conjunction was
+   not scripted as a rule; it is derived from the evidence corpus.
+3. Mining and validation use explicit, disjoint evidence partitions. A generated
+   declarative operator must reproduce on reserved certified cases, beat its
+   resolution baseline, satisfy contradiction limits, and pass independently in
+   the required number of domains and empirical roots. Validation cases sharing an
+   empirical root with discovery evidence are excluded from admission metrics.
+4. Operators are content-addressed data with a fixed predicate/effect vocabulary;
+   they can propose a resolution but cannot execute native code or mutate admitted
+   knowledge. Their replicated lifecycle is `Provisional -> Shadow -> Admitted`,
+   with admission requiring a policy or human authority. Rejection and deprecation
+   are durable states, and historical versions remain visible at pinned LSNs.
+5. Admitted operators can match a structurally compatible new problem—even in a
+   previously unseen domain—and return the discovered resolution with its source
+   motifs. Conflicts and missing-domain coverage produce bounded shadow-replay
+   experiment proposals; the planner never executes interventions itself.
+
+This warrants a precise claim: HoloSphere can discover and reuse bounded,
+cross-domain declarative patterns over supplied semantic features, subject to
+out-of-sample falsification and governance. It does **not** warrant unrestricted
+autonomous discovery: it does not invent arbitrary predicates, semantic primitives,
+or executable reasoning laws, and its results remain limited by representation and
+evidence quality.
+
+The compact property-graph engine remains an acceleration and traversal paradigm;
+it is not the canonical ontology or provenance store.
 
 ---
 
@@ -100,52 +161,39 @@ ShardedConcurrentMap   FederatedRegionManager         UsageBillingMeter        A
 
 ---
 
-## The 6-Front Battlefront Supremacy
+## The Production Retrieval Standard & Research Admission Gates
 
-| Battlefront | Target Incumbent | HoloSphere Counter-Weapon & Architectural Superiority |
-| :--- | :--- | :--- |
-| **Front 1: GPU & Ingestion Scale** | **Milvus** | • [`GpuTensorAccelerator`](src/vector/gpu_tensor.rs): Complex FP16/FP8 Tensor Core GEMM matrix multiplication (`cublasGemmEx`) with pinned DMA memory (`CudaPinnedMemory`) and SIMD fallback.<br>• [`AsyncLogStreamIngestor`](src/cluster/stream_ingest.rs): Lock-free streaming ingestion buffer decoupling burst write ingestion from synchronous Raft locks. |
-| **Front 2: Serverless Cloud Fleet** | **Pinecone** | • [`ServerlessQueryRouter`](src/cluster/serverless.rs): Stateless ephemeral query worker pooling with instant zero-copy S3/Blob segment mounting (<5ms cold attach), warm lease recycling, and autonomous scale-to-zero. |
-| **Front 3: In-Memory Multi-Model KV** | **Redis** | • [`MemoryKvStore`](src/ecosystem/kv_cache.rs): Sub-100ns in-memory key-value cache supporting atomic `incr_by`, TTL auto-eviction, hash maps, and string tag sets (`set_add`, `set_is_member`). |
-| **Front 4: In-Process Inference & UI** | **Qdrant & Weaviate** | • [`InProcessModelEmbedder`](src/vector/inference.rs): Raw text $\to$ token embeddings $\to$ zero-copy complex folding.<br>• [`WebConsole`](src/transport/web_console.rs): Embedded single-page dashboard on `/dashboard` and `/ui`.<br>• [`GeoPolygon`](src/metadata/geo.rs): 2D GIS polygon filtering with Jordan Curve ray-casting. |
-| **Front 5: Full Multi-Statement GQL** | **Neo4j / Memgraph** | • [`src/graph/query/`](src/graph/query/): Cypher/GQL compiler supporting `UNWIND`, `CALL { ... }` subqueries, `MERGE` patterns, and multi-statement transactional batch executions. |
-| **Front 6: PAC Proof Relaxation** | **Approximate Engines** | • [`src/planning/planner.rs`](src/planning/planner.rs): $(\epsilon, \delta)$-PAC progressive proof relaxation bound ($(1 - \epsilon)\text{UB}_{\text{cap}} < \tau$) eliminating tail latency spikes on isotropic random noise while preserving formal PAC recall. |
-
----
-
-## The Dual Retrieval Paradigm & Empirical Grounding
-
-HoloSphere explicitly separates two distinct search modalities rather than conflating speed with mathematical certitude:
+HoloSphere anchors all vector retrieval to an exhaustive, cache-aligned AVX2/AVX-512 contiguous SIMD baseline. Any alternative indexing mechanism is treated as a research hypothesis that must justify its existence directly against this baseline across latency, throughput, memory bandwidth, and recall:
 
 ```
-                                  QUERY INGRESS
-                                        │
-                         ┌──────────────┴──────────────┐
-                         ▼                             ▼
-              [CERTIFIED EXACT PATH]          [ADAPTIVE / FAST PATH]
-              • Default Server Contract       • Explicit Opt-In Mode
-              • Admissible Proof Bounds       • E8 Territorial Hashing
-              • Bounded Spherical Caps        • Sub-millisecond Candidate Gen
-              • Unresolved SIMD Resolution    • 0.0% False Confident (In-Domain)
-              • 100.000% Exact Ground Truth   • 32-38% False Confident (OOD/Iso)
-                         │                             │
-                         ▼                             ▼
-                 Verified Top-K                Statistical Top-K
+                            QUERY INGRESS
+                                  │
+                 ┌────────────────┴────────────────┐
+                 ▼                                 ▼
+    [EXACT CONTIGUOUS SIMD SCAN]       [EXPERIMENTAL INDEXING CANDIDATES]
+    • Production Default Standard      • Rivero E8 Territorial Routing
+    • 100.000% Recall@10 Guaranteed    • Lutz Proof Tree Bounding
+    • ~40ms on 1,000,000 Vectors       • HNSW Graph Traversal
+    • Zero Indexing Memory Overhead    • Must pass strict admission gates
+                 │                                 │
+                 ▼                                 ▼
+      Authoritative Top-K            Evaluated vs Exact Baseline
 ```
 
-### 1. The Certified Exact Path (Default, Mathematical Verification)
-- **100.000% Exact Recall**: Formally verified against brute-force ground truth across all dimensions and corpus sizes.
-- **Empirical Pruning Dynamics**: On real-world clustered manifolds, spherical-cap proof bounds prune non-promising subtrees before vector fetch. Under adversarial, isotropic (random high-entropy) noise, metric concentration forces spherical caps to overlap ($\text{UB}_{\text{cap}} \approx 1.0$), correctly escalating all candidates to exact SIMD evaluation.
-- **Throughput & Speedup**: Delivers $1.32\times\text{--}1.86\times$ speedup over brute-force through memory layout alignment, prefetching, and progressive LUTz filtering, while providing a verifiable proof certificate that no ground-truth neighbor was missed.
+### 1. The Production Standard: Contiguous Exact SIMD Scan
+- **100.000% Exact Recall**: Zero false negatives, zero metric approximation artifacts, and zero indexing drift.
+- **Hardware-Saturating Performance**: Highly optimized vector streaming with cacheline prefetching and SIMD dot products (${\sim}40\text{ms}$ exhaustive evaluation on $1\text{M}$ vectors).
+- **Universal Default**: Automatically selected under `RetrievalContract::Exact` (system default) and when effective corpus size $N < N_{\text{cross}}(D)$.
 
-### 2. The Adaptive / Fast Path (Optional High-Throughput Routing)
-- **Sub-Millisecond Candidate Generation**: $E_8$ territorial hashing and 2-hop reciprocal witness expansion route queries in sub-millisecond times ($0.2\text{--}1.2\text{ms}$ at $N=100\text{K}$).
-- **False-Confidence Risk Profile Under Approximate Routing**:
-  - In-Domain Semantic Queries: **0.00% False Confident** (100% accepted at Fast/Balanced).
-  - Hard Negatives: **3.00% False Confident**.
-  - Out-of-Distribution (OOD) Queries: **32.00% False Confident** (candidates score poorly, but low variance in the tail prevents escalation to Strict).
-  - Random Isotropic Noise: **38.00% False Confident**.
-- **Takeaway**: When querying unstructured or OOD data where hallucination is unacceptable, callers should retain `RetrievalContract::Certified` (safe by default).
+### 2. Experimental Research Admission Gates
+Before any non-brute-force indexing path can qualify for production routing, it must pass hard empirical gates on target datasets:
+
+| Retrieval Path | Minimum Quality Gate | Secondary Quality Gate | Performance Requirement vs Exact SIMD |
+| :--- | :---: | :---: | :--- |
+| **Exact SIMD Scan** | **100.0% Recall@10** | **100.0% Recall@10** | Baseline ($1.0\times$) — Authoritative Production Standard |
+| **Rivero $E_8$ Candidate Routing** | $\ge 95.0\%$ Recall@10 | $\ge 99.0\%$ Recall@10 | Must be materially faster than Exact SIMD ($> 2.0\times$ speedup) |
+| **HNSW Graph ANN** | $\ge 95.0\%$ Recall@10 | $\ge 99.0\%$ Recall@10 | Must be materially faster than Exact SIMD ($> 2.0\times$ speedup) |
+| **Lutz Proof Tree (`Certified`)** | **100.0% Exact Recall** | **100.0% Exact Recall** | Must beat Exact SIMD latency ($< 1.0\times$ Exact SIMD time) |
 
 ---
 

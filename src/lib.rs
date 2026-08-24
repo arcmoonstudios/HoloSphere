@@ -80,8 +80,18 @@ pub mod retrieval;
 /// Rivero bounded semantic address resolution, parallel bulk builder, and reciprocal witnesses.
 pub mod rivero;
 use crate::rivero::witness as rivero_witness;
+/// Semantic Kernel v1 Conformance & Compatibility Subsystem.
+pub mod conformance;
+/// Unified Entity Kernel — Universal Entity Universe, Epistemics, Provenance & Lineage.
+pub mod entity;
+/// Empirical Experience Subsystem — Problems, Contexts, Actions, Attempts & Outcomes.
+pub mod experience;
 /// Native Graph Engine — Index-Free Adjacency, GraphQuery-compatible Query, GDS Analytics.
 pub mod graph;
+/// Empirical Learning & Deterministic Adjudication Subsystem.
+pub mod learning;
+/// Native Dynamic Hypergraph Relations & N-ary Role Bindings.
+pub mod relation;
 /// Security, Multi-Tenancy & Authorization.
 pub mod security;
 /// Unified Production Service Layer.
@@ -104,6 +114,14 @@ pub use cluster::{
     DesiredClusterState, DisasterRecoveryCoordinator, DisasterRecoverySla, DistributedCoordinator,
     LocalShard, MigrationPhase, MigrationTask, NodeAddress, ObservedClusterState, OrganizationId,
     ReplicatedStateMachine, RetrySemantics, ShardId, ShardReplica, ShardRole, ShardStateMachine,
+    WorldStateDigest,
+};
+pub use conformance::{
+    CANONICAL_EXPORT_VERSION, CanonicalExportArchive, ENTITY_SCHEMA_VERSION,
+    EXPERIENCE_SCHEMA_VERSION, ExportedEntity, ExportedExperience, ExportedRelation,
+    INFERENCE_TRACE_VERSION, KernelError, LEARNING_SCHEMA_VERSION, RAFT_LOG_RECORD_VERSION,
+    RELATION_SCHEMA_VERSION, SEMANTIC_KERNEL_VERSION, SNAPSHOT_FORMAT_VERSION,
+    SYNTHESIS_TRACE_VERSION, WORLD_DIGEST_VERSION, create_v1_golden_fixture,
 };
 pub use consensus::{
     AdaptiveMicrobatcher, AppendEntriesArgs, AppendEntriesReply, ApplyError, CommitReceipt,
@@ -118,6 +136,32 @@ pub use consensus::{
 pub use ecosystem::{
     ClientSearchResult, FrameworkDocument, HNSQRClientConfig, HNSQRClientRouter, HNSQRVectorStore,
     HaystackAdapter, LangChainAdapter, LlamaIndexAdapter,
+};
+pub use entity::{
+    ContextSignature, CosineMetric, DeterministicEvidenceStats, DurableEntityVersion,
+    DurableEvidenceRef, ENTITY_FLAG_HAS_INFERENCE_SIDECAR, ENTITY_FLAG_HAS_PROPERTIES,
+    ENTITY_FLAG_HAS_PROVENANCE, ENTITY_FLAG_HAS_VECTOR, ENTITY_FLAG_HAS_VERSION_HISTORY,
+    ENTITY_FLAG_LIVE, EligibilityError, EligibilityRepresentation, EligibilitySet, EligibilityView,
+    EntityArena, EntityHeader, EntityId, EntityIndex, EntityMutation, EntityReadSnapshot,
+    EntitySegment, EpistemicStatus, EpistemicTransitionError, EuclideanMetric,
+    ExactEligibilityCostModel, ExactEligibilityProof, ExactRetrievalContext, ExactScanOperator,
+    ExactScanPlan, ExactVectorMetric, InnerProductMetric, LifecycleStatus,
+    LifecycleTransitionError, MutationApplyError, NULL_ROW_REF, ProjectiveOverlapMetric,
+    ProvenanceArena, ProvenanceId, ProvenanceIndex, ProvenanceRecord, ProvenanceRow,
+    ResolvedEntityVersion, SNAPSHOT_V3_MAGIC, ScoredEntity, SnapshotV3Error,
+    SnapshotV3SectionHeader, VectorArena, VectorLayout, VectorLayoutId, VectorNormalization,
+    VectorScalarType, VersionId, VersionIndex, VersionRelation, VersionRow, VersionTable,
+    decode_snapshot_v3, encode_snapshot_v3, exact_top_k, exact_top_k_scalar, masked_dense_scan,
+    resolve_metric, sparse_gather_scan, validate_epistemic_transition,
+    validate_lifecycle_transition,
+};
+pub use experience::{
+    ActionDefinition, ActionId, ActionInvocation, ActionParameterValue, AttemptId, AttemptRecord,
+    AttemptState, ContextId, ContextRecord, ContextValue, DurableActionParameter,
+    DurableContextDimension, DurableOutcomeObservation, EvaluationPolicyId, ExperienceMutation,
+    ExperienceMutationError, ExperienceQuery, ExperienceReadSnapshot, ExperienceSegment,
+    ExperienceTrace, MetricId, MetricValue, MetricValueKind, OutcomeId, OutcomeMetricSchema,
+    OutcomeRecord, ProblemId, ProblemOccurrence, compute_context_fingerprint,
 };
 pub use federation::{
     ClusterProofResponse, ClusterRegionId, FederatedProofCoordinator, FederatedProofStatus,
@@ -191,6 +235,60 @@ pub use kubernetes::{
     AutoscalerMetrics, AutoscalerRecommendation, HNSQRClusterSpec, HNSQRClusterStatus,
     KubernetesOperator, NativeAutoscaler, OperatorLifecyclePhase,
 };
+pub use learning::{
+    AdjudicationDecisionCode, AdjudicationDisposition, AdjudicationExplanation, AdjudicationId,
+    AdjudicationPolicy, AdjudicationQuery, AdjudicationRecord, AgentBelief, AgentId, AgentMeta,
+    BIVECTOR_DIM, BarycentricWeightSemantics, CandidateActionStepId, CandidateEntityId,
+    CandidateEntityRef, CandidateResolutionState, CandidateRoleBinding,
+    CanonicalLearningAuditDigest, CausalOrientation, CircularityCheck, Cl24BasisError, Cl24Blade,
+    Cl24CompositionArtifact, Cl24EntityBasis, ClosureArtifactId, ClosureCandidate, ClosureKind,
+    CompositionRule, CompositionRuleRegistry, CompositionSemantics, ConceptId, ConceptProfile,
+    ConflictPair, ConflictResolution, ConsensusResult, ConstraintCheck, ConstraintCode,
+    ConstraintResult, ContextApplicability, ContextClassId, ContextClassRegistry,
+    ContextDifference, DEFAULT_MAX_TRUNCATION_LOSS_RATIO, DEFAULT_TRUNCATION_TOPK,
+    DeclarativeOperator, DerivedEntityProposal, DirectedWedgeArtifact, DirectedWedgeRequest,
+    DiscoveredMotif, DiscoveredOperatorId, DiscoveryCase, DiscoveryCaseId, DiscoveryCatalog,
+    DiscoveryCatalogError, DiscoveryCorpus, DiscoveryGovernance, DiscoveryOutcome, DiscoveryPolicy,
+    DiscoveryReport, DomainId, EmpiricalRootId, EpistemicLineageGraph, EvidenceAccumulator,
+    EvidenceDirection, EvidenceId, EvidenceIndependenceReport, EvidenceKey, EvidencePartition,
+    EvidenceRecord, EvidenceSummary, EvidenceSummaryId, EvolutionArtifact, EvolutionHistoryView,
+    EvolutionProposal, ExperienceProjectionPolicy, ExperienceProjectionReport, ExperimentKind,
+    ExperimentProposal, ExperimentProposalId, FeatureId, FixedUtility, GovernanceAuthority,
+    GovernedDiscoveryEngine, InducedSchemaProposal, InferenceCandidate, InferenceCandidateId,
+    InferenceError, InferenceGeometryArtifact, InferenceMethod, InferenceMethodId, InferenceMode,
+    InferenceProposal, InferenceProposalBundle, InferenceRegistry, InferenceRequest,
+    InferenceScope, InferenceScore, InferenceSeed, InferenceTrace, LearningMutation,
+    LearningMutationError, LearningReadSnapshot, LearningSegment, LineageNodeKind,
+    MAX_OPERATOR_CHAIN, MetricDirection, MetricEvaluationRule, MotifId, MotifMinerConfig,
+    MultivectorCl24Sparse, NormalizationRule, NovelResolution, OperatorAssessment, OperatorEffect,
+    OperatorLifecycle, OperatorPredicate, OperatorValidation, OperatorValidationPolicy,
+    PARALLEL_BLEND_THRESHOLD, PhaseShift, PhaseShiftArtifact, PlanAttributionMethod,
+    PlanAttributionRecord, Precedent, PrecedentDisposition, ProjectionSkip, ProjectionSkipReason,
+    ProposalStalenessCheck, RUNE_ANALOGY_METHOD_ID, RUNE_ANALOGY_METHOD_VERSION,
+    RUNE_BARYCENTRIC_METHOD_ID, RUNE_BARYCENTRIC_METHOD_VERSION, RUNE_CLOSURE_METHOD_ID,
+    RUNE_CLOSURE_METHOD_VERSION, RUNE_DIRECTED_WEDGE_METHOD_ID, RUNE_DIRECTED_WEDGE_METHOD_VERSION,
+    RUNE_EVOLUTION_METHOD_ID, RUNE_EVOLUTION_METHOD_VERSION, ReasoningOperator,
+    ReasoningOperatorId, RelationProposal, ResolutionCandidate, ResolutionCandidateId,
+    ResolutionId, ResolutionSemanticKey, RotorAlignmentResult, RuneAnalogyConfig,
+    RuneBarycentricConfig, RuneBarycentricInsight, RuneBarycentricV1, RuneCl24CompositionConfig,
+    RuneClosureEvidenceV1, RuneOperatorClass, RunePhaseEvolutionV1, RuneStructuralAnalogyV1,
+    SWARM_CONSENSUS_METHOD_ID, SWARM_CONSENSUS_METHOD_VERSION, SchemaProposalId,
+    SemanticCandidateRegistry, SemanticFingerprint, StructuralAnalogyArtifact, StructuralRole,
+    StructuralSynthesisTrace, SynthesisAttempt, SynthesisBasis, SynthesisCandidateId,
+    SynthesisDependencyDigest, SynthesisGoal, SynthesisKnowledgeBase, SynthesisOccurrence,
+    SynthesisPolicy, SynthesisPolicyId, SynthesisRequest, SynthesisResult, SynthesisRunId,
+    SynthesisScores, align_regions, apply_givens_rotation, apply_phase_shift, apply_rotation,
+    bivector_contract, bivector_strength, blade_product_sign, build_directed_wedge_edge,
+    causal_bivector, check_epistemic_circularity, compile_closure, compute_audit_digest,
+    compute_evidence_digest, compute_plan_attribution, compute_swarm_consensus, dot8,
+    euclidean_dist_8, evaluate_adjudication, evaluate_evidence_independence,
+    execute_operator_chain, geometric_counterfactual_projection, gram_schmidt_tangent,
+    identity_rotation, induce_schemas, infer_between, l2_sq_8, leech_to_e8_f32,
+    materialize_collective_hypothesis, mean_alignment_residual, mine_motifs, normalise_weights,
+    normalize_vector_8, optimal_givens_angle, parallel_centroid, plan_experiments,
+    project_experience, region_centroid, resolve_barycentric, sequential_centroid,
+    snap_to_e8_lattice, synthesize, validate_operator,
+};
 pub use metadata::cardinality::{
     CardinalityBudget, CardinalityGuard, PostingRepresentation, TenantCardinalityTracker,
 };
@@ -210,10 +308,24 @@ pub use proof::{
     DenseExactProof, GlobalExactProofSearch, ProofCentroidCode, ProofNode, ProofQuery,
     SegmentProofView, SemanticProofTree,
 };
+pub use relation::{
+    BinaryCsrProjection, BinaryProjectionCache, BinaryProjectionSpec, DurableRelationInstance,
+    DurableRoleBinding, HyperPattern, HyperPatternError, HyperPatternMatch, HyperPatternMember,
+    HyperPatternSemantics, IncidenceIndex, IncidenceKey, ProjectedBinaryRelationEdge,
+    ProjectionDirection, RelationArena, RelationHeader, RelationId, RelationIndex,
+    RelationMutation, RelationMutationError, RelationQuery, RelationReadSnapshot, RelationSegment,
+    RelationType, RelationTypeId, RelationTypeState, RelationVersionId, RelationVersionRow,
+    RelationVersionTable, ResolvedRelationVersion, RoleId, RoleSchema, SchemaScope,
+    SchemaValidationError, SegmentRoleBinding, compute_canonical_fingerprint,
+    project_resolved_relation,
+};
 pub use retrieval::hybrid::{
     HybridFusionEngine, HybridFusionMethod, ModalityRankings, RRF_DEFAULT_K,
 };
 pub use retrieval::multivector::{MultiVectorEmbedding, MultiVectorIndex};
+pub use retrieval::performance_trial::{
+    AdmissionGateStatus, BenchmarkRecord, RetrievalTrial, evaluate_admission_gates,
+};
 pub use retrieval::sparse::{InvertedPostingList, SparseInvertedIndex, SparseVector};
 pub use rivero::{
     AdaptivePolicy, AdaptiveRouteState, BuiltRiveroState, BulkBuildTelemetry, LaneAssignment,
@@ -235,8 +347,8 @@ pub use security::{
 };
 pub use service::{
     ClusterService, DeleteRequest, HNSQRService, MutationReceipt, MutationService,
-    PinnedReadSnapshot, ReadSnapshot, RequestContext, SearchService, StandaloneService,
-    UpsertRequest,
+    PinnedReadSnapshot, ReadSnapshot, RequestContext, SearchResponse, SearchService,
+    StandaloneService, UpsertRequest,
 };
 pub use storage::mmap_arena::{MmapArena, MmapHeader};
 pub use storage::predictive_warming::{PredictiveWarmer, ProofHeatMap};
@@ -263,7 +375,9 @@ pub use storage::wal::{
 pub use telemetry::metrics::{EngineMetrics, PrometheusExporter};
 pub use telemetry::slo::{SloAlertSeverity, SloManager, SloReport, SloTargetConfig};
 pub use telemetry::tracing::{ExecutionSpan, SpanRecord, TraceContext};
-pub use transport::qir0::{HNSQRClient, HNSQRServer, MessageHeader, OpCode, PROTOCOL_MAGIC};
+pub use transport::qir0::{
+    HNSQRClient, HNSQRServer, MessageHeader, OpCode, PROTOCOL_MAGIC, Qir0SearchResponse,
+};
 pub use vector::folding::{ComplexWeaver, GatewayRouter, create_http_router, run_http_server};
 pub use vector::quantization::PolarQuantizedVector;
 
@@ -1160,7 +1274,7 @@ impl Default for HNSQRConfig {
             max_elements: 100_000,
             distance_function: DistanceFunction::Cosine,
             search_plan: SearchPlan::Auto,
-            exact_scan_threshold: 2000,
+            exact_scan_threshold: 0,
             superposition_beam_width: 8,
             attention_temperature: 0.15,
             interference_weight: 0.35,
@@ -1173,7 +1287,7 @@ impl Default for HNSQRConfig {
             use_parallel_construction: true,
             quantization_enabled: false,
             mmap_path: None,
-            rivero_enabled: true,
+            rivero_enabled: false,
             rivero_mode: RiveroSearchMode::Adaptive,
             adaptive_policy: AdaptivePolicy::RiveroOnly,
             rivero_cell_budget: 16,
@@ -1490,6 +1604,19 @@ impl ConcurrentArena {
     pub fn get_node(&self, index: NodeIndex) -> Option<&Node> {
         let idx = index as usize;
         if self.is_live(index) {
+            unsafe { (*self.nodes.get_unchecked(idx).get()).as_ref() }
+        } else {
+            None
+        }
+    }
+
+    /// Returns an initialized claimed slot even before publication. This is only
+    /// for completing insertion-time reciprocal wiring; query paths must use
+    /// `get_node`, which enforces liveness/publication.
+    #[inline(always)]
+    fn get_claimed_node(&self, index: NodeIndex) -> Option<&Node> {
+        let idx = index as usize;
+        if idx < self.len() {
             unsafe { (*self.nodes.get_unchecked(idx).get()).as_ref() }
         } else {
             None
@@ -2247,19 +2374,47 @@ impl HNSQRIndex {
         witnesses: &[rivero_witness::ScoredWitness],
         degree: usize,
     ) {
+        let mut rejected = SmallVec::<[NodeIndex; RIVERO_WITNESS_INLINE_DEGREE]>::new();
         for &witness in witnesses {
             let Some(owner) = self.arena.get_node(witness.index) else {
+                rejected.push(witness.index);
                 continue;
             };
-            let mut connections = owner.rivero_witnesses.write();
-            rivero_witness::insert_reciprocal(
-                &mut connections,
-                rivero_witness::ScoredWitness {
-                    index: node_index,
-                    similarity: witness.similarity,
-                },
-                degree,
-            );
+            let outcome = {
+                let mut connections = owner.rivero_witnesses.write();
+                rivero_witness::insert_reciprocal(
+                    &mut connections,
+                    rivero_witness::ScoredWitness {
+                        index: node_index,
+                        similarity: witness.similarity,
+                    },
+                    degree,
+                )
+            };
+
+            if !outcome.retained {
+                rejected.push(witness.index);
+            }
+            if let Some(evicted) = outcome.evicted {
+                if evicted.index != node_index {
+                    if let Some(evicted_node) = self.arena.get_node(evicted.index) {
+                        evicted_node
+                            .rivero_witnesses
+                            .write()
+                            .retain(|edge| edge.index != witness.index);
+                    }
+                }
+            }
+        }
+
+        // Publish only mutually retained edges. The strict two-hop resolver must
+        // never observe a directed proposal masquerading as a reciprocal witness.
+        if !rejected.is_empty() {
+            if let Some(node) = self.arena.get_claimed_node(node_index) {
+                node.rivero_witnesses
+                    .write()
+                    .retain(|edge| !rejected.contains(&edge.index));
+            }
         }
 
         debug_assert!(witnesses.len() <= rivero_witness::bounded_degree(degree));
@@ -3095,6 +3250,36 @@ impl HNSQRIndex {
             });
         }
 
+        // The spherical proof hierarchy currently certifies normalized cosine
+        // similarity. Other declared metrics remain certifiable via exhaustive
+        // evaluation; routing or proof bounds from a different metric must never
+        // be presented as a proof for the requested metric.
+        if self.config.read().distance_function != DistanceFunction::Cosine {
+            let started = Instant::now();
+            let results = self.search_indices_exact(query, k, filter_mask)?;
+            let live = self.arena.live_len();
+            let eligible = match filter_mask {
+                Some(mask) => mask.iter().filter(|&slot| self.arena.is_live(slot)).count(),
+                None => live,
+            };
+            let proof = DenseExactProof {
+                corpus_size: live,
+                exact_evaluations: eligible,
+                filtered_or_tombstoned: live.saturating_sub(eligible),
+                exact_bytes_touched: eligible
+                    .saturating_mul(self.dimension)
+                    .saturating_mul(std::mem::size_of::<Complex32>()),
+                kth_score: results
+                    .last()
+                    .map_or(f32::NEG_INFINITY, |(_, score)| *score),
+                globally_exact: true,
+                elapsed_us: started.elapsed().as_micros().max(1) as u64,
+                ..DenseExactProof::default()
+            };
+            debug_assert!(proof.is_accounting_exact());
+            return Ok(CertifiedSearchOutcome::Exact { results, proof });
+        }
+
         let q_norm = query.clone().into_normalized();
         let tree = self.get_or_build_proof_tree();
 
@@ -3592,10 +3777,15 @@ impl HNSQRIndex {
                 let mut non_live_rejections = 0usize;
                 let mut filter_rejections = 0usize;
 
-                let initial_eval_limit = match current_profile {
-                    RiveroProfile::Fast => candidates.len().min(512),
-                    RiveroProfile::Balanced => candidates.len().min(1024),
-                    RiveroProfile::Strict => candidates.len(),
+                let initial_eval_limit = if filter_mask.is_some() {
+                    // Under metadata filtering, dynamically evaluate across the full candidate pool to replenish rejected candidates
+                    candidates.len()
+                } else {
+                    match current_profile {
+                        RiveroProfile::Fast => candidates.len().min(512),
+                        RiveroProfile::Balanced => candidates.len().min(1024),
+                        RiveroProfile::Strict => candidates.len(),
+                    }
                 };
                 for (cand_idx, &cand) in candidates[..initial_eval_limit].iter().enumerate() {
                     if cand_idx + 4 < initial_eval_limit {
@@ -4381,7 +4571,11 @@ impl HNSQRIndex {
                     let mut visited = pool.borrow_mut();
                     let epoch = visited.next_epoch(self.arena.len());
 
-                    let eval_limit = candidates.len().min(profile.candidate_eval_limit());
+                    let eval_limit = if filter_mask.is_some() {
+                        candidates.len()
+                    } else {
+                        candidates.len().min(profile.candidate_eval_limit())
+                    };
                     for (cand_idx, &index) in candidates[..eval_limit].iter().enumerate() {
                         if cand_idx + 4 < eval_limit {
                             let next_cand = candidates[cand_idx + 4];
@@ -5405,7 +5599,22 @@ mod tests {
 
         for slot in 0..vectors.len() as NodeIndex {
             let node = index.arena.get_node(slot).unwrap();
-            assert!(node.rivero_witnesses.read().len() <= 4);
+            let witnesses = node.rivero_witnesses.read();
+            assert!(witnesses.len() <= 4);
+            for witness in witnesses.iter() {
+                let reverse = index.arena.get_node(witness.index).unwrap();
+                let reverse_indices: Vec<_> = reverse
+                    .rivero_witnesses
+                    .read()
+                    .iter()
+                    .map(|edge| edge.index)
+                    .collect();
+                assert!(
+                    reverse_indices.contains(&slot),
+                    "incremental witness {slot} -> {} is not reciprocal; reverse list={reverse_indices:?}",
+                    witness.index,
+                );
+            }
         }
 
         let (results, diagnostics) = index
@@ -5424,6 +5633,51 @@ mod tests {
                 + diagnostics.non_live_rejections
                 + diagnostics.filter_rejections,
             diagnostics.unique_candidates
+        );
+    }
+
+    #[test]
+    fn certified_non_cosine_contract_uses_metric_exact_scan() {
+        let mut config = HNSQRConfig::default();
+        config.distance_function = DistanceFunction::Euclidean;
+        let index = HNSQRIndex::new(config, 2);
+        index
+            .insert("far-collinear", VectorEmbedding::new(vec![100.0, 0.0]))
+            .unwrap();
+        let nearest = index
+            .insert("near", VectorEmbedding::new(vec![1.0, 1.0]))
+            .unwrap();
+        let query = VectorEmbedding::new(vec![1.0, 0.0]);
+
+        let exact = index.search_indices_exact(&query, 1, None).unwrap();
+        let outcome = index.certified_search(&query, 1, None).unwrap();
+        let CertifiedSearchOutcome::Exact { results, proof } = outcome else {
+            panic!("exhaustive non-cosine certification cannot time out");
+        };
+        assert_eq!(results, exact);
+        assert_eq!(results[0].0, nearest);
+        assert!(proof.globally_exact);
+        assert!(proof.is_accounting_exact());
+        assert_eq!(proof.exact_evaluations, 2);
+    }
+
+    #[test]
+    fn rivero_state_metric_mismatch_is_rejected_at_install() {
+        let vectors = vec![
+            VectorEmbedding::new(vec![1.0, 0.0]),
+            VectorEmbedding::new(vec![0.0, 1.0]),
+        ];
+        let built = RiveroBulkBuilder::with_profile(RiveroProfile::Strict)
+            .with_distance_function(DistanceFunction::Euclidean)
+            .build(&vectors)
+            .unwrap();
+        let index = HNSQRIndex::new(HNSQRConfig::default(), 2);
+        let error = match index.install_rivero_state(built) {
+            Ok(()) => panic!("mismatched witness/rerank metrics must be rejected"),
+            Err(error) => error,
+        };
+        assert!(
+            matches!(error, HNSQRError::InvalidConfig(message) if message.contains("metric mismatch"))
         );
     }
 

@@ -10,6 +10,7 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -77,7 +78,7 @@ pub struct HypercubeSliceResult {
 /// Smart client connection and retry router.
 pub struct HNSQRClientRouter {
     config: HNSQRClientConfig,
-    active_leader: std::sync::RwLock<Option<String>>,
+    active_leader: RwLock<Option<String>>,
     request_counter: AtomicUsize,
 }
 
@@ -85,7 +86,7 @@ impl HNSQRClientRouter {
     pub fn new(config: HNSQRClientConfig) -> Self {
         Self {
             config,
-            active_leader: std::sync::RwLock::new(None),
+            active_leader: RwLock::new(None),
             request_counter: AtomicUsize::new(0),
         }
     }
@@ -93,7 +94,7 @@ impl HNSQRClientRouter {
     /// Selects the optimal endpoint based on operation type and consistency SLA.
     pub fn select_endpoint(&self, is_write: bool) -> String {
         if is_write {
-            let guard = self.active_leader.read().unwrap();
+            let guard = self.active_leader.read();
             if let Some(leader) = guard.as_ref() {
                 return leader.clone();
             }
@@ -107,7 +108,7 @@ impl HNSQRClientRouter {
 
     /// Updates leader endpoint following a redirection response.
     pub fn handle_leader_redirect(&self, new_leader_endpoint: &str) {
-        let mut guard = self.active_leader.write().unwrap();
+        let mut guard = self.active_leader.write();
         *guard = Some(new_leader_endpoint.to_string());
     }
 }

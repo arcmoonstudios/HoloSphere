@@ -19,10 +19,10 @@ use crate::rivero::RiveroProfile;
 /// Declarative user correctness contract.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, Default)]
 pub enum RetrievalContract {
-    /// Exhaustive ground-truth scan across all candidates.
-    Exact,
-    /// Bounded candidate universe with mathematical Cauchy-Schwarz proof certificate.
+    /// Exhaustive ground-truth SIMD scan across all candidates (production authoritative default).
     #[default]
+    Exact,
+    /// Bounded candidate universe with mathematical Cauchy-Schwarz proof certificate (experimental candidate).
     Certified,
     /// (ε, δ)-PAC Progressive Relaxed Proof guarantee with bounded latency.
     PacRelaxed { epsilon: f32, delta: f32 },

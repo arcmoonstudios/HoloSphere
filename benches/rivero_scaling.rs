@@ -212,6 +212,9 @@ fn audit_size(
         config.ef_construction = 8;
         config.m = 8;
         config.m0 = 8;
+        let mut addr_cfg = config.rivero_address_config;
+        addr_cfg.geometry = hnsqr::rivero::VectorGeometry::Real;
+        config.rivero_address_config = addr_cfg;
         let index = HNSQRIndex::new(config, actual_dim);
 
         let build_start = Instant::now();
@@ -221,15 +224,16 @@ fn audit_size(
                 .unwrap();
             assert_eq!(inserted as usize, slot);
         }
-        let mut addr_cfg = index.config().rivero_address_config;
-        addr_cfg.geometry = hnsqr::rivero::VectorGeometry::Real;
-        let builder = RiveroBulkBuilder::with_profile(RiveroProfile::Balanced)
+        let builder = RiveroBulkBuilder::with_profile(RiveroProfile::Strict)
             .with_address_config(addr_cfg)
             .with_witness_params(32, 16, 8);
-        if let Ok(built_state) = builder.build(corpus) {
-            let _ = index.install_rivero_state(built_state);
-            index.freeze_rivero_routing();
-        }
+        let built_state = builder
+            .build(corpus)
+            .expect("RiveroBulkBuilder::build must succeed");
+        index
+            .install_rivero_state(built_state)
+            .expect("install_rivero_state must succeed");
+        index.freeze_rivero_routing();
         let build_seconds = build_start.elapsed().as_secs_f64();
         let _ = index.save_snapshot_v2(&snap_path);
         (index, build_seconds)

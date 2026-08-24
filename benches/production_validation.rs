@@ -419,16 +419,12 @@ fn run_global_phase_collision_attack(corpus: &TextRetrievalCorpus) {
     println!(
         "  1. Complex Projective Overlap treats rotated vectors z' as identical (F=1.0) while real Cosine drops to cos(φ)."
     );
-    println!("  2. SOLUTION IMPLEMENTED IN HNSQR:");
+    println!("  2. RETRIEVAL DESIGN IN HNSQR:");
+    println!("     - Rivero uses phase-invariant geometry for candidate routing;");
     println!(
-        "     - Rivero Index: Uses global-phase invariance as an extremely efficient structural candidate generator."
+        "       final exact scoring preserves the declared metric for candidates that survive routing."
     );
-    println!(
-        "     - Final Scoring / Reranking: Uses exact Hermitian Re(⟨z|w⟩) preserving 100% Euclidean cosine geometry."
-    );
-    println!(
-        "     This eliminates phase collisions entirely while preserving Rivero's sub-linear scan bound!\n"
-    );
+    println!("       Global retrieval recall is measured separately.\n");
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -603,7 +599,7 @@ fn run_scalability_and_saturation_matrix() {
     for &n in &scale_points {
         let corpus = generate_realistic_text_corpus(n, 50, d * 2, SEED ^ (n as u64));
         let index = open_prebuilt_index(
-            &format!("prod_val_scale_n{n}"),
+            &format!("crossover_sweep_n{n}"),
             &corpus.folded_corpus,
             corpus.complex_dim,
             RiveroProfile::Balanced,
@@ -914,7 +910,7 @@ fn main() {
 
     // Build or attach cached base index
     let index = Arc::new(open_prebuilt_index(
-        "prod_val_base_25k",
+        "crossover_sweep_n25000",
         &base_corpus.folded_corpus,
         base_corpus.complex_dim,
         RiveroProfile::Balanced,

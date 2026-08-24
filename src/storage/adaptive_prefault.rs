@@ -46,7 +46,19 @@ impl Default for AdaptivePrefaultEngine {
 impl AdaptivePrefaultEngine {
     /// Assesses available memory and returns whether warming `bytes` is safe without OOMKill risk.
     pub fn can_safely_warm(&self, estimated_bytes: usize) -> bool {
-        // In container/cgroup environment, detect memory limit; default assume safe if <= 8GB
+        if let Some((limit, current)) = cgroup_memory_usage() {
+            // An unlimited cgroup-v1 sentinel must not be treated as a real quota.
+            if limit < (1usize << 50) {
+                return can_warm_with_usage(
+                    limit,
+                    current,
+                    self.memory_reserve_bytes,
+                    estimated_bytes,
+                );
+            }
+        }
+
+        // Non-container fallback: preserve the previous conservative ceiling.
         estimated_bytes <= 8 * 1024 * 1024 * 1024
     }
 
@@ -70,5 +82,41 @@ impl AdaptivePrefaultEngine {
         self.total_warmed_bytes
             .fetch_add(slice.len(), Ordering::Relaxed);
         Ok(touched)
+    }
+}
+
+fn can_warm_with_usage(limit: usize, current: usize, reserve: usize, estimated: usize) -> bool {
+    estimated <= limit.saturating_sub(current).saturating_sub(reserve)
+}
+
+fn cgroup_memory_usage() -> Option<(usize, usize)> {
+    // cgroup v2: `max` denotes no controller limit and is intentionally ignored.
+    if let Some(pair) =
+        read_memory_pair("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory.current")
+    {
+        return Some(pair);
+    }
+
+    // cgroup v1 fallback.
+    read_memory_pair(
+        "/sys/fs/cgroup/memory/memory.limit_in_bytes",
+        "/sys/fs/cgroup/memory/memory.usage_in_bytes",
+    )
+}
+
+fn read_memory_pair(limit_path: &str, current_path: &str) -> Option<(usize, usize)> {
+    let limit = std::fs::read_to_string(limit_path).ok()?;
+    let current = std::fs::read_to_string(current_path).ok()?;
+    Some((limit.trim().parse().ok()?, current.trim().parse().ok()?))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn refuses_warming_when_reserve_exhausts_cgroup_headroom() {
+        assert!(!can_warm_with_usage(1_024, 768, 512, 1));
+        assert!(can_warm_with_usage(1_024, 128, 512, 384));
     }
 }

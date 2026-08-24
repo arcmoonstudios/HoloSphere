@@ -48,6 +48,10 @@ impl ExecMode {
             Self::RiveroAdaptive => "Rivero-Adaptive-Forced",
         }
     }
+
+    fn requires_exact_recall(self) -> bool {
+        matches!(self, Self::PlannerDefault | Self::ExactForced)
+    }
 }
 
 fn read_fvecs(
@@ -167,7 +171,7 @@ fn benchmark_million_dataset(name: &str, snapshot_path: &Path, query_path: &Path
                     query,
                     K_NEIGHBORS,
                     None,
-                    RetrievalContract::Certified,
+                    RetrievalContract::default(),
                 ),
                 ExecMode::ExactForced => index.search_indices_exact(query, K_NEIGHBORS, None),
                 ExecMode::GraphOnly => index.search_indices_graph(query, K_NEIGHBORS, None),
@@ -185,7 +189,13 @@ fn benchmark_million_dataset(name: &str, snapshot_path: &Path, query_path: &Path
             };
             let elapsed = start.elapsed();
 
-            let results = raw_results.unwrap_or_default();
+            let results = raw_results.unwrap_or_else(|error| {
+                panic!(
+                    "{} search failed for dataset {} query {qi}: {error}",
+                    mode.label(),
+                    name
+                )
+            });
             let matched = results
                 .iter()
                 .filter(|&&(idx, _)| gt_indices.contains(&(idx as usize)))
@@ -200,11 +210,20 @@ fn benchmark_million_dataset(name: &str, snapshot_path: &Path, query_path: &Path
         let min_recall = recalls.iter().cloned().fold(f64::MAX, f64::min);
         let p50 = percentile(latencies.clone(), 0.50);
         let p95 = percentile(latencies, 0.95);
-        let pass_str = if mean_recall >= 99.0 {
-            "[PASS]"
-        } else {
-            "[FAIL]"
-        };
+        let pass_str =
+            if mode.requires_exact_recall() && mean_recall == 100.0 && min_recall == 100.0 {
+                "[PASS]"
+            } else if mode.requires_exact_recall() {
+                "[FAIL]"
+            } else {
+                "[MEASURED]"
+            };
+
+        assert!(
+            !mode.requires_exact_recall() || (mean_recall == 100.0 && min_recall == 100.0),
+            "{} violated its exact-recall contract on {name}: mean={mean_recall:.1}% min={min_recall:.1}%",
+            mode.label()
+        );
 
         println!(
             "  {:<24} {:<8} {:>5.1}%/{:>5.1}% {:<6} {:<12.2?} {:<12.2?}",

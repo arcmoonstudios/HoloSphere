@@ -192,6 +192,20 @@ impl UsageBillingMeter {
         *egress.entry(tenant_id.to_string()).or_insert(0) += bytes;
     }
 
+    /// Copies the current billable query and storage values into the metrics
+    /// exporter without exposing the meter's internal maps.
+    pub fn export_metrics(&self, metrics: &crate::telemetry::metrics::EngineMetrics) {
+        let queries = self.query_counters.read();
+        let storage = self.storage_gb.read();
+        for tenant in queries.keys().chain(storage.keys()) {
+            metrics.set_tenant_usage(
+                tenant.clone(),
+                queries.get(tenant).copied().unwrap_or(0),
+                storage.get(tenant).copied().unwrap_or(0.0),
+            );
+        }
+    }
+
     /// Computes monthly billing summary ($0.05 / 1K queries + $0.25 / GB storage / mo).
     pub fn generate_monthly_report(
         &self,

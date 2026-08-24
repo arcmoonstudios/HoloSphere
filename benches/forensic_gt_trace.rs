@@ -5,7 +5,7 @@ use std::time::Instant;
 use common::generate_adversarial_regression_corpus;
 use hnsqr::rivero::bulk::RiveroBulkBuilder;
 use hnsqr::rivero::{AdaptivePolicy, RiveroProfile};
-use hnsqr::{DistanceFunction, HNSQRConfig, HNSQRIndex, NodeIndex, VectorEmbedding};
+use hnsqr::{HNSQRConfig, HNSQRIndex, NodeIndex, VectorEmbedding};
 
 fn main() {
     println!(
@@ -32,9 +32,8 @@ fn main() {
 
     let mut config = HNSQRConfig::default();
     config.max_elements = n;
-    config.rivero_enabled = true;
-    config.distance_function = DistanceFunction::Cosine;
-    let index = HNSQRIndex::new(config.clone(), 32);
+    let dim = adv.corpus.first().map_or(32, |v| v.dimension());
+    let index = HNSQRIndex::new(config.clone(), dim);
 
     for (i, (vec, meta)) in adv.corpus.iter().zip(adv.metadata.iter()).enumerate() {
         let v: VectorEmbedding = vec.clone();
@@ -302,7 +301,7 @@ fn main() {
         .with_force_stage_b(true);
     let state_stage_b = builder_stage_b.build(&adv.corpus).unwrap();
 
-    let index_b = HNSQRIndex::new(config, 32);
+    let index_b = HNSQRIndex::new(config, dim);
     for (i, (vec, meta)) in adv.corpus.iter().zip(adv.metadata.iter()).enumerate() {
         let v: VectorEmbedding = vec.clone();
         let m: std::collections::HashMap<String, hnsqr::metadata::index::MetadataValue> =

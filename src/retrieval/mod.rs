@@ -9,6 +9,7 @@
 pub mod hybrid;
 pub mod linguistic;
 pub mod multivector;
+pub mod performance_trial;
 pub mod sparse;
 
 pub use hybrid::{HybridFusionEngine, HybridFusionMethod, ModalityRankings, RRF_DEFAULT_K};
@@ -16,6 +17,9 @@ pub use linguistic::{
     FuzzyLevenshteinAutomaton, LanguageMode, MorphologicalStemmer, PhoneticMatcher,
 };
 pub use multivector::{MultiVectorEmbedding, MultiVectorIndex};
+pub use performance_trial::{
+    AdmissionGateStatus, BenchmarkRecord, RetrievalTrial, evaluate_admission_gates,
+};
 pub use sparse::{
     InvertedPostingList, PostingChunk, PostingEntry, SparseInvertedIndex, SparseVector,
 };

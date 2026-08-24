@@ -16,6 +16,9 @@ pub mod serverless;
 pub mod state_machine;
 pub mod stream_ingest;
 pub mod topology;
+pub mod world_digest;
+
+pub use world_digest::WorldStateDigest;
 
 pub use control_plane::{
     ClusterId, ControlPlaneReconciliationPlan, DBaaSControlPlane, DesiredClusterState,

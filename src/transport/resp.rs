@@ -375,7 +375,8 @@ impl RespServer {
 
     /// Dispatches parsed RESP argument array to internal commands.
     pub fn handle_command(&self, args: &[String]) -> RespFrame {
-        let byte_slices: Vec<&[u8]> = args.iter().map(|s| s.as_bytes()).collect();
+        let mut byte_slices = smallvec::SmallVec::<[&[u8]; 16]>::new();
+        byte_slices.extend(args.iter().map(String::as_bytes));
         self.handle_raw_command(&byte_slices)
     }
 

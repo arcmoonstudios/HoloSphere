@@ -24,7 +24,13 @@ use crate::graph::catalog::relationships::RelTypeCatalog;
 use crate::graph::mutation::apply::GraphMutationApplier;
 use crate::graph::mutation::command::GraphMutation;
 use crate::graph::storage::generation::GraphGeneration;
+use crate::learning::discovery::{
+    DiscoveryStateMutation, DiscoveryStateSnapshot, ReplicatedDiscoveryAction,
+    materialize_relation_type,
+};
+use crate::learning::{DeclarativeOperator, LearningSegment, OperatorLifecycle};
 use crate::metadata::index::MetadataValue;
+use crate::relation::{RelationSegment, RelationType};
 use crate::storage::segment::SegmentedEngine;
 use crate::{HNSQRError, HNSQRResult, VectorEmbedding};
 
@@ -74,6 +80,12 @@ pub enum DataMutation {
         mutation_id: MutationId,
         mutations: Vec<DataMutation>,
     },
+    /// Fault-tolerant batch where independent domain mutations are staged and applied
+    /// with domain error isolation, preventing errors in one domain from aborting others.
+    FaultTolerantBatch {
+        mutation_id: MutationId,
+        mutations: Vec<DataMutation>,
+    },
     /// Graph topology mutation — replicated through Raft then applied by the
     /// `GraphMutationApplier` inside the shard state machine.
     /// This is the **only** authoritative write path for graph topology.
@@ -99,6 +111,17 @@ pub enum DataMutation {
         mutation_id: MutationId,
         coords: Vec<usize>,
         value: f32,
+    },
+    /// Governed discovered-operator lifecycle transition replicated through Raft.
+    DiscoveryOperator {
+        mutation_id: MutationId,
+        operator: DeclarativeOperator,
+        expected_previous: Option<OperatorLifecycle>,
+    },
+    /// Schema, mapping, evaluation, experiment, safety-kernel, and audit mutation.
+    DiscoveryState {
+        mutation_id: MutationId,
+        mutation: DiscoveryStateMutation,
     },
 }
 
@@ -183,16 +206,75 @@ impl DataMutation {
         }
     }
 
+    pub fn new_discovery_operator_transition(
+        operator: DeclarativeOperator,
+        expected_previous: Option<OperatorLifecycle>,
+    ) -> Self {
+        Self::DiscoveryOperator {
+            mutation_id: MutationId::generate(),
+            operator,
+            expected_previous,
+        }
+    }
+
+    pub fn new_discovery_state_mutation(mutation: DiscoveryStateMutation) -> Self {
+        Self::DiscoveryState {
+            mutation_id: MutationId::generate(),
+            mutation,
+        }
+    }
+
+    /// Materializes one ordered continuous-discovery action as a Raft command.
+    /// Audit actions bind the caller-observed replicated audit head and therefore
+    /// fail closed if another writer advanced the chain first.
+    pub fn new_discovery_action(
+        action: ReplicatedDiscoveryAction,
+        expected_audit_head: [u8; 32],
+    ) -> Self {
+        match action {
+            ReplicatedDiscoveryAction::Operator(plan) => {
+                Self::new_discovery_operator_transition(plan.operator, plan.expected_previous)
+            }
+            ReplicatedDiscoveryAction::State(mutation) => {
+                Self::new_discovery_state_mutation(mutation)
+            }
+            ReplicatedDiscoveryAction::Audit(action) => {
+                Self::new_discovery_state_mutation(DiscoveryStateMutation::AppendAudit {
+                    action,
+                    expected_previous_hash: expected_audit_head,
+                })
+            }
+        }
+    }
+
+    pub fn new_batch(mutations: Vec<DataMutation>) -> Self {
+        Self::Batch {
+            mutation_id: MutationId::generate(),
+            mutations,
+        }
+    }
+
+    /// Wraps multiple mutations in a fault-tolerant batch with failure isolation.
+    pub fn new_fault_tolerant_batch(mutations: Vec<DataMutation>) -> Self {
+        Self::FaultTolerantBatch {
+            mutation_id: MutationId::generate(),
+            mutations,
+        }
+    }
+
     pub fn mutation_id(&self) -> &MutationId {
         match self {
             Self::Upsert { mutation_id, .. } => mutation_id,
             Self::Delete { mutation_id, .. } => mutation_id,
             Self::MetadataPatch { mutation_id, .. } => mutation_id,
             Self::Batch { mutation_id, .. } => mutation_id,
+            Self::FaultTolerantBatch { mutation_id, .. } => mutation_id,
             Self::Graph { mutation_id, .. } => mutation_id,
             Self::Sql { mutation_id, .. } => mutation_id,
             Self::AgentMemory { mutation_id, .. } => mutation_id,
             Self::Hypercube { mutation_id, .. } => mutation_id,
+            Self::DiscoveryOperator { mutation_id, .. } => mutation_id,
+            Self::DiscoveryState { mutation_id, .. } => mutation_id,
         }
     }
 }
@@ -313,6 +395,10 @@ pub struct ShardStateMachine {
     pub memory: Option<Arc<crate::ecosystem::agent_memory::AutonomousMemoryConsolidator>>,
     /// Optional hypercube volumetric tensor space.
     pub hypercube: Option<Arc<crate::vector::hypercube::HypercubeTensorSpace>>,
+    /// Optional governed discovery catalog, mutated only at committed LSNs.
+    pub learning: Option<Arc<LearningSegment>>,
+    /// Canonical N-ary relation catalog receiving governed evolved schemas.
+    pub relations: Option<Arc<RelationSegment>>,
 }
 
 impl ShardStateMachine {
@@ -327,6 +413,8 @@ impl ShardStateMachine {
             sql: None,
             memory: None,
             hypercube: None,
+            learning: None,
+            relations: None,
         }
     }
 
@@ -351,6 +439,8 @@ impl ShardStateMachine {
             sql: None,
             memory: None,
             hypercube: None,
+            learning: None,
+            relations: None,
         }
     }
 
@@ -373,7 +463,21 @@ impl ShardStateMachine {
             sql,
             memory,
             hypercube,
+            learning: None,
+            relations: None,
         }
+    }
+
+    /// Wires the governed discovery catalog into the authoritative Raft apply path.
+    pub fn with_learning_discovery(mut self, learning: Arc<LearningSegment>) -> Self {
+        self.learning = Some(learning);
+        self
+    }
+
+    /// Wires the canonical hypergraph catalog to the governed schema apply path.
+    pub fn with_evolved_relation_catalog(mut self, relations: Arc<RelationSegment>) -> Self {
+        self.relations = Some(relations);
+        self
     }
 }
 
@@ -407,6 +511,16 @@ pub enum PreparedDelta {
         coords: Vec<usize>,
         value: f32,
     },
+    DiscoveryOperator {
+        operator: DeclarativeOperator,
+        expected_previous: Option<OperatorLifecycle>,
+        commit_lsn: u64,
+    },
+    DiscoveryState {
+        mutation: DiscoveryStateMutation,
+        commit_lsn: u64,
+        evolved_relation_type: Option<RelationType>,
+    },
 }
 
 impl ShardStateMachine {
@@ -415,6 +529,7 @@ impl ShardStateMachine {
         &self,
         mutation: &DataMutation,
         deltas: &mut Vec<PreparedDelta>,
+        commit_lsn: u64,
     ) -> HNSQRResult<()> {
         match mutation {
             DataMutation::Upsert {
@@ -552,9 +667,102 @@ impl ShardStateMachine {
                 });
                 Ok(())
             }
+            DataMutation::DiscoveryOperator {
+                operator,
+                expected_previous,
+                ..
+            } => {
+                if deltas.iter().any(|delta| {
+                    matches!(
+                        delta,
+                        PreparedDelta::DiscoveryOperator {
+                            operator: staged,
+                            ..
+                        } if staged.id == operator.id
+                    )
+                }) {
+                    return Err(HNSQRError::InvalidRequest(
+                        "Only one lifecycle transition per discovered operator is allowed in a committed LSN"
+                            .to_string(),
+                    ));
+                }
+                let learning = self.learning.as_ref().ok_or_else(|| {
+                    HNSQRError::InvalidRequest(
+                        "Learning discovery backend not enabled on this shard".to_string(),
+                    )
+                })?;
+                learning
+                    .governed_discovery
+                    .verify_kernel_installed()
+                    .map_err(|error| HNSQRError::InvalidRequest(error.to_string()))?;
+                learning
+                    .discovery
+                    .prevalidate(operator, *expected_previous, commit_lsn)
+                    .map_err(|error| HNSQRError::InvalidRequest(error.to_string()))?;
+                deltas.push(PreparedDelta::DiscoveryOperator {
+                    operator: operator.clone(),
+                    expected_previous: *expected_previous,
+                    commit_lsn,
+                });
+                Ok(())
+            }
+            DataMutation::DiscoveryState { mutation, .. } => {
+                if deltas.iter().any(|delta| {
+                    matches!(
+                        delta,
+                        PreparedDelta::DiscoveryState { mutation: staged, .. }
+                            if staged.conflict_key() == mutation.conflict_key()
+                    )
+                }) {
+                    return Err(HNSQRError::InvalidRequest(
+                        "Only one mutation per governed discovery key is allowed in a committed LSN"
+                            .to_string(),
+                    ));
+                }
+                let learning = self.learning.as_ref().ok_or_else(|| {
+                    HNSQRError::InvalidRequest(
+                        "Learning discovery backend not enabled on this shard".to_string(),
+                    )
+                })?;
+                learning
+                    .governed_discovery
+                    .prevalidate(mutation, commit_lsn)
+                    .map_err(|error| HNSQRError::InvalidRequest(error.to_string()))?;
+                let evolved_relation_type = match mutation {
+                    DiscoveryStateMutation::UpsertSchema { record, .. } => {
+                        let provenance_id = record
+                            .proposal
+                            .empirical_roots
+                            .iter()
+                            .next()
+                            .map_or(0, |root| root.0);
+                        materialize_relation_type(&record.proposal, provenance_id)
+                    }
+                    _ => None,
+                };
+                if let (Some(relations), Some(rtype)) =
+                    (&self.relations, evolved_relation_type.as_ref())
+                {
+                    relations
+                        .prevalidate_evolved_type(rtype)
+                        .map_err(HNSQRError::InvalidRequest)?;
+                }
+                deltas.push(PreparedDelta::DiscoveryState {
+                    mutation: mutation.clone(),
+                    commit_lsn,
+                    evolved_relation_type,
+                });
+                Ok(())
+            }
             DataMutation::Batch { mutations, .. } => {
                 for m in mutations {
-                    self.prepare_mutation(m, deltas)?;
+                    self.prepare_mutation(m, deltas, commit_lsn)?;
+                }
+                Ok(())
+            }
+            DataMutation::FaultTolerantBatch { mutations, .. } => {
+                for m in mutations {
+                    let _ = self.prepare_mutation(m, deltas, commit_lsn);
                 }
                 Ok(())
             }
@@ -605,6 +813,34 @@ impl ShardStateMachine {
                         hypercube.set_voxel(coords, value)?;
                     }
                 }
+                PreparedDelta::DiscoveryOperator {
+                    operator,
+                    expected_previous,
+                    commit_lsn,
+                } => {
+                    if let Some(learning) = &self.learning {
+                        learning
+                            .discovery
+                            .apply(operator, expected_previous, commit_lsn)
+                            .map_err(|error| HNSQRError::InvalidRequest(error.to_string()))?;
+                    }
+                }
+                PreparedDelta::DiscoveryState {
+                    mutation,
+                    commit_lsn,
+                    evolved_relation_type,
+                } => {
+                    if let Some(learning) = &self.learning {
+                        learning
+                            .governed_discovery
+                            .apply(mutation, commit_lsn)
+                            .map_err(|error| HNSQRError::InvalidRequest(error.to_string()))?;
+                    }
+                    if let (Some(relations), Some(rtype)) = (&self.relations, evolved_relation_type)
+                    {
+                        relations.synchronize_evolved_type(rtype);
+                    }
+                }
             }
         }
         Ok(())
@@ -638,6 +874,20 @@ impl ShardStateMachine {
             sql: self.sql.clone(),
             memory: self.memory.clone(),
             hypercube: self.hypercube.clone(),
+            discovered_operators: self
+                .learning
+                .as_ref()
+                .map(|learning| learning.discovery.snapshot_at(lsn))
+                .unwrap_or_default(),
+            governed_discovery: self
+                .learning
+                .as_ref()
+                .map(|learning| learning.governed_discovery.snapshot_at(lsn)),
+            evolved_relation_types: self
+                .relations
+                .as_ref()
+                .map(|relations| relations.types.read().clone())
+                .unwrap_or_default(),
         }
     }
 }
@@ -671,6 +921,11 @@ pub struct UniversalSnapshot {
     pub sql: Option<Arc<crate::storage::relational_acid::RelationalSqlEngine>>,
     pub memory: Option<Arc<crate::ecosystem::agent_memory::AutonomousMemoryConsolidator>>,
     pub hypercube: Option<Arc<crate::vector::hypercube::HypercubeTensorSpace>>,
+    /// Governed operator versions visible at this snapshot's committed LSN.
+    pub discovered_operators: Vec<DeclarativeOperator>,
+    pub governed_discovery: Option<DiscoveryStateSnapshot>,
+    /// Canonical evolved N-ary schemas visible with the same pinned LSN.
+    pub evolved_relation_types: Vec<RelationType>,
 }
 
 impl ReplicatedStateMachine for ShardStateMachine {
@@ -702,7 +957,7 @@ impl ReplicatedStateMachine for ShardStateMachine {
 
         // 2. PREPARE: Stage and validate all deltas before touching any backend
         let mut prepared_deltas = Vec::new();
-        self.prepare_mutation(mutation, &mut prepared_deltas)?;
+        self.prepare_mutation(mutation, &mut prepared_deltas, entry_index)?;
 
         // 3. ATOMIC PUBLISH: Apply all prepared deltas to physical engines
         self.publish_deltas(prepared_deltas)?;
@@ -739,13 +994,123 @@ impl ReplicatedStateMachine for ShardStateMachine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeSet;
+
     use crate::ecosystem::agent_memory::{
         AutonomousMemoryConsolidator, EpisodicFact, FactCategory,
+    };
+    use crate::learning::{
+        DiscoveredMotif, DomainId, FeatureId, GovernanceAuthority, ImmutableSafetyKernel, MotifId,
+        ResolutionId,
     };
     use crate::storage::relational_acid::{
         ColumnDefinition, RelationalRow, RelationalSqlEngine, SqlType, SqlValue, TableSchema,
     };
     use crate::vector::hypercube::HypercubeTensorSpace;
+
+    #[test]
+    fn test_discovery_operator_lifecycle_is_replicated_and_snapshot_visible() {
+        let learning = Arc::new(LearningSegment::new(1));
+        let state = ShardStateMachine::new(1, Arc::new(SegmentedEngine::new(8, 1000)))
+            .with_learning_discovery(Arc::clone(&learning));
+        state
+            .apply(
+                1,
+                &DataMutation::new_discovery_state_mutation(
+                    DiscoveryStateMutation::InstallSafetyKernel {
+                        kernel: ImmutableSafetyKernel::v1(256),
+                    },
+                ),
+            )
+            .unwrap();
+        let motif = DiscoveredMotif {
+            id: MotifId([7; 32]),
+            conditions: vec![FeatureId(1), FeatureId(2)],
+            resolution: ResolutionId(9),
+            successes: 6,
+            contradictions: 0,
+            supporting_domains: BTreeSet::from([DomainId(1), DomainId(2)]),
+            empirical_roots: BTreeSet::new(),
+            precision_q32: 1i64 << 32,
+        };
+        let mut operator = DeclarativeOperator::from_motif(&motif);
+        operator.lifecycle = OperatorLifecycle::Provisional;
+
+        let duplicate_transition = DataMutation::new_batch(vec![
+            DataMutation::new_discovery_operator_transition(operator.clone(), None),
+            DataMutation::new_discovery_operator_transition(operator.clone(), None),
+        ]);
+        assert!(state.apply(9, &duplicate_transition).is_err());
+        assert_eq!(state.last_applied_index(), 1);
+        assert!(learning.discovery.snapshot().is_empty());
+
+        state
+            .apply(
+                10,
+                &DataMutation::new_discovery_operator_transition(operator.clone(), None),
+            )
+            .unwrap();
+
+        operator.lifecycle = OperatorLifecycle::FalsificationTesting;
+        state
+            .apply(
+                11,
+                &DataMutation::new_discovery_operator_transition(
+                    operator.clone(),
+                    Some(OperatorLifecycle::Provisional),
+                ),
+            )
+            .unwrap();
+
+        operator.lifecycle = OperatorLifecycle::Shadow;
+        state
+            .apply(
+                12,
+                &DataMutation::new_discovery_operator_transition(
+                    operator.clone(),
+                    Some(OperatorLifecycle::FalsificationTesting),
+                ),
+            )
+            .unwrap();
+
+        operator.lifecycle = OperatorLifecycle::ShadowValidated;
+        state
+            .apply(
+                13,
+                &DataMutation::new_discovery_operator_transition(
+                    operator.clone(),
+                    Some(OperatorLifecycle::Shadow),
+                ),
+            )
+            .unwrap();
+
+        operator.lifecycle = OperatorLifecycle::Admitted;
+        operator.admission_authority = Some(GovernanceAuthority::ReplicatedPolicy {
+            policy_id: 42,
+            version: 1,
+        });
+        state
+            .apply(
+                14,
+                &DataMutation::new_discovery_operator_transition(
+                    operator,
+                    Some(OperatorLifecycle::ShadowValidated),
+                ),
+            )
+            .unwrap();
+
+        let snapshot = state.pin_physical_snapshot();
+        assert_eq!(snapshot.lsn, 14);
+        assert_eq!(snapshot.discovered_operators.len(), 1);
+        assert_eq!(
+            snapshot.discovered_operators[0].lifecycle,
+            OperatorLifecycle::Admitted
+        );
+        assert_eq!(
+            learning.discovery.snapshot_at(12)[0].lifecycle,
+            OperatorLifecycle::Shadow
+        );
+    }
 
     #[test]
     fn test_cross_paradigm_atomic_transaction_and_pinned_snapshot() {
@@ -1132,5 +1497,52 @@ mod tests {
         row.insert("id".into(), SqlValue::Text("1".into()));
         let bad_sql = DataMutation::new_sql_insert("test", RelationalRow { values: row });
         assert!(sm.apply(101, &bad_sql).is_err());
+    }
+
+    #[test]
+    fn test_fault_tolerant_batch_isolates_domain_failures() {
+        let engine = Arc::new(SegmentedEngine::new(8, 1000));
+        let hypercube = Arc::new(HypercubeTensorSpace::new(vec![4, 4, 4, 4]));
+
+        let sm = ShardStateMachine::with_all_paradigms(
+            1,
+            engine.clone(),
+            None,
+            None,
+            None,
+            Some(hypercube),
+        );
+
+        // Batch with valid vector upsert, valid hypercube voxel, and invalid missing SQL backend
+        let valid_vec = VectorEmbedding::new(vec![0.1; 8]);
+        let mut row = HashMap::new();
+        row.insert("id".into(), SqlValue::Text("1".into()));
+        let bad_sql = DataMutation::new_sql_insert("test", RelationalRow { values: row });
+
+        let ft_batch = DataMutation::new_fault_tolerant_batch(vec![
+            DataMutation::new_upsert("isolated_doc", valid_vec.clone()),
+            bad_sql,
+            DataMutation::new_hypercube_voxel(vec![1, 1, 1, 1], 99.0),
+        ]);
+
+        let receipt = sm
+            .apply(200, &ft_batch)
+            .expect("FaultTolerantBatch must succeed");
+        assert_eq!(receipt.applied_index, 200);
+
+        // Verify valid vector was inserted
+        assert!(
+            !engine
+                .search(
+                    &valid_vec,
+                    1,
+                    crate::proof::lutz::SemanticRerankPlan::ExactSimd
+                )
+                .is_empty()
+        );
+        // Verify valid hypercube voxel was updated
+        let snap = sm.pin_physical_snapshot();
+        let cube_snap = snap.hypercube_snapshot.unwrap();
+        assert_eq!(cube_snap.get_voxel(&[1, 1, 1, 1]).unwrap(), 99.0);
     }
 }

@@ -402,31 +402,39 @@ impl ExecutionContext {
                 let mut new_columns: smallvec::SmallVec<[BindingColumn; 8]> =
                     smallvec::SmallVec::new();
 
-                // Replicate all existing columns.
+                // Precompute the active row index for each source index in O(rows)
+                let mut active_row_map = Vec::with_capacity(src_nodes.len());
+                for r in 0..morsel.rows {
+                    if morsel.selection[r] {
+                        active_row_map.push(r);
+                    }
+                }
+
+                // Replicate all existing columns while preserving exact BindingColumn types.
                 for col in &morsel.columns {
-                    let replicated: Vec<NodeIndex> = fanout_src
-                        .iter()
-                        .map(|&si| {
-                            let orig_active_idx = si;
-                            let mut ai = 0;
-                            let mut orig_row = 0;
-                            for r in 0..morsel.rows {
-                                if morsel.selection[r] {
-                                    if ai == orig_active_idx {
-                                        orig_row = r;
-                                        break;
-                                    }
-                                    ai += 1;
-                                }
+                    match col {
+                        BindingColumn::Node(v) => {
+                            let mut rep = Vec::with_capacity(n_new);
+                            for &si in &fanout_src {
+                                rep.push(v[active_row_map[si]]);
                             }
-                            match col {
-                                BindingColumn::Node(v) => v[orig_row],
-                                BindingColumn::Relationship(v) => v[orig_row],
-                                BindingColumn::Scalar(v) => v[orig_row] as NodeIndex,
+                            new_columns.push(BindingColumn::Node(rep));
+                        }
+                        BindingColumn::Relationship(v) => {
+                            let mut rep = Vec::with_capacity(n_new);
+                            for &si in &fanout_src {
+                                rep.push(v[active_row_map[si]]);
                             }
-                        })
-                        .collect();
-                    new_columns.push(BindingColumn::Node(replicated));
+                            new_columns.push(BindingColumn::Relationship(rep));
+                        }
+                        BindingColumn::Scalar(v) => {
+                            let mut rep = Vec::with_capacity(n_new);
+                            for &si in &fanout_src {
+                                rep.push(v[active_row_map[si]]);
+                            }
+                            new_columns.push(BindingColumn::Scalar(rep));
+                        }
+                    }
                 }
 
                 // Append the new dst column.

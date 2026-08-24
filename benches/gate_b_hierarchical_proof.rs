@@ -14,7 +14,7 @@ use std::time::Instant;
 use hnsqr::proof::{DenseExactProof, GlobalExactProofSearch, SegmentProofView, SemanticProofTree};
 use hnsqr::rivero::bulk::RiveroBulkBuilder;
 use hnsqr::rivero::{RiveroAddressConfig, RiveroCompiler, RiveroConfig, RiveroProjectionMode};
-use hnsqr::{DistanceFunction, NodeIndex, SimilarityScore, VectorEmbedding};
+use hnsqr::{DistanceFunction, NodeIndex};
 
 #[derive(Debug, Clone)]
 struct ExperimentConfig {
@@ -37,27 +37,6 @@ struct BenchmarkResult {
     brute_force_lat_us: f64,
     proof_lat_us: f64,
     speedup: f64,
-}
-
-#[inline]
-fn cosine_sim(q: &VectorEmbedding, doc: &VectorEmbedding) -> f32 {
-    1.0 - q.cosine_distance(doc)
-}
-
-fn brute_force_exact(
-    query: &VectorEmbedding,
-    corpus: &[VectorEmbedding],
-    k: usize,
-) -> Vec<(NodeIndex, SimilarityScore)> {
-    let mut scores: Vec<(NodeIndex, SimilarityScore)> = corpus
-        .iter()
-        .enumerate()
-        .map(|(idx, doc)| (idx as NodeIndex, cosine_sim(query, doc)))
-        .collect();
-
-    scores.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-    scores.truncate(k);
-    scores
 }
 
 fn run_experiment(exp: &ExperimentConfig) -> BenchmarkResult {
@@ -108,8 +87,8 @@ fn run_experiment(exp: &ExperimentConfig) -> BenchmarkResult {
         .map(|v| hnsqr::proof::lutz::LutzCode::encode(v, true))
         .collect();
 
-    // 4. Build Canonical Corpus-Covering Proof Tree
-    println!("   ⚙️ Building Canonical Semantic Proof Hierarchy...");
+    // 4. Build Canonical Corpus-Covering Proof Tree & Exact Index Baseline
+    println!("   ⚙️ Building Canonical Semantic Proof Hierarchy & Exact Baseline...");
     let slots: Vec<NodeIndex> = (0..exp.n_corpus as NodeIndex).collect();
     let proof_tree_start = Instant::now();
     let proof_tree = SemanticProofTree::build(&corpus, &slots, complex_dim);
@@ -120,6 +99,16 @@ fn run_experiment(exp: &ExperimentConfig) -> BenchmarkResult {
         proof_tree.total_vectors()
     );
 
+    let mut exact_cfg = hnsqr::HNSQRConfig::default();
+    exact_cfg.distance_function = DistanceFunction::Cosine;
+    exact_cfg.rivero_enabled = false;
+    let exact_index = hnsqr::HNSQRIndex::new(exact_cfg, complex_dim);
+    for (i, v) in corpus.iter().enumerate() {
+        exact_index
+            .insert(format!("doc_{i}"), v.clone())
+            .expect("exact insert");
+    }
+
     // 5. Execute Evaluation
     let mut total_gt_matches = 0usize;
     let mut total_gt_elements = 0usize;
@@ -128,9 +117,11 @@ fn run_experiment(exp: &ExperimentConfig) -> BenchmarkResult {
     let mut proofs: Vec<DenseExactProof> = Vec::with_capacity(exp.n_queries);
 
     for q in &queries {
-        // Brute Force Baseline
+        // Production Exact SIMD Baseline
         let bf_start = Instant::now();
-        let gt = brute_force_exact(q, &corpus, exp.k);
+        let gt = exact_index
+            .search_indices_exact(q, exp.k, None)
+            .expect("exact scan");
         let bf_dur = bf_start.elapsed().as_secs_f64() * 1_000_000.0;
         bf_latencies_us.push(bf_dur);
 
@@ -180,17 +171,28 @@ fn run_experiment(exp: &ExperimentConfig) -> BenchmarkResult {
     let n_f64 = exp.n_corpus as f64;
     let avg_regions_pruned =
         proofs.iter().map(|p| p.proof_regions_pruned).sum::<usize>() as f64 / exp.n_queries as f64;
-    let avg_regions_popped =
-        proofs.iter().map(|p| p.proof_regions_popped).sum::<usize>() as f64 / exp.n_queries as f64;
-    let regions_pruned_pct =
-        (avg_regions_pruned / (avg_regions_pruned + avg_regions_popped)) * 100.0;
+    let avg_regions_expanded = proofs
+        .iter()
+        .map(|p| p.proof_regions_expanded)
+        .sum::<usize>() as f64
+        / exp.n_queries as f64;
+    let total_regions = avg_regions_pruned + avg_regions_expanded;
+    let regions_pruned_pct = if total_regions > 0.0 {
+        (avg_regions_pruned / total_regions) * 100.0
+    } else {
+        0.0
+    };
 
     let avg_vectors_pruned_by_region = proofs
         .iter()
         .map(|p| p.vectors_pruned_by_region)
         .sum::<usize>() as f64
         / exp.n_queries as f64;
-    let vectors_pruned_by_region_pct = (avg_vectors_pruned_by_region / n_f64) * 100.0;
+    let vectors_pruned_by_region_pct = if n_f64 > 0.0 {
+        (avg_vectors_pruned_by_region / n_f64) * 100.0
+    } else {
+        0.0
+    };
 
     let avg_lutz_l0_evals =
         proofs.iter().map(|p| p.lutz_l0_evaluations).sum::<usize>() as f64 / exp.n_queries as f64;
@@ -204,14 +206,22 @@ fn run_experiment(exp: &ExperimentConfig) -> BenchmarkResult {
 
     let avg_exact_evals =
         proofs.iter().map(|p| p.exact_evaluations).sum::<usize>() as f64 / exp.n_queries as f64;
-    let exact_simd_evals_pct = (avg_exact_evals / n_f64) * 100.0;
+    let exact_simd_evals_pct = if n_f64 > 0.0 {
+        (avg_exact_evals / n_f64) * 100.0
+    } else {
+        0.0
+    };
 
     bf_latencies_us.sort_by(|a, b| a.total_cmp(b));
     proof_latencies_us.sort_by(|a, b| a.total_cmp(b));
 
     let bf_lat_p50 = bf_latencies_us[exp.n_queries / 2];
     let proof_lat_p50 = proof_latencies_us[exp.n_queries / 2];
-    let speedup = bf_lat_p50 / proof_lat_p50;
+    let speedup = if proof_lat_p50 > 0.0 {
+        bf_lat_p50 / proof_lat_p50
+    } else {
+        1.0
+    };
 
     println!("\n   📊 RESULTS SUMMARY:");
     println!(

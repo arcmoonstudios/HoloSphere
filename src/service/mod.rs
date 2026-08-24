@@ -143,11 +143,46 @@ pub trait SearchService: Send + Sync {
         rerank_plan: SemanticRerankPlan,
     ) -> HNSQRResult<Vec<(Arc<str>, SimilarityScore)>>;
 
+    /// Executes a search together with any certificate produced by the planner.
+    ///
+    /// Implementations that do not produce a mathematical certificate must retain
+    /// the conservative default: results are useful, but are neither certified nor
+    /// accompanied by a proof upper bound.
+    fn search_with_proof(
+        &self,
+        ctx: &RequestContext,
+        query: &VectorEmbedding,
+        k: usize,
+        rerank_plan: SemanticRerankPlan,
+    ) -> HNSQRResult<SearchResponse> {
+        self.search(ctx, query, k, rerank_plan)
+            .map(SearchResponse::uncertified)
+    }
+
     fn graph_query(
         &self,
         ctx: &RequestContext,
         query: &str,
     ) -> HNSQRResult<crate::graph::query::executor::QueryResult>;
+}
+
+/// Search output plus optional verification evidence for transport boundaries.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SearchResponse {
+    pub results: Vec<(Arc<str>, SimilarityScore)>,
+    pub is_certified: bool,
+    pub proof_upper_bound: Option<f32>,
+}
+
+impl SearchResponse {
+    #[must_use]
+    pub fn uncertified(results: Vec<(Arc<str>, SimilarityScore)>) -> Self {
+        Self {
+            results,
+            is_certified: false,
+            proof_upper_bound: None,
+        }
+    }
 }
 
 /// Combined HNSQR production service contract.

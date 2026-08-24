@@ -123,6 +123,10 @@ fn benchmark_profile_scaling(vectors: &[VectorEmbedding]) {
 }
 
 fn benchmark_incremental_vs_bulk(vectors: &[VectorEmbedding]) {
+    if vectors.is_empty() {
+        return;
+    }
+    let dim = vectors[0].dimension();
     let n = vectors.len().min(5000);
     let sample = &vectors[..n];
 
@@ -139,7 +143,7 @@ fn benchmark_incremental_vs_bulk(vectors: &[VectorEmbedding]) {
     cfg_inc.rivero_enabled = true;
     cfg_inc.rivero_fallback_on_underfill = false;
     cfg_inc.rivero_witness_degree = 48;
-    let idx_inc = HNSQRIndex::new(cfg_inc, 32);
+    let idx_inc = HNSQRIndex::new(cfg_inc, dim);
 
     let t0 = Instant::now();
     for (i, v) in sample.iter().enumerate() {

@@ -66,18 +66,23 @@ fn run_pipeline_benchmark(
 
     let candidate_slots: Vec<NodeIndex> = (0..candidate_pool_size as NodeIndex).collect();
 
-    // 1. Measure Baseline: 512 Exhaustive Full-Dimensional Hermitian Scores
+    let mut exact_cfg = hnsqr::HNSQRConfig::default();
+    exact_cfg.distance_function = hnsqr::DistanceFunction::Cosine;
+    exact_cfg.rivero_enabled = false;
+    let exact_index = hnsqr::HNSQRIndex::new(exact_cfg, complex_dim);
+    for (i, v) in dataset.folded_corpus.iter().enumerate() {
+        exact_index
+            .insert(format!("doc_{i}"), v.clone())
+            .expect("exact insert");
+    }
+
+    // 1. Measure Baseline: Exhaustive Production Exact SIMD Scan
     let mut base_latencies = Vec::with_capacity(num_queries);
     for query in &dataset.folded_queries {
         let t0 = Instant::now();
-        let mut exhaustive: Vec<(NodeIndex, SimilarityScore)> = dataset
-            .folded_corpus
-            .iter()
-            .enumerate()
-            .map(|(idx, doc)| (idx as NodeIndex, (query.dot_product_complex(doc)).re))
-            .collect();
-        exhaustive.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-        let _ = exhaustive.into_iter().take(k).collect::<Vec<_>>();
+        let _ = exact_index
+            .search_indices_exact(query, k, None)
+            .expect("exact scan");
         base_latencies.push(t0.elapsed().as_secs_f64() * 1_000_000.0);
     }
 

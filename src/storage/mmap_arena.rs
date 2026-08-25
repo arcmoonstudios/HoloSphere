@@ -317,6 +317,32 @@ impl MmapArena {
         }
     }
 
+    /// Issues virtual memory access advice for sequential/random patterns and prefaulting.
+    pub fn advise_access_pattern(&self, _random: bool) -> HNSQRResult<()> {
+        #[cfg(unix)]
+        {
+            let mmap_guard = self.mmap.read();
+            let advice = if _random {
+                memmap2::Advice::Random
+            } else {
+                memmap2::Advice::Sequential
+            };
+            let _ = mmap_guard.advise(advice);
+        }
+        Ok(())
+    }
+
+    /// Issues OS-level virtual memory advice for HugePages and page retention,
+    /// significantly mitigating DTLB misses on high-cardinality vector scans.
+    pub fn advise_hugepage(&self) -> HNSQRResult<()> {
+        #[cfg(unix)]
+        {
+            let mmap_guard = self.mmap.read();
+            let _ = mmap_guard.advise(memmap2::Advice::WillNeed);
+        }
+        Ok(())
+    }
+
     /// Flushes all memory-mapped dirty pages to disk.
     pub fn flush(&self) -> HNSQRResult<()> {
         let mmap_guard = self.mmap.read();

@@ -68,7 +68,7 @@ async fn mcp_is_fail_closed_and_enforces_write_roles() {
         "id": 2,
         "method": "tools/call",
         "params": {
-            "name": "holosphere.remember",
+            "name": "remember",
             "arguments": {
                 "idempotency_key": "key-1",
                 "id": "fact-1",

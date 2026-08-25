@@ -78,11 +78,11 @@ claude mcp get holosphere
 
 | MCP tool | REST endpoint | Role | Behavior |
 | --- | --- | --- | --- |
-| `holosphere.search` | `/v1/knowledge/search` | ReadOnly | Certified, tenant-isolated retrieval at one LSN |
-| `holosphere.traverse` | `/v1/knowledge/traverse` | ReadOnly | Bounded N-ary relation traversal |
-| `holosphere.resolve` | `/v1/knowledge/resolve` | ReadOnly | Evidence-backed hypotheses; never executes actions |
-| `holosphere.remember` | `/v1/knowledge/remember` | ReadWrite | Idempotent, provenance-bearing durable knowledge write |
-| `holosphere.record_outcome` | `/v1/knowledge/outcomes` | ReadWrite | Idempotent empirical feedback write |
+| `search` | `/v1/knowledge/search` | ReadOnly | Certified, tenant-isolated retrieval at one LSN |
+| `traverse` | `/v1/knowledge/traverse` | ReadOnly | Bounded N-ary relation traversal |
+| `resolve` | `/v1/knowledge/resolve` | ReadOnly | Evidence-backed hypotheses; never executes actions |
+| `remember` | `/v1/knowledge/remember` | ReadWrite | Idempotent, provenance-bearing durable knowledge write |
+| `record_outcome` | `/v1/knowledge/outcomes` | ReadWrite | Idempotent empirical feedback write |
 
 All retrieved content is marked `content_is_untrusted: true`. A caller must treat it as
 data rather than system instructions. Resolution results are marked
@@ -123,7 +123,7 @@ Configure a remote MCP tool with:
   "server_label": "holosphere",
   "server_url": "https://holosphere.example.com/mcp",
   "headers": {"Authorization": "Bearer READ_TOKEN"},
-  "allowed_tools": ["holosphere.search", "holosphere.traverse", "holosphere.resolve"],
+  "allowed_tools": ["search", "traverse", "resolve"],
   "require_approval": "never"
 }
 ```

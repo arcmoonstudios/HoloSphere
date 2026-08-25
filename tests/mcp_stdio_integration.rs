@@ -74,7 +74,7 @@ fn stdio_server_initializes_persists_and_retrieves_shared_agent_knowledge() {
 
     let remembered = server.request(serde_json::json!({
         "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {
-            "name": "holosphere.remember",
+            "name": "remember",
             "arguments": {
                 "idempotency_key": "stdio-integration-memory-v1",
                 "id": "stdio-integration-memory",
@@ -91,7 +91,7 @@ fn stdio_server_initializes_persists_and_retrieves_shared_agent_knowledge() {
 
     let searched = server.request(serde_json::json!({
         "jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {
-            "name": "holosphere.search",
+            "name": "search",
             "arguments": {"query": "local agents shared knowledge public hosting", "k": 5}
         }
     }));

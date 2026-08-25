@@ -3,7 +3,9 @@
 
 pub mod active_experiment;
 pub mod checkpoint;
+pub mod distillation;
 pub mod dsl;
+
 pub mod engine;
 pub mod evaluation;
 pub mod experiment;
@@ -28,6 +30,8 @@ pub use active_experiment::{
 pub use checkpoint::{
     DISCOVERY_CHECKPOINT_VERSION, DiscoveryCheckpointError, GovernedDiscoveryCheckpoint,
 };
+pub use distillation::{AutonomousDistillationExporter, DpoCandidate, DpoReasoningPair};
+
 
 pub use dsl::{
     ComparisonOperator, ConditionExpression, DslEffect, HypergraphTransformation,

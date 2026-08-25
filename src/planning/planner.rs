@@ -4,8 +4,8 @@
 //!▫~•◦-------------------------------------------------------------------‣
 //!
 //! Evaluates multidimensional retrieval costs over corpus size, dimension, filter cardinality,
-//! residency, and hardware capabilities to select the optimal execution path under a declarative
-//! correctness contract.
+//! residency, hardware capabilities, and XyCo 8D Affective State dynamics to select the optimal
+//! execution path under a declarative correctness contract.
 /*▫~•◦------------------------------------------------------------------------------------‣
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
@@ -13,6 +13,7 @@
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
+use crate::planning::affect::{AffectiveRegime, AffectiveStateTensor8D};
 use crate::proof::lutz::SemanticRerankPlan;
 use crate::rivero::RiveroProfile;
 
@@ -137,13 +138,33 @@ impl UniversalPlanner {
         ExactScanCrossoverModel::CALIBRATED.threshold(complex_dim)
     }
 
-    /// Plans the optimal execution path given corpus state and query constraints.
+    /// Standard baseline planning path (neutral affect).
     pub fn plan(
         total_vectors: usize,
         complex_dim: usize,
         filter_cardinality: Option<usize>,
         contract: RetrievalContract,
         is_mmap_cold: bool,
+    ) -> ExecutionPlan {
+        Self::plan_with_affect(
+            total_vectors,
+            complex_dim,
+            filter_cardinality,
+            contract,
+            is_mmap_cold,
+            &AffectiveStateTensor8D::default(),
+        )
+    }
+
+    /// Plans the optimal execution path considering corpus state, query constraints,
+    /// and XyCo 8D Affective Dynamics ($A_t$).
+    pub fn plan_with_affect(
+        total_vectors: usize,
+        complex_dim: usize,
+        filter_cardinality: Option<usize>,
+        contract: RetrievalContract,
+        is_mmap_cold: bool,
+        affect: &AffectiveStateTensor8D,
     ) -> ExecutionPlan {
         if matches!(contract, RetrievalContract::MultiVectorMaxSim { .. }) {
             return ExecutionPlan::MultiVectorMaxSim;
@@ -157,6 +178,22 @@ impl UniversalPlanner {
             return ExecutionPlan::ExactScan { effective_n };
         }
 
+        // Apply XyCo 8D Dual-Regime Gating
+        let effective_contract = match affect.regime() {
+            // Regime A: Blast-radius guarded (R < 0.2). Force Certified contract unconditionally.
+            AffectiveRegime::OneWayDoorCritical => RetrievalContract::Certified,
+            // Regime B: Speculative exploration (R > 0.8 & N > 0.8). If contract is HighRecall, license PAC relaxation
+            AffectiveRegime::SpeculativeCuriosity => match contract {
+                RetrievalContract::HighRecall(_) => RetrievalContract::PacRelaxed {
+                    epsilon: 0.05,
+                    delta: 0.01,
+                },
+                c => c,
+            },
+            AffectiveRegime::Equilibrium => contract,
+        };
+
+
         // Dimensional scaling factor for metric concentration in high dimensions (e.g. 1536D, 4096D)
         let dim_multiplier = if complex_dim >= 768 {
             2.5f32 // 1536D+ real
@@ -166,14 +203,14 @@ impl UniversalPlanner {
             1.0f32
         };
 
-        // 2. If contract is Certified -> LutzGlobalCertified
-        if matches!(contract, RetrievalContract::Certified) {
+        // 2. If effective contract is Certified -> LutzGlobalCertified
+        if matches!(effective_contract, RetrievalContract::Certified) {
             return ExecutionPlan::LutzGlobalCertified {
                 initial_seed_cap: (2048.0 * dim_multiplier).round() as usize,
             };
         }
 
-        if let RetrievalContract::PacRelaxed { epsilon, delta } = contract {
+        if let RetrievalContract::PacRelaxed { epsilon, delta } = effective_contract {
             return ExecutionPlan::LutzPacRelaxed {
                 initial_seed_cap: ((2048.0 * dim_multiplier) * (1.0 - epsilon)).round() as usize,
                 epsilon,
@@ -182,7 +219,7 @@ impl UniversalPlanner {
         }
 
         // 3. Select Rivero Profile based on contract
-        let (profile, base_cap) = match contract {
+        let (profile, base_cap) = match effective_contract {
             RetrievalContract::Exact => (RiveroProfile::Strict, 1024),
             RetrievalContract::Certified => (RiveroProfile::Fast, 512),
             RetrievalContract::PacRelaxed { .. } => (RiveroProfile::Fast, 512),
@@ -259,6 +296,36 @@ mod tests {
             plan_filtered,
             ExecutionPlan::ExactScan { effective_n: 200 }
         ));
+    }
+
+    #[test]
+    fn test_affect_driven_planner_gating() {
+        // One-way door action (R < 0.2) forces LutzGlobalCertified even if contract was HighRecall
+        let low_r_affect = AffectiveStateTensor8D::new(0.5, 0.2, 0.5, 0.9, 0.9, 0.1, 0.5, 0.05);
+        let plan_low_r = UniversalPlanner::plan_with_affect(
+            100_000,
+            768,
+            None,
+            RetrievalContract::HighRecall(0.95),
+            false,
+            &low_r_affect,
+        );
+        assert!(matches!(
+            plan_low_r,
+            ExecutionPlan::LutzGlobalCertified { .. }
+        ));
+
+        // High-curiosity safe exploration (R > 0.8, N > 0.8) licenses PAC relaxation
+        let explore_affect = AffectiveStateTensor8D::new(0.5, 0.1, 0.5, 0.5, 0.8, 0.95, 0.5, 0.95);
+        let plan_explore = UniversalPlanner::plan_with_affect(
+            100_000,
+            768,
+            None,
+            RetrievalContract::HighRecall(0.99),
+            false,
+            &explore_affect,
+        );
+        assert!(matches!(plan_explore, ExecutionPlan::LutzPacRelaxed { .. }));
     }
 
     #[test]

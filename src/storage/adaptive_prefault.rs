@@ -70,18 +70,24 @@ impl AdaptivePrefaultEngine {
 
         let mut touched = 0;
         let page_size = 4096;
+        let stride = if is_hot_proof_metadata && slice.len() >= 2 * 1024 * 1024 {
+            2 * 1024 * 1024
+        } else {
+            page_size
+        };
         let mut offset = 0;
 
         while offset < slice.len() {
             // Touch one byte per page to fault into physical RAM
             let _ = slice[offset];
             touched += 1;
-            offset += page_size;
+            offset += stride;
         }
 
         self.total_warmed_bytes
             .fetch_add(slice.len(), Ordering::Relaxed);
         Ok(touched)
+
     }
 }
 

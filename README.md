@@ -316,7 +316,7 @@ Client ACK ◄── CommitReceipt ◄── ShardStateMachine Apply ◄── Q
 ## Wire Protocols, Web Console & API Docs
 
 * **QIR0 Binary TCP Protocol (`:9090`)**: High-throughput async protocol supporting `OpCode::Ping`, `Insert`, `Search`, `BatchSearch`, `Stats`, and `OpCode::GraphQuery`.
-* **Model Context Protocol (`POST :8080/mcp`)**: Stateless MCP `2025-06-18` Streamable HTTP server for OpenAI, Gemini, Claude, and compatible agents. It exposes tenant-isolated `holosphere.search`, `traverse`, `resolve`, `remember`, and `record_outcome` tools with role checks and closed JSON schemas.
+* **Model Context Protocol (`POST :8080/mcp`)**: Stateless MCP `2025-06-18` Streamable HTTP server for OpenAI, Gemini, Claude, and compatible agents. The `holosphere` server exposes tenant-isolated `search`, `traverse`, `resolve`, `remember`, and `record_outcome` tools with role checks and closed JSON schemas.
 * **Redis RESP Protocol (`:6379`)**: Native RESP2/RESP3 server with `PING`, `SET`, `GET`, `INCR`, `DEL`, `PUBLISH`, `SUBSCRIBE`, `XADD`, and `XREAD`.
 * **Apache Arrow Flight SQL (`:50051`)**: Native Arrow IPC streaming protocol for zero-copy lakehouse analytics.
 * **HTTP REST Gateway (`:8080`)**: Axum-based JSON REST API for vector collections plus `/v1/knowledge/search`, `/traverse`, `/resolve`, `/remember`, and `/outcomes`. Model responses carry a pinned LSN, proof status, and an explicit untrusted-content marker.

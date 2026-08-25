@@ -69,7 +69,8 @@ knowledge hypergraph layer:
   role-aware matching without imposing an artificial source/target split.
 - Relation versions carry temporal validity and epistemic state. Evolutionary
   inference produces provisional proposals rather than silently rewriting
-  admitted knowledge.
+  admitted knowledge. Tombstones remain addressable for pre-delete `as_of` reads,
+  but are excluded from current and post-delete relation queries.
 - Evidence independence, circularity, staleness, and semantic-deduplication guards
   prevent N-ary fan-out and swarm echoes from multiplying confidence.
 - Retrieval marked `Certified` is resolved by a complete metric-consistent proof
@@ -400,8 +401,13 @@ Client ACK ◄── CommitReceipt ◄── ShardStateMachine Apply ◄── Q
   evolved N-ary relation schemas at the same committed LSN.
 - `WorldStateDigest` deterministically hashes entity, relation, experience, learning,
   and schema state while excluding rebuildable acceleration structures.
-- The semantic-kernel v1 conformance layer provides versioned canonical export/import,
-  typed errors, a golden fixture, and fail-closed version checks.
+- The semantic-kernel conformance layer provides versioned canonical export/import,
+  typed errors, a golden fixture, and fail-closed version checks. World-state equality
+  includes canonical learning records rather than a placeholder digest.
+- Full backups have an explicit authenticated envelope-encryption path
+  (`create_encrypted_full_backup` / `restore_encrypted_pitr`) using AES-256-GCM and a
+  caller-provided KMS. The original full-backup method is intentionally plaintext for
+  local/export workflows and must not be used for confidential production data.
 - Snapshot attachment supports `Lazy`, `Eager`, and default `Adaptive` prefault modes.
   Adaptive warming preserves a memory reserve, reads cgroup v1/v2 limits when present,
   and skips cold dense-page warming when headroom is insufficient.
@@ -416,7 +422,7 @@ Client ACK ◄── CommitReceipt ◄── ShardStateMachine Apply ◄── Q
 * **Model Context Protocol (`POST :8080/mcp`)**: Stateless MCP `2025-06-18` Streamable HTTP server for OpenAI, Gemini, Claude, and compatible agents. The `holosphere` server exposes tenant-isolated `search`, `traverse`, `resolve`, `remember`, and `record_outcome` tools with role checks and closed JSON schemas.
 * **Redis RESP Protocol (`:6379`)**: Native RESP2/RESP3 server with `PING`, `SET`, `GET`, `INCR`, `DEL`, `PUBLISH`, `SUBSCRIBE`, `XADD`, and `XREAD`.
 * **Arrow-shaped batch socket (`:50051`)**: Project-local `ARROW1`-framed schema and batch payload; full gRPC Arrow Flight SQL compatibility is not yet claimed.
-* **HTTP REST Gateway (`:8080`)**: Axum-based JSON REST API for vector collections plus `/v1/knowledge/search`, `/traverse`, `/resolve`, `/remember`, and `/outcomes`. Human-readable metadata accepts natural JSON string, integer, float, and Boolean scalars. Model responses carry a pinned LSN, proof status, and an explicit untrusted-content marker.
+* **HTTP REST Gateway (`:8080`)**: Axum-based JSON REST API for vector collections plus `/v1/knowledge/search`, `/traverse`, `/resolve`, `/remember`, and `/outcomes`. Collection search accepts exactly one of a raw `query`/`vector` or `query_text`; text is embedded in the existing collection's compatible local embedding space and never creates a guessed-dimension collection. Human-readable metadata accepts natural JSON string, integer, float, and Boolean scalars. Model responses carry a pinned LSN, proof status, and an explicit untrusted-content marker.
 * **Embedded Web Console (`/dashboard` & `/ui`)**: Zero-dependency interactive single-page dashboard for visual graph exploration, live cluster metrics, and interactive query building.
 * **Interactive OpenAPI 3.1 & Swagger UI (`/docs` & `/swagger`)**: In-browser API exploration and testing at `http://127.0.0.1:8080/docs`.
 * **Multi-Language Client Libraries**:

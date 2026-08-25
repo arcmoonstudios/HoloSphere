@@ -15,11 +15,14 @@
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use aes_gcm::aead::{Aead, KeyInit, Payload};
+use aes_gcm::{Aes256Gcm, Nonce};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::storage::manifest::{SnapshotManifest, UnifiedSnapshotEngine};
 use crate::storage::wal::{WalManager, WalMutation, WalRecoverySummary};
+use crate::security::KmsProvider;
 use crate::{HNSQRError, HNSQRResult};
 
 /// Backup category.
@@ -39,6 +42,23 @@ pub struct BackupMetadata {
     pub start_lsn: u64,
     pub end_lsn: u64,
     pub sha256_hex: String,
+}
+
+/// Public envelope metadata. It contains no plaintext data or data-encryption
+/// key; the encrypted payload is authenticated with this backup ID as AAD.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct EncryptedBackupMetadata {
+    pub format_version: u32,
+    pub algorithm: String,
+    pub key_id: String,
+    pub encrypted_dek: Vec<u8>,
+    pub nonce: [u8; 12],
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct EncryptedSnapshotPayload {
+    manifest_bytes: Vec<u8>,
+    snapshot_bytes: Vec<u8>,
 }
 
 /// Backup & Disaster Recovery Coordinator.
@@ -89,6 +109,64 @@ impl BackupManager {
             .map_err(|e| HNSQRError::Internal(format!("Backup meta serialize error: {e}")))?;
         std::fs::write(backup_dir.join("backup_meta.json"), meta_bytes)?;
 
+        Ok(meta)
+    }
+
+    /// Creates an authenticated, envelope-encrypted full backup.  This is the
+    /// production backup path; [`Self::create_full_backup`] remains available
+    /// only for explicitly unencrypted local/export workflows.
+    pub fn create_encrypted_full_backup(
+        source_snapshot_dir: impl AsRef<Path>,
+        backup_dir: impl AsRef<Path>,
+        backup_id: &str,
+        key_id: &str,
+        kms: &dyn KmsProvider,
+    ) -> HNSQRResult<BackupMetadata> {
+        if key_id.trim().is_empty() {
+            return Err(HNSQRError::InvalidRequest("backup key_id must not be empty".into()));
+        }
+        let source_snapshot_dir = source_snapshot_dir.as_ref();
+        let backup_dir = backup_dir.as_ref().join(backup_id);
+        std::fs::create_dir_all(&backup_dir)?;
+        let (manifest, mmap) = UnifiedSnapshotEngine::load_latest_snapshot(source_snapshot_dir)?;
+        let manifest_bytes = manifest.encode()?;
+        let snapshot_bytes = mmap[..].to_vec();
+        let plaintext = bincode::serialize(&EncryptedSnapshotPayload {
+            manifest_bytes,
+            snapshot_bytes: snapshot_bytes.clone(),
+        })
+        .map_err(|error| HNSQRError::SerializationError(error.to_string()))?;
+
+        let (dek, encrypted_dek) = kms.generate_data_key(key_id)?;
+        let cipher = Aes256Gcm::new_from_slice(&dek).map_err(|_| {
+            HNSQRError::Internal("KMS returned a data key that is not 256 bits".into())
+        })?;
+        let nonce: [u8; 12] = rand::random();
+        let ciphertext = cipher
+            .encrypt(
+                Nonce::from_slice(&nonce),
+                Payload {
+                    msg: &plaintext,
+                    aad: backup_id.as_bytes(),
+                },
+            )
+            .map_err(|_| HNSQRError::Internal("backup encryption failed".into()))?;
+
+        let envelope = EncryptedBackupMetadata {
+            format_version: 1,
+            algorithm: "AES-256-GCM".into(),
+            key_id: key_id.into(),
+            encrypted_dek,
+            nonce,
+        };
+        let envelope_bytes = serde_json::to_vec_pretty(&envelope)
+            .map_err(|error| HNSQRError::SerializationError(error.to_string()))?;
+        std::fs::write(backup_dir.join("snapshot.encrypted"), ciphertext)?;
+        std::fs::write(backup_dir.join("encryption.json"), envelope_bytes)?;
+
+        let sha256_hex = sha256_hex(&snapshot_bytes);
+        let meta = backup_metadata(backup_id, BackupType::Full, manifest.generation, 0, manifest.snapshot_lsn, sha256_hex);
+        write_backup_metadata(&backup_dir, &meta)?;
         Ok(meta)
     }
 
@@ -156,25 +234,94 @@ impl BackupManager {
         full_backup_id: &str,
         incremental_backup_id: Option<&str>,
         target_lsn: u64,
-        mut apply_mutation: F,
+        apply_mutation: F,
     ) -> HNSQRResult<WalRecoverySummary>
     where
         F: FnMut(u64, WalMutation) -> HNSQRResult<()>,
     {
         let full_dir = backup_base_dir.as_ref().join(full_backup_id);
-        let target_restore_dir = target_restore_dir.as_ref();
-        std::fs::create_dir_all(target_restore_dir)?;
-
-        // 1. Restore Snapshot Manifest & Data
         let manifest_bytes = std::fs::read(full_dir.join("manifest.json"))?;
+        let snapshot_bytes = std::fs::read(full_dir.join("snapshot.data"))?;
+        Self::restore_pitr_from_snapshot(
+            backup_base_dir.as_ref(),
+            target_restore_dir.as_ref(),
+            manifest_bytes,
+            snapshot_bytes,
+            incremental_backup_id,
+            target_lsn,
+            apply_mutation,
+        )
+    }
+
+    /// Restores a full encrypted backup and optionally replays a plaintext WAL
+    /// incremental. Authentication is verified before any restore files are
+    /// materialized.
+    pub fn restore_encrypted_pitr<F>(
+        backup_base_dir: impl AsRef<Path>,
+        target_restore_dir: impl AsRef<Path>,
+        full_backup_id: &str,
+        incremental_backup_id: Option<&str>,
+        target_lsn: u64,
+        kms: &dyn KmsProvider,
+        apply_mutation: F,
+    ) -> HNSQRResult<WalRecoverySummary>
+
+    where
+        F: FnMut(u64, WalMutation) -> HNSQRResult<()>,
+    {
+        let full_dir = backup_base_dir.as_ref().join(full_backup_id);
+        let envelope: EncryptedBackupMetadata = serde_json::from_slice(&std::fs::read(full_dir.join("encryption.json"))?)
+            .map_err(|error| HNSQRError::SerializationError(error.to_string()))?;
+        if envelope.format_version != 1 || envelope.algorithm != "AES-256-GCM" {
+            return Err(HNSQRError::SnapshotIncompatible("unsupported encrypted backup envelope".into()));
+        }
+        let dek = kms.decrypt_data_key(&envelope.key_id, &envelope.encrypted_dek)?;
+        let cipher = Aes256Gcm::new_from_slice(&dek).map_err(|_| {
+            HNSQRError::Internal("KMS returned a data key that is not 256 bits".into())
+        })?;
+        let plaintext = cipher
+            .decrypt(
+                Nonce::from_slice(&envelope.nonce),
+                Payload {
+                    msg: &std::fs::read(full_dir.join("snapshot.encrypted"))?,
+                    aad: full_backup_id.as_bytes(),
+                },
+            )
+            .map_err(|_| HNSQRError::CorruptedSnapshot("encrypted backup authentication failed".into()))?;
+        let payload: EncryptedSnapshotPayload = bincode::deserialize(&plaintext)
+            .map_err(|error| HNSQRError::CorruptedSnapshot(error.to_string()))?;
+        Self::restore_pitr_from_snapshot(
+            backup_base_dir.as_ref(),
+            target_restore_dir.as_ref(),
+            payload.manifest_bytes,
+            payload.snapshot_bytes,
+            incremental_backup_id,
+            target_lsn,
+            apply_mutation,
+        )
+    }
+
+    fn restore_pitr_from_snapshot<F>(
+        backup_base_dir: &Path,
+        target_restore_dir: &Path,
+        manifest_bytes: Vec<u8>,
+        snapshot_bytes: Vec<u8>,
+        incremental_backup_id: Option<&str>,
+        target_lsn: u64,
+        mut apply_mutation: F,
+    ) -> HNSQRResult<WalRecoverySummary>
+    where
+        F: FnMut(u64, WalMutation) -> HNSQRResult<()>,
+    {
+        std::fs::create_dir_all(target_restore_dir)?;
         let manifest = SnapshotManifest::decode(&manifest_bytes)?;
 
         let snap_dir = target_restore_dir.join("snapshots");
         std::fs::create_dir_all(&snap_dir)?;
         std::fs::write(snap_dir.join("current_manifest.json"), &manifest_bytes)?;
-        std::fs::copy(
-            full_dir.join("snapshot.data"),
+        std::fs::write(
             snap_dir.join(format!("snapshot_gen_{:016}.data", manifest.generation)),
+            snapshot_bytes,
         )?;
 
         let mut summary = WalRecoverySummary {
@@ -187,7 +334,7 @@ impl BackupManager {
 
         // 2. If incremental backup provided, restore WAL and replay up to target_lsn
         if let Some(inc_id) = incremental_backup_id {
-            let inc_dir = backup_base_dir.as_ref().join(inc_id);
+            let inc_dir = backup_base_dir.join(inc_id);
             let wal_dir = target_restore_dir.join("wal");
             std::fs::create_dir_all(&wal_dir)?;
 
@@ -217,4 +364,32 @@ impl BackupManager {
 
         Ok(summary)
     }
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn backup_metadata(
+    backup_id: &str,
+    backup_type: BackupType,
+    base_generation: u64,
+    start_lsn: u64,
+    end_lsn: u64,
+    sha256_hex: String,
+) -> BackupMetadata {
+    let created_at_epoch_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    BackupMetadata { backup_id: backup_id.into(), backup_type, created_at_epoch_ms, base_generation, start_lsn, end_lsn, sha256_hex }
+}
+
+fn write_backup_metadata(backup_dir: &Path, meta: &BackupMetadata) -> HNSQRResult<()> {
+    let meta_bytes = serde_json::to_vec_pretty(meta)
+        .map_err(|error| HNSQRError::SerializationError(error.to_string()))?;
+    std::fs::write(backup_dir.join("backup_meta.json"), meta_bytes)?;
+    Ok(())
 }

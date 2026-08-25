@@ -146,6 +146,32 @@ impl AutonomousMemoryConsolidator {
         })
     }
 
+    /// Removes facts whose retention has fallen below `min_retention` and
+    /// rebuilds the derived preference map from the surviving facts. This is a
+    /// state mutation, unlike [`Self::get_active_persona`], and is intended for
+    /// a durable state-machine maintenance command rather than an ad-hoc
+    /// daemon-local timer.
+    pub fn prune_decayed_facts(&self, current_time_secs: u64, min_retention: f32) -> usize {
+        let mut profiles = self.profiles.write();
+        let mut removed = 0;
+        for profile in profiles.values_mut() {
+            let before = profile.consolidated_facts.len();
+            profile.consolidated_facts.retain(|fact| {
+                self.evaluate_retention(fact, current_time_secs) >= min_retention
+            });
+            removed += before - profile.consolidated_facts.len();
+            profile.preferences.clear();
+            for fact in &profile.consolidated_facts {
+                if fact.category == FactCategory::UserPreference {
+                    profile
+                        .preferences
+                        .insert(fact.predicate.clone(), fact.object.clone());
+                }
+            }
+        }
+        removed
+    }
+
     pub fn total_consolidations(&self) -> u64 {
         self.total_consolidations.load(Ordering::Relaxed)
     }
@@ -233,5 +259,31 @@ mod tests {
             profile2.preferences.get("favorite_programming_language"),
             Some(&"Rust".to_string())
         );
+    }
+
+    #[test]
+    fn pruning_removes_decayed_facts_and_rebuilds_preferences() {
+        let consolidator = AutonomousMemoryConsolidator::new();
+        consolidator
+            .ingest_fact(
+                "usr_001",
+                EpisodicFact {
+                    fact_id: "f1".into(),
+                    subject: "user".into(),
+                    predicate: "favorite_color".into(),
+                    object: "blue".into(),
+                    category: FactCategory::UserPreference,
+                    confidence: 1.0,
+                    emotional_salience: 0.0,
+                    recall_count: 0,
+                    last_accessed_secs: 0,
+                    created_at_secs: 0,
+                },
+            )
+            .unwrap();
+        assert_eq!(consolidator.prune_decayed_facts(365 * 86_400, 0.1), 1);
+        let profile = consolidator.get_profile("usr_001").unwrap();
+        assert!(profile.consolidated_facts.is_empty());
+        assert!(profile.preferences.is_empty());
     }
 }

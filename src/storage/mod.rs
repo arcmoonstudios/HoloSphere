@@ -29,7 +29,7 @@ pub mod wal;
 
 pub use adaptive_prefault::{AdaptivePrefaultEngine, PrefaultMode};
 pub use backpressure::{BackpressureConfig, BackpressureController, MutationPermit};
-pub use backup::{BackupManager, BackupMetadata, BackupType};
+pub use backup::{BackupManager, BackupMetadata, BackupType, EncryptedBackupMetadata};
 pub use columnar_olap::{
     ColumnarFloatArray, ColumnarOlapEngine, EmbeddedMediaBlob, OlapAggregationOp,
 };

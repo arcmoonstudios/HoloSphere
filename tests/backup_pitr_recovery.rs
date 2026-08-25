@@ -13,6 +13,7 @@
  *///•------------------------------------------------------------------------------------‣
 
 use hnsqr::VectorEmbedding;
+use hnsqr::LocalKmsProvider;
 use hnsqr::storage::backup::{BackupManager, BackupType};
 use hnsqr::storage::manifest::UnifiedSnapshotEngine;
 use hnsqr::storage::wal::{DurabilityPolicy, WalManager, WalMutation};
@@ -158,5 +159,69 @@ fn test_full_and_incremental_backup_with_pitr() {
     assert_eq!(restored_mutations[0].0, 11);
     assert_eq!(restored_mutations[1].0, 12);
 
+    let _ = std::fs::remove_dir_all(&base_dir);
+}
+
+#[test]
+fn encrypted_full_backup_authenticates_before_restore() {
+    let base_dir = temp_dir("encrypted_full");
+    let snapshot_dir = base_dir.join("snapshots");
+    let backup_dir = base_dir.join("backups");
+    let restore_dir = base_dir.join("restore");
+    std::fs::create_dir_all(&snapshot_dir).unwrap();
+    let vector = VectorEmbedding::from_complex(vec![Complex32::new(1.0, 0.0)]).into_normalized();
+    UnifiedSnapshotEngine::save_snapshot(
+        &snapshot_dir,
+        1,
+        10,
+        2,
+        std::slice::from_ref(&vector),
+        &["encrypted-doc".to_string()],
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+    let kms = LocalKmsProvider::default();
+    BackupManager::create_encrypted_full_backup(
+        &snapshot_dir,
+        &backup_dir,
+        "encrypted-full",
+        "test-kek",
+        &kms,
+    )
+    .unwrap();
+    let full_dir = backup_dir.join("encrypted-full");
+    assert!(full_dir.join("snapshot.encrypted").exists());
+    assert!(!full_dir.join("snapshot.data").exists());
+
+    BackupManager::restore_encrypted_pitr(
+        &backup_dir,
+        &restore_dir,
+        "encrypted-full",
+        None,
+        10,
+        &kms,
+        |_lsn, _mutation| Ok(()),
+    )
+    .unwrap();
+    assert!(restore_dir.join("snapshots/current_manifest.json").exists());
+
+    let encrypted_path = full_dir.join("snapshot.encrypted");
+    let mut ciphertext = std::fs::read(&encrypted_path).unwrap();
+    ciphertext[0] ^= 0x01;
+    std::fs::write(&encrypted_path, ciphertext).unwrap();
+    assert!(BackupManager::restore_encrypted_pitr(
+        &backup_dir,
+        base_dir.join("tampered_restore"),
+        "encrypted-full",
+        None,
+        10,
+        &kms,
+        |_lsn, _mutation| Ok(()),
+    )
+    .is_err());
     let _ = std::fs::remove_dir_all(&base_dir);
 }

@@ -1,4 +1,4 @@
-/* hnsqr/src/quantization.rs */
+/* holosphere/src/quantization.rs */
 //!▫~•◦-------------------------------‣
 //! # 8-Bit Complex Polar Quantization (CPQ-8) Engine
 //!▫~•◦-------------------------------------------------------------------‣

@@ -1,4 +1,4 @@
-/* hnsqr/src/security/siem.rs */
+/* holosphere/src/security/siem.rs */
 //!▫~•◦-------------------------------‣
 //! # SIEM Integration & Open Security Event Export
 //!▫~•◦-------------------------------------------------------------------‣

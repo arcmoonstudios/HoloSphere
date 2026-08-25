@@ -1,4 +1,4 @@
-/* hnsqr/src/rivero/bulk.rs */
+/* holosphere/src/rivero/bulk.rs */
 //!▫~•◦-------------------------------‣
 //! # Rivero Deterministic Parallel Bulk Builder
 //!▫~•◦-------------------------------------------------------------------‣

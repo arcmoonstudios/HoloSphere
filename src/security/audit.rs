@@ -1,4 +1,4 @@
-/* hnsqr/src/security/audit.rs */
+/* holosphere/src/security/audit.rs */
 //!▫~•◦-------------------------------‣
 //! # Tamper-Evident Hash-Chained Security Audit Log
 //!▫~•◦-------------------------------------------------------------------‣

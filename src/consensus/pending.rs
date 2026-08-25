@@ -1,4 +1,4 @@
-/* hnsqr/src/consensus/pending.rs */
+/* holosphere/src/consensus/pending.rs */
 //!▫~•◦-------------------------------‣
 //! # Bounded Pending Proposal Registry & Commit Receipts
 //!▫~•◦-------------------------------------------------------------------‣

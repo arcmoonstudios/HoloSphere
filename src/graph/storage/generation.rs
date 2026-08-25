@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/storage/generation.rs */
+/* holosphere/src/graph/storage/generation.rs */
 //!▫~•◦-------------------------------‣
 //! # Graph Generation — Dual-Form Lifecycle Management
 //!▫~•◦-------------------------------------------------------------------‣

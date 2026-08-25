@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/query/parser.rs */
+/* holosphere/src/graph/query/parser.rs */
 //!▫~•◦-------------------------------‣
 //! # Zero-Copy GraphQuery Parser
 //!▫~•◦-------------------------------------------------------------------‣

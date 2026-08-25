@@ -1,4 +1,4 @@
-/* hnsqr/src/cluster/control_plane.rs */
+/* holosphere/src/cluster/control_plane.rs */
 //!▫~•◦-------------------------------‣
 //! # Declarative DBaaS Control Plane Reconciliation Engine
 //!▫~•◦-------------------------------------------------------------------‣

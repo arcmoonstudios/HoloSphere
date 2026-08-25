@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/catalog/labels.rs */
+/* holosphere/src/graph/catalog/labels.rs */
 //!▫~•◦-------------------------------‣
 //! # Label Catalog — Interned Node Label Identifiers
 //!▫~•◦-------------------------------------------------------------------‣

@@ -1,4 +1,4 @@
-/* hnsqr/src/segment.rs */
+/* holosphere/src/segment.rs */
 //!▫~•◦-------------------------------‣
 //! # LSM-Style Mutable Segmented Storage Engine & Online Compaction
 //!▫~•◦-------------------------------------------------------------------‣

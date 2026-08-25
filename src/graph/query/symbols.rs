@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/query/symbols.rs */
+/* holosphere/src/graph/query/symbols.rs */
 //!▫~•◦-------------------------------‣
 //! # Symbol Table — Alias-to-ID Resolution
 //!▫~•◦-------------------------------------------------------------------‣

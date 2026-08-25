@@ -1,4 +1,4 @@
-/* hnsqr/src/cluster/ring.rs */
+/* holosphere/src/cluster/ring.rs */
 //!▫~•◦-------------------------------‣
 //! # Consistent Hash Ring with Virtual Nodes
 //!▫~•◦-------------------------------------------------------------------‣

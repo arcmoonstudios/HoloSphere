@@ -1,4 +1,4 @@
-/* hnsqr/src/storage/manifest.rs */
+/* holosphere/src/storage/manifest.rs */
 //!▫~•◦-------------------------------‣
 //! # Unified Sectioned Snapshot Manifest Protocol
 //!▫~•◦-------------------------------------------------------------------‣

@@ -1,4 +1,4 @@
-/* hnsqr/src/bin/hnsqr_plan.rs */
+/* holosphere/src/bin/hnsqr_plan.rs */
 //!▫~•◦-------------------------------‣
 //! # HNSQR Plan: Production Infrastructure Sizing CLI
 //!▫~•◦-------------------------------------------------------------------‣

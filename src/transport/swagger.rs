@@ -1,4 +1,4 @@
-/* hnsqr/src/transport/swagger.rs */
+/* holosphere/src/transport/swagger.rs */
 //!▫~•◦-------------------------------‣
 //! # OpenAPI 3.1 & Interactive Swagger UI Documentation Engine
 //!▫~•◦-------------------------------------------------------------------‣
@@ -56,9 +56,58 @@ impl OpenApiSpecGenerator {
             "info": {
                 "title": "HoloSphere Universal Data & Retrieval Engine API",
                 "version": "0.1.0",
-                "description": "100.000% Certified Proof Search, Native Graph-RAG, Relational SQL ACID, 4D Hypercube Tensor Slicing, and Vectorized OLAP."
+                "description": "Certified retrieval plus provider-neutral knowledge tools and a remote MCP endpoint for OpenAI, Gemini, Claude, and other model runtimes."
+            },
+            "components": {
+                "securitySchemes": {
+                    "bearerAuth": {"type": "http", "scheme": "bearer"},
+                    "apiKeyAuth": {"type": "apiKey", "in": "header", "name": "x-api-key"}
+                }
             },
             "paths": {
+                "/mcp": {
+                    "post": {
+                        "summary": "MCP 2025-06-18 Streamable HTTP JSON-RPC endpoint",
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
+                        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": ["object", "array"]}}}},
+                        "responses": {"200": {"description": "JSON-RPC response"}, "202": {"description": "Notification accepted"}}
+                    }
+                },
+                "/v1/knowledge/search": {
+                    "post": {
+                        "summary": "Search tenant-scoped knowledge with a pinned evidence snapshot",
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
+                        "responses": {"200": {"description": "Certified evidence envelope"}}
+                    }
+                },
+                "/v1/knowledge/traverse": {
+                    "post": {
+                        "summary": "Traverse N-ary knowledge relations",
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
+                        "responses": {"200": {"description": "Pinned traversal evidence envelope"}}
+                    }
+                },
+                "/v1/knowledge/resolve": {
+                    "post": {
+                        "summary": "Produce evidence-backed resolution hypotheses without executing actions",
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
+                        "responses": {"200": {"description": "Externally validated candidate-resolution envelope"}}
+                    }
+                },
+                "/v1/knowledge/remember": {
+                    "post": {
+                        "summary": "Durably remember provenance-bearing knowledge",
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
+                        "responses": {"200": {"description": "Idempotent durable-write receipt"}}
+                    }
+                },
+                "/v1/knowledge/outcomes": {
+                    "post": {
+                        "summary": "Record measured resolution outcomes",
+                        "security": [{"bearerAuth": []}, {"apiKeyAuth": []}],
+                        "responses": {"200": {"description": "Idempotent durable-write receipt"}}
+                    }
+                },
                 "/v1/collections/{name}/search": {
                     "post": {
                         "summary": "Execute Certified Dense Vector Search",

@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/mod.rs */
+/* holosphere/src/graph/mod.rs */
 //!▫~•◦-------------------------------‣
 //! # HNSQR Graph Engine — Native Vector-Graph Unified Substrate
 //!▫~•◦-------------------------------------------------------------------‣

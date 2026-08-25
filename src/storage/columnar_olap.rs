@@ -1,4 +1,4 @@
-/* hnsqr/src/storage/columnar_olap.rs */
+/* holosphere/src/storage/columnar_olap.rs */
 //!▫~•◦-------------------------------‣
 //! # Columnar OLAP & Embedded Raw Media Storage (LanceDB/ClickHouse Rival)
 //!▫~•◦-------------------------------------------------------------------‣

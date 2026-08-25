@@ -1,4 +1,4 @@
-/* hnsqr/src/service/mod.rs */
+/* holosphere/src/service/mod.rs */
 //!▫~•◦-------------------------------‣
 //! # Production Request Context, Certified Read Snapshots & Public RPC Services
 //!▫~•◦-------------------------------------------------------------------‣

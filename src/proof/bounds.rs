@@ -1,4 +1,4 @@
-/* hnsqr/src/proof/bounds.rs */
+/* holosphere/src/proof/bounds.rs */
 //!▫~•◦-------------------------------‣
 //! # Spherical-Cap & Cauchy-Schwarz Admissible Proof Bounds (Gate B2)
 //!▫~•◦-------------------------------------------------------------------‣

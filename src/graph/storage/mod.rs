@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/storage/mod.rs */
+/* holosphere/src/graph/storage/mod.rs */
 //!▫~•◦-------------------------------‣
 //! # Graph Storage — Dual-Form Adjacency & Generation Management
 //!▫~•◦-------------------------------------------------------------------‣

@@ -1,4 +1,4 @@
-/* hnsqr/src/cluster/serverless.rs */
+/* holosphere/src/cluster/serverless.rs */
 //!▫~•◦-------------------------------‣
 //! # Serverless Ephemeral Fleet & Multi-Tenant Query Router (Front 2: Pinecone Rival)
 //!▫~•◦-------------------------------------------------------------------‣

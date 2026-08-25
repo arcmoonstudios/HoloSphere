@@ -1,4 +1,4 @@
-/* hnsqr/src/retrieval/linguistic.rs */
+/* holosphere/src/retrieval/linguistic.rs */
 //!▫~•◦-------------------------------‣
 //! # Linguistic Full-Text Engine & Fuzzy Levenshtein Automata (Elasticsearch Rival)
 //!▫~•◦-------------------------------------------------------------------‣

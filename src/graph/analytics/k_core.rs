@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/analytics/k_core.rs */
+/* holosphere/src/graph/analytics/k_core.rs */
 //!▫~•◦-------------------------------‣
 //! # K-Core Decomposition — Iterative Degree Peeling
 //!▫~•◦-------------------------------------------------------------------‣

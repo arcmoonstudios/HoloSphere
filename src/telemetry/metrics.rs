@@ -1,4 +1,4 @@
-/* hnsqr/src/telemetry/metrics.rs */
+/* holosphere/src/telemetry/metrics.rs */
 //!▫~•◦-------------------------------‣
 //! # Lock-Free Prometheus Metrics Exporter
 //!▫~•◦-------------------------------------------------------------------‣

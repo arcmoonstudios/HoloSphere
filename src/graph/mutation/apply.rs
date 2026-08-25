@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/mutation/apply.rs */
+/* holosphere/src/graph/mutation/apply.rs */
 //!▫~•◦-------------------------------‣
 //! # Graph Mutation Applier — State-Machine Application Layer
 //!▫~•◦-------------------------------------------------------------------‣

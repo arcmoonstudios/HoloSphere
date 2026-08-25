@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/storage/snapshot.rs */
+/* holosphere/src/graph/storage/snapshot.rs */
 //!▫~•◦-------------------------------‣
 //! # Graph Snapshot — Catalog + Generation Pinned Together
 //!▫~•◦-------------------------------------------------------------------‣

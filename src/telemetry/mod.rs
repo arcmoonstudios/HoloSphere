@@ -1,4 +1,4 @@
-/* hnsqr/src/telemetry/mod.rs */
+/* holosphere/src/telemetry/mod.rs */
 //!▫~•◦-------------------------------‣
 //! # Production Observability & Prometheus Exporter
 //!▫~•◦-------------------------------------------------------------------‣

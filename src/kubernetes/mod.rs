@@ -1,4 +1,4 @@
-/* hnsqr/src/kubernetes/mod.rs */
+/* holosphere/src/kubernetes/mod.rs */
 //!▫~•◦-------------------------------‣
 //! # HNSQR Cloud Native Kubernetes Operator Subsystem
 //!▫~•◦-------------------------------------------------------------------‣

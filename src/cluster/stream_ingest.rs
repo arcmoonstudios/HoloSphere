@@ -1,4 +1,4 @@
-/* hnsqr/src/cluster/stream_ingest.rs */
+/* holosphere/src/cluster/stream_ingest.rs */
 //!▫~•◦-------------------------------‣
 //! # Decoupled Async Log Stream Ingestor (Front 1: Milvus Ingestion Scale Rival)
 //!▫~•◦-------------------------------------------------------------------‣

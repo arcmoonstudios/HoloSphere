@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/query/executor.rs */
+/* holosphere/src/graph/query/executor.rs */
 //!▫~•◦-------------------------------‣
 //! # Query Executor — Morsel-Driven Physical Plan Evaluation
 //!▫~•◦-------------------------------------------------------------------‣

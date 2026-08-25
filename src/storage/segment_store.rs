@@ -1,4 +1,4 @@
-/* hnsqr/src/storage/segment_store.rs */
+/* holosphere/src/storage/segment_store.rs */
 //!▫~•◦-------------------------------‣
 //! # Disaggregated Immutable Segment Object Store Abstraction
 //!▫~•◦-------------------------------------------------------------------‣

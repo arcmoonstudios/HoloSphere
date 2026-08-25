@@ -1,4 +1,4 @@
-/* hnsqr/src/metadata_index.rs */
+/* holosphere/src/metadata_index.rs */
 //!▫~•◦-------------------------------‣
 //! # Lock-Free Roaring Bitmap Inverted Metadata Index
 //!▫~•◦-------------------------------------------------------------------‣

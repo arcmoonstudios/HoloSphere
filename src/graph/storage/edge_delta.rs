@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/storage/edge_delta.rs */
+/* holosphere/src/graph/storage/edge_delta.rs */
 //!▫~•◦-------------------------------‣
 //! # Edge Delta — Mutable Generation Append-Only Relationship Arena
 //!▫~•◦-------------------------------------------------------------------‣

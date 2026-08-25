@@ -1,4 +1,4 @@
-/* hnsqr/src/cluster/coordinator.rs */
+/* holosphere/src/cluster/coordinator.rs */
 //!▫~•◦-------------------------------‣
 //! # Distributed Coordinator & Scatter-Gather Engine
 //!▫~•◦-------------------------------------------------------------------‣

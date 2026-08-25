@@ -1,4 +1,4 @@
-/* hnsqr/src/cluster/migration.rs */
+/* holosphere/src/cluster/migration.rs */
 //!▫~•◦-------------------------------‣
 //! # 5-Stage Transactional Shard Migration Protocol
 //!▫~•◦-------------------------------------------------------------------‣

@@ -1,4 +1,4 @@
-/* hnsqr/src/storage/backpressure.rs */
+/* holosphere/src/storage/backpressure.rs */
 //!▫~•◦-------------------------------‣
 //! # Bounded Ingestion Queues, Load-Shedding & Backpressure
 //!▫~•◦-------------------------------------------------------------------‣

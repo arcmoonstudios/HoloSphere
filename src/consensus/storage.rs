@@ -1,4 +1,4 @@
-/* hnsqr/src/consensus/storage.rs */
+/* holosphere/src/consensus/storage.rs */
 //!▫~•◦-------------------------------‣
 //! # Durable Raft HardState, Segmented Log & Progress Storage Engine
 //!▫~•◦-------------------------------------------------------------------‣

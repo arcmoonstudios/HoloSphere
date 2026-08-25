@@ -1,4 +1,4 @@
-/* hnsqr/src/ecosystem/agent_memory.rs */
+/* holosphere/src/ecosystem/agent_memory.rs */
 //!▫~•◦-------------------------------‣
 //! # Autonomous Long-Term Agentic Memory & Fact Consolidation (Mem0/Zep Rival)
 //!▫~•◦-------------------------------------------------------------------‣

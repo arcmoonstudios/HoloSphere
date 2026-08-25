@@ -1,4 +1,4 @@
-/* hnsqr/src/storage/two_tier_cache.rs */
+/* holosphere/src/storage/two_tier_cache.rs */
 //!▫~•◦-------------------------------‣
 //! # Two-Tier NVMe/Memory Cache (Proof Metadata vs TinyLFU Exact Vectors)
 //!▫~•◦-------------------------------------------------------------------‣

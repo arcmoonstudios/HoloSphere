@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/stats/cardinality.rs */
+/* holosphere/src/graph/stats/cardinality.rs */
 //!▫~•◦-------------------------------‣
 //! # Graph Cardinality Statistics
 //!▫~•◦-------------------------------------------------------------------‣

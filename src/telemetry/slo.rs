@@ -1,4 +1,4 @@
-/* hnsqr/src/telemetry/slo.rs */
+/* holosphere/src/telemetry/slo.rs */
 //!▫~•◦-------------------------------‣
 //! # Service Level Objective (SLO) Engine & Multi-Window Burn-Rate Alerts
 //!▫~•◦-------------------------------------------------------------------‣

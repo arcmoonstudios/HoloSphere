@@ -316,15 +316,33 @@ Client ACK ◄── CommitReceipt ◄── ShardStateMachine Apply ◄── Q
 ## Wire Protocols, Web Console & API Docs
 
 * **QIR0 Binary TCP Protocol (`:9090`)**: High-throughput async protocol supporting `OpCode::Ping`, `Insert`, `Search`, `BatchSearch`, `Stats`, and `OpCode::GraphQuery`.
+* **Model Context Protocol (`POST :8080/mcp`)**: Stateless MCP `2025-06-18` Streamable HTTP server for OpenAI, Gemini, Claude, and compatible agents. It exposes tenant-isolated `holosphere.search`, `traverse`, `resolve`, `remember`, and `record_outcome` tools with role checks and closed JSON schemas.
 * **Redis RESP Protocol (`:6379`)**: Native RESP2/RESP3 server with `PING`, `SET`, `GET`, `INCR`, `DEL`, `PUBLISH`, `SUBSCRIBE`, `XADD`, and `XREAD`.
 * **Apache Arrow Flight SQL (`:50051`)**: Native Arrow IPC streaming protocol for zero-copy lakehouse analytics.
-* **HTTP REST Gateway (`:8080`)**: Axum-based JSON REST API (`/v1/collections/{name}/insert`, `/search`, `/batch_search`, `/stats`, `/healthz`, `/metrics`). Defaults to `certified_exact: true`.
+* **HTTP REST Gateway (`:8080`)**: Axum-based JSON REST API for vector collections plus `/v1/knowledge/search`, `/traverse`, `/resolve`, `/remember`, and `/outcomes`. Model responses carry a pinned LSN, proof status, and an explicit untrusted-content marker.
 * **Embedded Web Console (`/dashboard` & `/ui`)**: Zero-dependency interactive single-page dashboard for visual graph exploration, live cluster metrics, and interactive query building.
 * **Interactive OpenAPI 3.1 & Swagger UI (`/docs` & `/swagger`)**: In-browser API exploration and testing at `http://127.0.0.1:8080/docs`.
 * **Multi-Language Client Libraries**:
   * Python: `sdks/python/hnsqr` (`AsyncHNSQRClient`, `HNSQRClient`)
   * TypeScript: `sdks/typescript` (`HNSQRClient`)
   * Go: `sdks/go` (`Client`)
+
+### Connecting OpenAI, Gemini, or Claude
+
+The daemon mounts a single provider-neutral MCP endpoint at `/mcp`. Model access is
+fail-closed by default. Configure `HNSQR_MODEL_READ_TOKEN`,
+`HNSQR_MODEL_WRITE_TOKEN`, or `HNSQR_MODEL_ADMIN_TOKEN`; anonymous access requires the
+explicit development-only `HNSQR_MODEL_ALLOW_ANONYMOUS=true` setting. Knowledge and
+outcome writes are idempotent and fsynced to
+`HNSQR_DATA_DIR/model-knowledge.jsonl`, which is replayed at startup.
+
+Text-only calls use the dependency-free local lexical embedding. Production semantic
+retrieval should supply embeddings with a pinned provider/model/version descriptor;
+HoloSphere rejects incompatible vectors in the same collection. Provider API keys remain
+in the calling application.
+
+See [OpenAI, Gemini, and Claude Integration](docs/MODEL_API_INTEGRATION.md) for setup,
+MCP initialization, provider configuration, authorization, and embedding-space rules.
 
 ---
 
@@ -364,19 +382,9 @@ See [docs/PROFILE_GUIDED_OPTIMIZATION.md](docs/PROFILE_GUIDED_OPTIMIZATION.md) f
 
 ## Verification & Testing
 
-```
-Unit tests:           89 passing
-Integration tests:    48 passing
-Doc-tests:             7 passing
-Public Benchmarks:     7 passing (100.000% recall verified)
-────────────────────────────────
-Total:               151 passing
-Failures:              0
-```
-
 ```bash
 # Run the complete test suite across all targets
-cargo test --lib --tests
+cargo holo-test
 
 # Run doc-tests
 cargo test --doc
@@ -387,6 +395,9 @@ cargo bench --bench public_dataset_benchmark
 # Strict lint verification
 cargo clippy --all-targets --all-features -- -D warnings
 ```
+
+Test counts are intentionally not hard-coded here; the Cargo test output is the
+authoritative count as the suite evolves.
 
 ---
 

@@ -1,4 +1,4 @@
-/* hnsqr/src/federation/cluster.rs */
+/* holosphere/src/federation/cluster.rs */
 //!▫~•◦-------------------------------‣
 //! # Federated Cross-Cluster Certified Proof Search
 //!▫~•◦-------------------------------------------------------------------‣

@@ -1,4 +1,4 @@
-/* hnsqr/src/consensus/durability_controller.rs */
+/* holosphere/src/consensus/durability_controller.rs */
 //!▫~•◦-------------------------------‣
 //! # Adaptive Durability Batching & Latency Controller
 //!▫~•◦-------------------------------------------------------------------‣

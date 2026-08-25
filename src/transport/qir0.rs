@@ -1,4 +1,4 @@
-/* hnsqr/src/server.rs */
+/* holosphere/src/server.rs */
 //!▫~•◦-------------------------------‣
 //! # Zero-Copy Asynchronous Binary TCP Server & Network Protocol
 //!▫~•◦-------------------------------------------------------------------‣

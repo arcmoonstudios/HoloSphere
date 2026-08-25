@@ -1,4 +1,4 @@
-/* hnsqr/src/cluster/topology.rs */
+/* holosphere/src/cluster/topology.rs */
 //!▫~•◦-------------------------------‣
 //! # Cluster Topology & Partition Mapping
 //!▫~•◦-------------------------------------------------------------------‣

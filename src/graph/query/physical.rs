@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/query/physical.rs */
+/* holosphere/src/graph/query/physical.rs */
 //!▫~•◦-------------------------------‣
 //! # Physical Plan — Morsel-Driven Operator Tree
 //!▫~•◦-------------------------------------------------------------------‣

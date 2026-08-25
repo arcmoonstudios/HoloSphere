@@ -1,4 +1,4 @@
-/* hnsqr/src/security/auth.rs */
+/* holosphere/src/security/auth.rs */
 //!▫~•◦-------------------------------‣
 //! # Authentication & Role-Based Access Control (RBAC)
 //!▫~•◦-------------------------------------------------------------------‣
@@ -76,14 +76,14 @@ impl AuthRegistry {
 
         let cred = AuthCredential {
             key_id: key_id.clone(),
-            hashed_token,
+            hashed_token: hashed_token.clone(),
             tenant_id: tenant_id.to_string(),
             role,
             rate_limit_qps,
             active: true,
         };
 
-        self.credentials.write().insert(raw_token.to_string(), cred);
+        self.credentials.write().insert(hashed_token, cred);
         key_id
     }
 
@@ -93,17 +93,25 @@ impl AuthRegistry {
         raw_token: &str,
         required_role: AccessRole,
     ) -> HNSQRResult<AuthenticatedSubject> {
+        let mut hasher = sha2::Sha256::new();
+        sha2::Digest::update(&mut hasher, raw_token.as_bytes());
+        let token_hash = sha2::Digest::finalize(hasher)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
         let cred_guard = self.credentials.read();
         let cred = cred_guard
-            .get(raw_token)
-            .ok_or_else(|| HNSQRError::Internal("Invalid or missing API key".to_string()))?;
+            .get(&token_hash)
+            .ok_or_else(|| HNSQRError::Unauthorized("Invalid or missing API key".to_string()))?;
 
         if !cred.active {
-            return Err(HNSQRError::Internal("API key has been revoked".to_string()));
+            return Err(HNSQRError::Unauthorized(
+                "API key has been revoked".to_string(),
+            ));
         }
 
         if cred.role < required_role {
-            return Err(HNSQRError::Internal(format!(
+            return Err(HNSQRError::Unauthorized(format!(
                 "Permission denied: {:?} required, but key has {:?}",
                 required_role, cred.role
             )));

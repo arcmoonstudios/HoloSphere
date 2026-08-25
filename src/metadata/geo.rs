@@ -1,4 +1,4 @@
-/* hnsqr/src/metadata/geo.rs */
+/* holosphere/src/metadata/geo.rs */
 //!▫~•◦-------------------------------‣
 //! # GIS GeoPolygon & 2D Spatial Filtering Engine (Front 4: Qdrant/Weaviate Rival)
 //!▫~•◦-------------------------------------------------------------------‣

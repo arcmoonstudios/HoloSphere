@@ -1,4 +1,4 @@
-/* hnsqr/src/ecosystem/kv_cache.rs */
+/* holosphere/src/ecosystem/kv_cache.rs */
 //!▫~•◦-------------------------------‣
 //! # In-Memory Multi-Model KV Store & Fast Scratchpad (Front 3: Redis Rival)
 //!▫~•◦-------------------------------------------------------------------‣

@@ -1,4 +1,4 @@
-/* hnsqr/src/storage/io_budget.rs */
+/* holosphere/src/storage/io_budget.rs */
 //!▫~•◦-------------------------------‣
 //! # Maintenance I/O Isolation & Self-Throttling Engine
 //!▫~•◦-------------------------------------------------------------------‣

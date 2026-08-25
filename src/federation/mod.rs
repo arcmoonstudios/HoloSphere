@@ -1,4 +1,4 @@
-/* hnsqr/src/federation/mod.rs */
+/* holosphere/src/federation/mod.rs */
 //!▫~•◦-------------------------------‣
 //! # HNSQR Geo-Distributed Federation Subsystem
 //!▫~•◦-------------------------------------------------------------------‣

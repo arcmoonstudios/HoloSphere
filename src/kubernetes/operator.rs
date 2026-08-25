@@ -1,4 +1,4 @@
-/* hnsqr/src/kubernetes/operator.rs */
+/* holosphere/src/kubernetes/operator.rs */
 //!▫~•◦-------------------------------‣
 //! # Kubernetes Operator Controller & Custom Resource Definitions (CRDs)
 //!▫~•◦-------------------------------------------------------------------‣

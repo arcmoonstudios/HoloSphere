@@ -1,4 +1,4 @@
-/* hnsqr/src/security/mod.rs */
+/* holosphere/src/security/mod.rs */
 //!▫~•◦-------------------------------‣
 //! # HNSQR Security, Multi-Tenancy & Authorization Subsystem
 //!▫~•◦-------------------------------------------------------------------‣

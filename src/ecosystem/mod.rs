@@ -1,4 +1,4 @@
-/* hnsqr/src/ecosystem/mod.rs */
+/* holosphere/src/ecosystem/mod.rs */
 //!▫~•◦-------------------------------‣
 //! # HNSQR AI Ecosystem & Framework Integration Layer
 //!▫~•◦-------------------------------------------------------------------‣

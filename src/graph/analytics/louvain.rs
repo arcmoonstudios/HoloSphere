@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/analytics/louvain.rs */
+/* holosphere/src/graph/analytics/louvain.rs */
 //!▫~•◦-------------------------------‣
 //! # Louvain Community Detection — Modularity-Maximising Phase-1 Loop
 //!▫~•◦-------------------------------------------------------------------‣

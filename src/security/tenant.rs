@@ -1,4 +1,4 @@
-/* hnsqr/src/security/tenant.rs */
+/* holosphere/src/security/tenant.rs */
 //!▫~•◦-------------------------------‣
 //! # Multi-Tenant Namespace Isolation & Resource Quota Governance
 //!▫~•◦-------------------------------------------------------------------‣

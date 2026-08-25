@@ -335,6 +335,31 @@ class AsyncHNSQRClient:
     async def close(self):
         await self._client.aclose()
 
+    @property
+    def mcp_url(self) -> str:
+        """Remote MCP Streamable HTTP URL for OpenAI, Gemini, or Claude."""
+        return f"{self.endpoints[0].rstrip('/')}/mcp"
+
+    async def call_model_tool(self, operation: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Call a provider-neutral HoloSphere knowledge operation."""
+        paths = {
+            "search": "/v1/knowledge/search",
+            "traverse": "/v1/knowledge/traverse",
+            "resolve": "/v1/knowledge/resolve",
+            "remember": "/v1/knowledge/remember",
+            "record_outcome": "/v1/knowledge/outcomes",
+        }
+        if operation not in paths:
+            raise ValueError(f"Unknown model tool operation: {operation}")
+        endpoint = self._select_endpoint(is_write=operation in {"remember", "record_outcome"})
+        response = await self._client.post(
+            f"{endpoint.rstrip('/')}{paths[operation]}",
+            json=payload,
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        return response.json()
+
 
 class HNSQRClient:
     """Production synchronous client with persistent connection pooling and robust failover."""
@@ -560,3 +585,28 @@ class HNSQRClient:
 
     def close(self):
         self._client.close()
+
+    @property
+    def mcp_url(self) -> str:
+        """Remote MCP Streamable HTTP URL for OpenAI, Gemini, or Claude."""
+        return f"{self.endpoints[0].rstrip('/')}/mcp"
+
+    def call_model_tool(self, operation: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Call a provider-neutral HoloSphere knowledge operation."""
+        paths = {
+            "search": "/v1/knowledge/search",
+            "traverse": "/v1/knowledge/traverse",
+            "resolve": "/v1/knowledge/resolve",
+            "remember": "/v1/knowledge/remember",
+            "record_outcome": "/v1/knowledge/outcomes",
+        }
+        if operation not in paths:
+            raise ValueError(f"Unknown model tool operation: {operation}")
+        endpoint = self._select_endpoint(is_write=operation in {"remember", "record_outcome"})
+        response = self._client.post(
+            f"{endpoint.rstrip('/')}{paths[operation]}",
+            json=payload,
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        return response.json()

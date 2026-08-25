@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/query/planner.rs */
+/* holosphere/src/graph/query/planner.rs */
 //!▫~•◦-------------------------------‣
 //! # Query Planner — Text → Executable Physical Plan
 //!▫~•◦-------------------------------------------------------------------‣

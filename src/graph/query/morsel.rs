@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/query/morsel.rs */
+/* holosphere/src/graph/query/morsel.rs */
 //!▫~•◦-------------------------------‣
 //! # Morsel — Columnar Intermediate Result Representation
 //!▫~•◦-------------------------------------------------------------------‣

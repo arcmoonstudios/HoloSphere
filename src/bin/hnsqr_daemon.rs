@@ -1,4 +1,4 @@
-/* hnsqr/src/bin/hnsqr_daemon.rs */
+/* holosphere/src/bin/hnsqr_daemon.rs */
 //!▫~•◦-------------------------------‣
 //! # HNSQR Distributed Multi-Model Operational Database Daemon
 //!▫~•◦-------------------------------------------------------------------‣
@@ -23,8 +23,12 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use hnsqr::ecosystem::kv_cache::MemoryKvStore;
 use hnsqr::transport::qir0::HNSQRServer;
 use hnsqr::transport::resp::{RespFrame, RespServer};
+use hnsqr::transport::{
+    ModelGatewayAuth, ModelKnowledgeStore, ModelToolService, create_mcp_router,
+    create_model_api_router,
+};
 use hnsqr::vector::folding::{GatewayRouter, create_http_router};
-use hnsqr::{HNSQRConfig, HNSQRIndex};
+use hnsqr::{AccessRole, AuthRegistry, HNSQRConfig, HNSQRIndex};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -91,7 +95,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 2. HTTP REST Gateway & Web Console
     let gateway_router = Arc::new(GatewayRouter::new(&data_dir, false));
-    let app = create_http_router(gateway_router);
+    let auth_registry = Arc::new(AuthRegistry::new());
+    register_model_token(
+        &auth_registry,
+        "HNSQR_MODEL_READ_TOKEN",
+        AccessRole::ReadOnly,
+    );
+    register_model_token(
+        &auth_registry,
+        "HNSQR_MODEL_WRITE_TOKEN",
+        AccessRole::ReadWrite,
+    );
+    register_model_token(&auth_registry, "HNSQR_MODEL_ADMIN_TOKEN", AccessRole::Admin);
+    let allow_anonymous = std::env::var("HNSQR_MODEL_ALLOW_ANONYMOUS")
+        .is_ok_and(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes"));
+    let model_store = Arc::new(ModelKnowledgeStore::open(
+        std::path::Path::new(&data_dir).join("model-knowledge.jsonl"),
+    )?);
+    let model_service = Arc::new(ModelToolService::new(
+        Arc::clone(&gateway_router),
+        model_store,
+        Arc::new(ModelGatewayAuth::new(auth_registry, allow_anonymous)),
+    ));
+    let app = create_http_router(gateway_router)
+        .merge(create_model_api_router(Arc::clone(&model_service)))
+        .merge(create_mcp_router(model_service));
     println!(
         "🌐 Starting HTTP REST & LLM Gateway on:      http://{}",
         http_addr
@@ -102,6 +130,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     println!(
         "📖 Interactive OpenAPI 3.1 Swagger UI at:     http://{}/docs",
+        http_addr
+    );
+    println!(
+        "🧠 OpenAI/Gemini/Claude MCP endpoint at:      http://{}/mcp",
         http_addr
     );
     let http_handle = tokio::spawn(async move {
@@ -179,4 +211,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+fn register_model_token(registry: &AuthRegistry, variable: &str, role: AccessRole) {
+    if let Ok(token) = std::env::var(variable) {
+        if !token.is_empty() {
+            registry.register_key(&token, "default", role, 100);
+        }
+    }
 }

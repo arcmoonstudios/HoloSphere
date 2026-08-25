@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/query/optimizer.rs */
+/* holosphere/src/graph/query/optimizer.rs */
 //!▫~•◦-------------------------------‣
 //! # Cost-Based Logical Plan Optimizer
 //!▫~•◦-------------------------------------------------------------------‣

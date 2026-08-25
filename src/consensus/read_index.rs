@@ -1,4 +1,4 @@
-/* hnsqr/src/consensus/read_index.rs */
+/* holosphere/src/consensus/read_index.rs */
 //!▫~•◦-------------------------------‣
 //! # Linearizable ReadIndex & Explicit Read Consistency Engine
 //!▫~•◦-------------------------------------------------------------------‣

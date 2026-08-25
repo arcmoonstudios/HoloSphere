@@ -1,4 +1,4 @@
-/* hnsqr/src/sparse.rs */
+/* holosphere/src/sparse.rs */
 //!▫~•◦-------------------------------‣
 //! # High-Throughput Sparse Lexical Engine (BM25, SPLADE & Block-Max WAND)
 //!▫~•◦-------------------------------------------------------------------‣

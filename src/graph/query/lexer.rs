@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/query/lexer.rs */
+/* holosphere/src/graph/query/lexer.rs */
 //!▫~•◦-------------------------------‣
 //! # Zero-Copy GraphQuery Lexer
 //!▫~•◦-------------------------------------------------------------------‣

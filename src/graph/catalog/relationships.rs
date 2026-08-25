@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/catalog/relationships.rs */
+/* holosphere/src/graph/catalog/relationships.rs */
 //!▫~•◦-------------------------------‣
 //! # Relationship-Type Catalog — Interned Edge Type Identifiers
 /*▫~•◦------------------------------------------------------------------------------------‣

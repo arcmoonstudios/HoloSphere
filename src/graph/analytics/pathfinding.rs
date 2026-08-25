@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/analytics/pathfinding.rs */
+/* holosphere/src/graph/analytics/pathfinding.rs */
 //!▫~•◦-------------------------------‣
 //! # Pathfinding — Bidirectional BFS (unweighted) & Bidirectional Dijkstra
 //!▫~•◦-------------------------------------------------------------------‣

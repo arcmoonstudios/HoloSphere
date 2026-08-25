@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/analytics/mod.rs */
+/* holosphere/src/graph/analytics/mod.rs */
 //!▫~•◦-------------------------------‣
 //! # Graph Analytics — GDS Projection-Based Algorithms
 //!▫~•◦-------------------------------------------------------------------‣

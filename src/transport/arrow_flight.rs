@@ -1,4 +1,4 @@
-/* hnsqr/src/transport/arrow_flight.rs */
+/* holosphere/src/transport/arrow_flight.rs */
 //!▫~•◦-------------------------------‣
 //! # Apache Arrow Flight SQL & IPC Wire Streaming Protocol
 //!▫~•◦-------------------------------------------------------------------‣

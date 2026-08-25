@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/storage/adjacency_block.rs */
+/* holosphere/src/graph/storage/adjacency_block.rs */
 //!▫~•◦-------------------------------‣
 //! # Adjacency Block — Unified Traversal Interface
 //!▫~•◦-------------------------------------------------------------------‣

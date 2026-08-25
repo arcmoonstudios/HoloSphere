@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/storage/node_arena.rs */
+/* holosphere/src/graph/storage/node_arena.rs */
 //!▫~•◦-------------------------------‣
 //! # Node Arena — Cache-Aligned Fixed-Stride Node Records
 //!▫~•◦-------------------------------------------------------------------‣

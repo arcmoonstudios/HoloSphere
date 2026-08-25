@@ -1,4 +1,4 @@
-/* hnsqr/src/vector/hypercube.rs */
+/* holosphere/src/vector/hypercube.rs */
 //!▫~•◦-------------------------------‣
 //! # N-Dimensional Hypercube & Volumetric Tensor Slicing Engine (TileDB Rival)
 //!▫~•◦-------------------------------------------------------------------‣

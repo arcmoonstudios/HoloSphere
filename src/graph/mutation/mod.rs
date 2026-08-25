@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/mutation/mod.rs */
+/* holosphere/src/graph/mutation/mod.rs */
 //!▫~•◦-------------------------------‣
 //! # Graph Mutation — Raft-Replicated Graph Command Model
 //!▫~•◦-------------------------------------------------------------------‣

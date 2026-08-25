@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/catalog/properties.rs */
+/* holosphere/src/graph/catalog/properties.rs */
 //!▫~•◦-------------------------------‣
 //! # Property Key Catalog — Interned Graph Property Key Identifiers
 /*▫~•◦------------------------------------------------------------------------------------‣

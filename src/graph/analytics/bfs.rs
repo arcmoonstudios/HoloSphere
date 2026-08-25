@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/analytics/bfs.rs */
+/* holosphere/src/graph/analytics/bfs.rs */
 //!▫~•◦-------------------------------‣
 //! # Breadth-First Search — Level-Synchronous BFS
 //!▫~•◦-------------------------------------------------------------------‣

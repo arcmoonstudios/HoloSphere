@@ -1,4 +1,4 @@
-/* hnsqr/src/cluster/disaster_recovery.rs */
+/* holosphere/src/cluster/disaster_recovery.rs */
 //!▫~•◦-------------------------------‣
 //! # Asynchronous Multi-Region Disaster Recovery (DR) Engine
 //!▫~•◦-------------------------------------------------------------------‣

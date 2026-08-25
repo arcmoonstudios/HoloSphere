@@ -1,4 +1,4 @@
-/* hnsqr/src/multivector.rs */
+/* holosphere/src/multivector.rs */
 //!▫~•◦-------------------------------‣
 //! # Multi-Vector & Late-Interaction Engine (ColBERT / ColPali MaxSim)
 //!▫~•◦-------------------------------------------------------------------‣

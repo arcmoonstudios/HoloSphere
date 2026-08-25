@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/storage/properties.rs */
+/* holosphere/src/graph/storage/properties.rs */
 //!▫~•◦-------------------------------‣
 //! # Graph Property Store — Columnar Property Values for Nodes and Edges
 //!▫~•◦-------------------------------------------------------------------‣

@@ -1,4 +1,4 @@
-/* hnsqr/src/storage/predictive_warming.rs */
+/* holosphere/src/storage/predictive_warming.rs */
 //!▫~•◦-------------------------------‣
 //! # Predictive Cache Warming & Proof Telemetry Replay
 //!▫~•◦-------------------------------------------------------------------‣

@@ -1,4 +1,4 @@
-/* hnsqr/src/hybrid.rs */
+/* holosphere/src/hybrid.rs */
 //!▫~•◦-------------------------------‣
 //! # Hybrid Fusion Engine (Reciprocal Rank Fusion & Score Normalization)
 //!▫~•◦-------------------------------------------------------------------‣

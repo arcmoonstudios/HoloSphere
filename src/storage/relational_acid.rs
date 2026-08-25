@@ -1,4 +1,4 @@
-/* hnsqr/src/storage/relational_acid.rs */
+/* holosphere/src/storage/relational_acid.rs */
 //!▫~•◦-------------------------------‣
 //! # Relational SQL & Multi-Table ACID Transaction Engine (Postgres Rival)
 //!▫~•◦-------------------------------------------------------------------‣

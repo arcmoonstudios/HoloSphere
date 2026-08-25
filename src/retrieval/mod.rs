@@ -1,4 +1,4 @@
-/* hnsqr/src/retrieval/mod.rs */
+/* holosphere/src/retrieval/mod.rs */
 //!▫~•◦-------------------------------‣
 //! # Multi-Modal & Hybrid Retrieval Subsystem
 //!▫~•◦-------------------------------------------------------------------‣

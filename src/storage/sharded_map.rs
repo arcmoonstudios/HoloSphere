@@ -1,4 +1,4 @@
-/* hnsqr/src/storage/sharded_map.rs */
+/* holosphere/src/storage/sharded_map.rs */
 //!▫~•◦-------------------------------‣
 //! # Striped Lock-Free Concurrent Hash Map for Batch Ingestion
 //!▫~•◦-------------------------------------------------------------------‣

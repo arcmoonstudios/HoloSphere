@@ -1,4 +1,4 @@
-/* hnsqr/src/snapshot.rs */
+/* holosphere/src/snapshot.rs */
 //!▫~•◦-------------------------------‣
 //! # HNSQR Index Snapshot V2 Engine
 //!▫~•◦-------------------------------------------------------------------‣

@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/mutation/command.rs */
+/* holosphere/src/graph/mutation/command.rs */
 //!▫~•◦-------------------------------‣
 //! # Graph Mutation Commands
 //!▫~•◦-------------------------------------------------------------------‣

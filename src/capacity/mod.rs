@@ -1,4 +1,4 @@
-/* hnsqr/src/capacity/mod.rs */
+/* holosphere/src/capacity/mod.rs */
 //!▫~•◦-------------------------------‣
 //! # HNSQR Capacity Planning Subsystem
 //!▫~•◦-------------------------------------------------------------------‣

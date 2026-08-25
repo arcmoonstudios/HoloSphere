@@ -1,4 +1,4 @@
-/* hnsqr/src/security/oidc.rs */
+/* holosphere/src/security/oidc.rs */
 //!▫~•◦-------------------------------‣
 //! # OIDC / JWKS Enterprise Identity & Short-Lived Credential Validator
 //!▫~•◦-------------------------------------------------------------------‣

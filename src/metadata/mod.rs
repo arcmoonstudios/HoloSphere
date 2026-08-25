@@ -1,4 +1,4 @@
-/* hnsqr/src/metadata/mod.rs */
+/* holosphere/src/metadata/mod.rs */
 //!▫~•◦-------------------------------‣
 //! # Metadata Indexing, Inverted Stores & Cardinality Governance Subsystem
 //!▫~•◦-------------------------------------------------------------------‣

@@ -1,4 +1,4 @@
-/* hnsqr/src/storage/metadata_cardinality.rs */
+/* holosphere/src/storage/metadata_cardinality.rs */
 //!▫~•◦-------------------------------‣
 //! # Multi-Tenant Metadata Cardinality Protection & Adaptive Representation
 //!▫~•◦-------------------------------------------------------------------‣

@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/query/semantic.rs */
+/* holosphere/src/graph/query/semantic.rs */
 //!▫~•◦-------------------------------‣
 //! # Semantic Analyzer — Name Resolution and Symbol Binding
 //!▫~•◦-------------------------------------------------------------------‣

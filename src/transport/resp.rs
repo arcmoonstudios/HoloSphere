@@ -1,4 +1,4 @@
-/* hnsqr/src/transport/resp.rs */
+/* holosphere/src/transport/resp.rs */
 //!▫~•◦-------------------------------‣
 //! # Redis Serialization Protocol (RESP) Wire Server & Streams (Redis Rival)
 //!▫~•◦-------------------------------------------------------------------‣

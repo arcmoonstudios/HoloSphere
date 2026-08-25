@@ -1,4 +1,4 @@
-/* hnsqr/src/planning/mod.rs */
+/* holosphere/src/planning/mod.rs */
 //!▫~•◦-------------------------------‣
 //! # Query Planning & Automated Index Calibration Subsystem
 //!▫~•◦-------------------------------------------------------------------‣

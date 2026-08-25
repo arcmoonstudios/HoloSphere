@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/query/explain.rs */
+/* holosphere/src/graph/query/explain.rs */
 //!▫~•◦-------------------------------‣
 //! # EXPLAIN — Human-Readable Physical Plan Rendering
 //!▫~•◦-------------------------------------------------------------------‣

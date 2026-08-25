@@ -1,4 +1,4 @@
-/* hnsqr/src/security/tls.rs */
+/* holosphere/src/security/tls.rs */
 //!▫~•◦-------------------------------‣
 //! # Transport Security (TLS 1.3 / mTLS) & Protocol Framing Protection
 //!▫~•◦-------------------------------------------------------------------‣

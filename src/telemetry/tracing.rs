@@ -1,4 +1,4 @@
-/* hnsqr/src/telemetry/tracing.rs */
+/* holosphere/src/telemetry/tracing.rs */
 //!▫~•◦-------------------------------‣
 //! # OpenTelemetry Distributed Tracing & Context Propagation
 //!▫~•◦-------------------------------------------------------------------‣

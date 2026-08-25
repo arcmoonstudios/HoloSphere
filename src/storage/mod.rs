@@ -1,4 +1,4 @@
-/* hnsqr/src/storage/mod.rs */
+/* holosphere/src/storage/mod.rs */
 //!▫~•◦-------------------------------‣
 //! # HNSQR Storage Engine & Durability Subsystem
 //!▫~•◦-------------------------------------------------------------------‣

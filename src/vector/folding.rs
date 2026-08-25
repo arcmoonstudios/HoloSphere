@@ -1,4 +1,4 @@
-/* hnsqr/src/gateway.rs */
+/* holosphere/src/gateway.rs */
 //!▫~•◦-------------------------------‣
 //! # Real-to-Complex Embedding Gateway & Multi-Collection Router
 //!▫~•◦-------------------------------------------------------------------‣
@@ -401,6 +401,16 @@ impl GatewayRouter {
             HNSQRError::SearchError(format!("Collection '{}' does not exist", collection))
         })?;
         Ok(index.stats())
+    }
+
+    /// Removes one vector from a collection. Used to compensate a failed durable
+    /// model-knowledge journal append before a mutation receipt is returned.
+    pub fn remove_llm_vector(&self, collection: &str, id: &str) -> HNSQRResult<bool> {
+        let guard = self.collections.read();
+        let index = guard.get(collection).ok_or_else(|| {
+            HNSQRError::SearchError(format!("Collection '{collection}' does not exist"))
+        })?;
+        index.remove(id)
     }
 }
 

@@ -1,4 +1,4 @@
-/* hnsqr/src/cluster/mod.rs */
+/* holosphere/src/cluster/mod.rs */
 //!▫~•◦-------------------------------‣
 //! # Distributed Consensus, Epoch Fencing & Online Shard Migration Subsystem
 //!▫~•◦-------------------------------------------------------------------‣

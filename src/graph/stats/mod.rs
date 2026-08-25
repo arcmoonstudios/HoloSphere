@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/stats/mod.rs */
+/* holosphere/src/graph/stats/mod.rs */
 //!▫~•◦-------------------------------‣
 //! # Graph Statistics — Cardinality & Degree Histograms
 /*▫~•◦------------------------------------------------------------------------------------‣

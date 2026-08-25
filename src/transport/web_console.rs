@@ -1,4 +1,4 @@
-/* hnsqr/src/transport/web_console.rs */
+/* holosphere/src/transport/web_console.rs */
 //!▫~•◦-------------------------------‣
 //! # Embedded Web Console & Dashboard (Front 4: Qdrant/Weaviate Rival)
 //!▫~•◦-------------------------------------------------------------------‣

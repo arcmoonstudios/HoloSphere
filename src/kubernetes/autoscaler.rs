@@ -1,4 +1,4 @@
-/* hnsqr/src/kubernetes/autoscaler.rs */
+/* holosphere/src/kubernetes/autoscaler.rs */
 //!▫~•◦-------------------------------‣
 //! # HNSQR-Native Metrics Autoscaler & Shard Expansion Advisor
 //!▫~•◦-------------------------------------------------------------------‣

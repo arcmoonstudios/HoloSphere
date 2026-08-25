@@ -1,4 +1,4 @@
-/* hnsqr/src/storage/wal.rs */
+/* holosphere/src/storage/wal.rs */
 //!▫~•◦-------------------------------‣
 //! # Length-Framed, CRC32C-Checksummed Write-Ahead Log (WAL) Engine
 //!▫~•◦-------------------------------------------------------------------‣

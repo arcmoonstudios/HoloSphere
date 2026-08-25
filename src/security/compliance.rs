@@ -1,4 +1,4 @@
-/* hnsqr/src/security/compliance.rs */
+/* holosphere/src/security/compliance.rs */
 //!▫~•◦-------------------------------‣
 //! # Machine-Readable Compliance & Security Evidence Generator
 //!▫~•◦-------------------------------------------------------------------‣

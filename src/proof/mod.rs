@@ -1,4 +1,4 @@
-/* hnsqr/src/proof/mod.rs */
+/* holosphere/src/proof/mod.rs */
 //!▫~•◦-------------------------------‣
 //! # Corpus-Covering Semantic Proof Engine (Gate B0/B1)
 //!▫~•◦-------------------------------------------------------------------‣

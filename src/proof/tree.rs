@@ -1,4 +1,4 @@
-/* hnsqr/src/proof/tree.rs */
+/* holosphere/src/proof/tree.rs */
 //!▫~•◦-------------------------------‣
 //! # Flattened Semantic Proof Hierarchy Substrate (Gate B2)
 //!▫~•◦-------------------------------------------------------------------‣

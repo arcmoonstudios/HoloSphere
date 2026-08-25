@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/query/logical.rs */
+/* holosphere/src/graph/query/logical.rs */
 //!▫~•◦-------------------------------‣
 //! # Logical Plan — Relational-Algebra IR
 /*▫~•◦------------------------------------------------------------------------------------‣

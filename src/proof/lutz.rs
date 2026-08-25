@@ -1,4 +1,4 @@
-/* hnsqr/src/lutz.rs */
+/* holosphere/src/lutz.rs */
 //!▫~•◦-------------------------------‣
 //! # LUTz-E8 FastScan: 4-Bit Block-Quantized Look-Up Tables with Cauchy-Schwarz Exact Certification
 //!▫~•◦-------------------------------------------------------------------‣

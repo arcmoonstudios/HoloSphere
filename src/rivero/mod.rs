@@ -1,4 +1,4 @@
-/* hnsqr/src/rivero/mod.rs */
+/* holosphere/src/rivero/mod.rs */
 //!▫~•◦-------------------------------‣
 //! # Rivero Resolve — Bounded Complex-Vector Address Routing
 //!▫~•◦-------------------------------------------------------------------‣

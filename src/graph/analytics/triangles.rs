@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/analytics/triangles.rs */
+/* holosphere/src/graph/analytics/triangles.rs */
 //!▫~•◦-------------------------------‣
 //! # Triangle Count — Sorted-Merge Node-Iterator
 //!▫~•◦-------------------------------------------------------------------‣

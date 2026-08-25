@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/analytics/pagerank.rs */
+/* holosphere/src/graph/analytics/pagerank.rs */
 //!▫~•◦-------------------------------‣
 //! # PageRank — Pull-Based Parallel Implementation over CSC
 //!▫~•◦-------------------------------------------------------------------‣

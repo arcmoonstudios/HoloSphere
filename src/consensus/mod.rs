@@ -1,4 +1,4 @@
-/* hnsqr/src/consensus/mod.rs */
+/* holosphere/src/consensus/mod.rs */
 //!▫~•◦-------------------------------‣
 //! # HNSQR Distributed Consensus & Raft State Machine
 //!▫~•◦-------------------------------------------------------------------‣

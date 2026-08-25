@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/storage/csr.rs */
+/* holosphere/src/graph/storage/csr.rs */
 //!▫~•◦-------------------------------‣
 //! # Immutable CSR / CSC Adjacency — Cache-Contiguous Sealed-Generation Neighbours
 //!▫~•◦-------------------------------------------------------------------‣

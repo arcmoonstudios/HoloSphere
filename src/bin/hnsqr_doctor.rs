@@ -1,4 +1,4 @@
-/* hnsqr/src/bin/hnsqr_doctor.rs */
+/* holosphere/src/bin/hnsqr_doctor.rs */
 //!▫~•◦-------------------------------‣
 //! # HNSQR Doctor: Comprehensive Production Diagnostic & Integrity Audit
 //!▫~•◦-------------------------------------------------------------------‣

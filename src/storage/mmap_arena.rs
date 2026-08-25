@@ -1,4 +1,4 @@
-/* hnsqr/src/mmap_arena.rs */
+/* holosphere/src/mmap_arena.rs */
 //!▫~•◦-------------------------------‣
 //! # Zero-Copy Memory-Mapped Quantized Vector Arena (`MmapArena`)
 //!▫~•◦-------------------------------------------------------------------‣

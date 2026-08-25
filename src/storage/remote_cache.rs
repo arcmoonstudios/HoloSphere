@@ -1,4 +1,4 @@
-/* hnsqr/src/storage/remote_cache.rs */
+/* holosphere/src/storage/remote_cache.rs */
 //!▫~•◦-------------------------------‣
 //! # S3 / Blob Disaggregation & TinyLFU NVMe Range Cache
 //!▫~•◦-------------------------------------------------------------------‣

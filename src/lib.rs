@@ -1,4 +1,4 @@
-/* hnsqr/src/lib.rs */
+/* holosphere/src/lib.rs */
 //!▫~•◦-------------------------------‣
 //! # Hierarchical Navigable Semantic Query Resolver (HNSQR)
 //!▫~•◦-------------------------------------------------------------------‣
@@ -405,6 +405,12 @@ pub use telemetry::slo::{SloAlertSeverity, SloManager, SloReport, SloTargetConfi
 pub use telemetry::tracing::{ExecutionSpan, SpanRecord, TraceContext};
 pub use transport::qir0::{
     HNSQRClient, HNSQRServer, MessageHeader, OpCode, PROTOCOL_MAGIC, Qir0SearchResponse,
+};
+pub use transport::{
+    EmbeddingDescriptor, EvidenceEnvelope, KnowledgeRecord, MCP_PROTOCOL_VERSION, ModelGatewayAuth,
+    ModelKnowledgeStore, ModelOutcomeRecord, ModelToolService, RecordOutcomeToolRequest,
+    RememberToolRequest, ResolveToolRequest, SearchToolRequest, TraverseToolRequest,
+    create_mcp_router, create_model_api_router,
 };
 pub use vector::folding::{ComplexWeaver, GatewayRouter, create_http_router, run_http_server};
 pub use vector::quantization::PolarQuantizedVector;

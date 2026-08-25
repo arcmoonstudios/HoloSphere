@@ -1,4 +1,4 @@
-/* hnsqr/src/cluster/federation.rs */
+/* holosphere/src/cluster/federation.rs */
 //!▫~•◦-------------------------------‣
 //! # Multi-Region Active-Active Federation & Geo-Replication Engine
 //!▫~•◦-------------------------------------------------------------------‣

@@ -1,4 +1,4 @@
-/* hnsqr/src/transport/mod.rs */
+/* holosphere/src/transport/mod.rs */
 //!▫~•◦-------------------------------‣
 //! # Wire Transport & QIR0 Network Protocol Subsystem
 //!▫~•◦-------------------------------------------------------------------‣
@@ -7,6 +7,8 @@
  *///•------------------------------------------------------------------------------------‣
 
 pub mod arrow_flight;
+pub mod mcp;
+pub mod model_gateway;
 pub mod qir0;
 pub mod resp;
 pub mod swagger;
@@ -15,6 +17,12 @@ pub mod web_console;
 pub use arrow_flight::{
     ArrowFieldDescriptor, ArrowFieldType, ArrowFlightService, ArrowRecordBatchPayload,
     ArrowSchemaDescriptor,
+};
+pub use mcp::{MCP_PROTOCOL_VERSION, create_mcp_router};
+pub use model_gateway::{
+    EmbeddingDescriptor, EvidenceEnvelope, KnowledgeRecord, ModelGatewayAuth, ModelKnowledgeStore,
+    ModelOutcomeRecord, ModelToolService, RecordOutcomeToolRequest, RememberToolRequest,
+    ResolveToolRequest, SearchToolRequest, TraverseToolRequest, create_model_api_router,
 };
 pub use qir0::{HNSQRClient, HNSQRServer, MessageHeader, OpCode, PROTOCOL_MAGIC};
 pub use resp::{PubSubBroker, RedisStreamEngine, RespFrame, RespServer, StreamEntry};

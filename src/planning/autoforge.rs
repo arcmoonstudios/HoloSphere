@@ -1,4 +1,4 @@
-/* hnsqr/src/autoforge.rs */
+/* holosphere/src/autoforge.rs */
 //!▫~•◦-------------------------------‣
 //! # AutoForge: Automated Hardware & Dataset Self-Calibration
 //!▫~•◦-------------------------------------------------------------------‣

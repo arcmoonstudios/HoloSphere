@@ -1,4 +1,4 @@
-/* hnsqr/src/consensus/state_machine.rs */
+/* holosphere/src/consensus/state_machine.rs */
 //!▫~•◦-------------------------------‣
 //! # Consensus State Machine Adapter
 //!▫~•◦-------------------------------------------------------------------‣

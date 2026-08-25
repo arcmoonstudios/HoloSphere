@@ -1,4 +1,4 @@
-/* hnsqr/src/cluster/state_machine.rs */
+/* holosphere/src/cluster/state_machine.rs */
 //!▫~•◦-------------------------------‣
 //! # Authoritative Replicated Shard State Machine & Deduplication Horizon
 //!▫~•◦-------------------------------------------------------------------‣

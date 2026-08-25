@@ -1,4 +1,4 @@
-/* hnsqr/src/vector/mod.rs */
+/* holosphere/src/vector/mod.rs */
 //!▫~•◦-------------------------------‣
 //! # Vector Representation, Folding & Quantization Subsystem
 //!▫~•◦-------------------------------------------------------------------‣

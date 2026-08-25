@@ -1,4 +1,4 @@
-/* hnsqr/src/storage/metadata_store.rs */
+/* holosphere/src/storage/metadata_store.rs */
 //!▫~•◦-------------------------------‣
 //! # Metadata Memory Safety, Cardinality Quotas & String Interning
 //!▫~•◦-------------------------------------------------------------------‣

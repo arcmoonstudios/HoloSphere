@@ -1,4 +1,4 @@
-/* hnsqr/src/rivero/witness.rs */
+/* holosphere/src/rivero/witness.rs */
 //!▫~•◦-------------------------------‣
 //! # Bounded Deterministic Witness-Neighbor Resolution Engine
 //!▫~•◦-------------------------------------------------------------------‣

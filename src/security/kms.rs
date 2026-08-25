@@ -1,4 +1,4 @@
-/* hnsqr/src/security/kms.rs */
+/* holosphere/src/security/kms.rs */
 //!▫~•◦-------------------------------‣
 //! # KMS Envelope Encryption & Key Management Provider
 //!▫~•◦-------------------------------------------------------------------‣

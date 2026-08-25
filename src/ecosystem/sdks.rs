@@ -1,4 +1,4 @@
-/* hnsqr/src/ecosystem/sdks.rs */
+/* holosphere/src/ecosystem/sdks.rs */
 //!▫~•◦-------------------------------‣
 //! # Unified Multi-Language SDK Protocol & Client Engine
 //!▫~•◦-------------------------------------------------------------------‣

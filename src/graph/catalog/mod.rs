@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/catalog/mod.rs */
+/* holosphere/src/graph/catalog/mod.rs */
 //!▫~•◦-------------------------------‣
 //! # Graph Catalog — Label Registry, Relationship-Type Registry, Property Schema
 //!▫~•◦-------------------------------------------------------------------‣

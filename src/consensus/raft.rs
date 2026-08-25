@@ -1,4 +1,4 @@
-/* hnsqr/src/consensus/raft.rs */
+/* holosphere/src/consensus/raft.rs */
 //!▫~•◦-------------------------------‣
 //! # Production Raft Consensus Engine, Learners & Unified State Machine
 //!▫~•◦-------------------------------------------------------------------‣

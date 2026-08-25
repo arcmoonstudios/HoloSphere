@@ -1,4 +1,4 @@
-/* hnsqr/src/vector/inference.rs */
+/* holosphere/src/vector/inference.rs */
 //!▫~•◦-------------------------------‣
 //! # In-Process Neural Model Inference & Text Tokenization
 //! # Front 4: Qdrant/Weaviate Rival

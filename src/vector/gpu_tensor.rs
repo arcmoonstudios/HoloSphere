@@ -1,4 +1,4 @@
-/* hnsqr/src/vector/gpu_tensor.rs */
+/* holosphere/src/vector/gpu_tensor.rs */
 //!▫~•◦-------------------------------‣
 //! # GPU Tensor Core Accelerator & Complex Matrix Dispatch (Front 1: Milvus Rival)
 //!▫~•◦-------------------------------------------------------------------‣

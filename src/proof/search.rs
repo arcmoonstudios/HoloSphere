@@ -1,4 +1,4 @@
-/* hnsqr/src/proof/search.rs */
+/* holosphere/src/proof/search.rs */
 //!▫~•◦-------------------------------‣
 //! # Global Proof Search Engine with LUTz L0/L1 Leaf Cascade (Gate B3)
 //!▫~•◦-------------------------------------------------------------------‣

@@ -1,4 +1,4 @@
-/* hnsqr/src/capacity/planner.rs */
+/* holosphere/src/capacity/planner.rs */
 //!▫~•◦-------------------------------‣
 //! # Capacity Planning Engine (`hnsqr plan`)
 //!▫~•◦-------------------------------------------------------------------‣

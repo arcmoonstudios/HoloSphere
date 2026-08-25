@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/analytics/components.rs */
+/* holosphere/src/graph/analytics/components.rs */
 //!▫~•◦-------------------------------‣
 //! # Connected Components — Parallel Union-Find
 //!▫~•◦-------------------------------------------------------------------‣

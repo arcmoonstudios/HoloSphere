@@ -1,4 +1,4 @@
-/* hnsqr/src/security/cert_manager.rs */
+/* holosphere/src/security/cert_manager.rs */
 //!▫~•◦-------------------------------‣
 //! # Automated Certificate Rotation & Lifecycle Orchestration
 //!▫~•◦-------------------------------------------------------------------‣

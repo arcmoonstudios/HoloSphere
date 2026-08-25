@@ -1,4 +1,4 @@
-/* hnsqr/src/planner.rs */
+/* holosphere/src/planner.rs */
 //!▫~•◦-------------------------------‣
 //! # Universal Proof-Carrying Retrieval Planner
 //!▫~•◦-------------------------------------------------------------------‣

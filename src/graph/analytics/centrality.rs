@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/analytics/centrality.rs */
+/* holosphere/src/graph/analytics/centrality.rs */
 //!▫~•◦-------------------------------‣
 //! # Degree Centrality
 //!▫~•◦-------------------------------------------------------------------‣

@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/query/mod.rs */
+/* holosphere/src/graph/query/mod.rs */
 //!▫~•◦-------------------------------‣
 //! # Graph Query Engine — Six-Stage GraphQuery-Compatible Pipeline
 //!▫~•◦-------------------------------------------------------------------‣

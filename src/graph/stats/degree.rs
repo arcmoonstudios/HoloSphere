@@ -1,4 +1,4 @@
-/* hnsqr/src/graph/stats/degree.rs */
+/* holosphere/src/graph/stats/degree.rs */
 //!▫~•◦-------------------------------‣
 //! # Degree Statistics — Out/In-Degree Histograms
 /*▫~•◦------------------------------------------------------------------------------------‣

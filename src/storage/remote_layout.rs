@@ -1,4 +1,4 @@
-/* hnsqr/src/storage/remote_layout.rs */
+/* holosphere/src/storage/remote_layout.rs */
 //!▫~•◦-------------------------------‣
 //! # Proof-Aware Remote Layout & Leaf-Locality Block Packing
 //!▫~•◦-------------------------------------------------------------------‣

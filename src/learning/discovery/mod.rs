@@ -1,5 +1,19 @@
-//! Governed open-ended discovery: schema induction, motif mining, operator
-//! synthesis, falsification, admission, and active experiment selection.
+/* holosphere/src/learning/discovery/mod.rs */
+//!▫~•◦-------------------------------‣
+//! # Governed Open-Ended Continuous Discovery Subsystem
+//!▫~•◦-------------------------------------------------------------------‣
+//!
+//! Implements HoloSphere's autonomous discovery subsystem, synthesizing declarative
+//! reasoning operators, evolving schemas, mining motifs, and evaluating hypotheses.
+//!
+//! ## Subsystem Architecture
+//! - **Mining & DSL:** Mined motifs converted into executable, inspectable reasoning programs.
+//! - **Evaluation & Falsification:** Continuous testing against streaming observations.
+//! - **Distillation:** Direct export of verified reasoning trajectories to RLVR/DPO datasets.
+//!
+/*▫~•◦------------------------------------------------------------------------------------‣
+ * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
+ *///•------------------------------------------------------------------------------------‣
 
 pub mod active_experiment;
 pub mod checkpoint;

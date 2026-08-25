@@ -1,13 +1,18 @@
 /* holosphere/src/graph/query/executor.rs */
 //!▫~•◦-------------------------------‣
-//! # Query Executor — Morsel-Driven Physical Plan Evaluation
+//! # Physical Graph Query Execution Engine
 //!▫~•◦-------------------------------------------------------------------‣
 //!
-//! The executor drives a `PhysicalPlan` over a pinned `GraphReadGeneration`
-//! and an optional pre-resolved vector-seed set.
+//! Executes compiled Cypher and GQL physical plans over CSR/CSC adjacency indices,
+//! inverted metadata filters, and vector nearest neighbor stages.
 //!
-//! All adjacency expansion uses the generation's `AdjacencyBlock` — either
-//! the mutable delta or the sealed CSR/CSC — without the caller caring which.
+//! ## Key Capabilities
+//! - **Vector-Graph Fusion:** Seamlessly interleaves vector distance filtering within graph pattern matching.
+//! - **MVCC Generation Reads:** Evaluates queries against immutable read-generation snapshots.
+//!
+/*▫~•◦------------------------------------------------------------------------------------‣
+ * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
+ *///•------------------------------------------------------------------------------------‣
 
 use std::sync::Arc;
 

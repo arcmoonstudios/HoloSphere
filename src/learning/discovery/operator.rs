@@ -1,4 +1,18 @@
-//! Safe declarative reasoning operators synthesized from discovered motifs.
+/* holosphere/src/learning/discovery/operator.rs */
+//!▫~•◦-------------------------------‣
+//! # Declarative Reasoning Operators
+//!▫~•◦-------------------------------------------------------------------‣
+//!
+//! Models declarative reasoning operators synthesized from validated hypergraph motifs,
+//! encapsulating executable conditions, action recommendations, and epistemic bounds.
+//!
+//! ## Key Capabilities
+//! - **Synthesized Rules:** Direct translation of relational patterns into executable logic.
+//! - **Epistemic Metadata:** Carries accuracy scores, sample counts, and provenance roots.
+//!
+/*▫~•◦------------------------------------------------------------------------------------‣
+ * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
+ *///•------------------------------------------------------------------------------------‣
 
 use std::collections::BTreeSet;
 

@@ -1,7 +1,18 @@
 /* holosphere/src/graph/query/explain.rs */
 //!▫~•◦-------------------------------‣
-//! # EXPLAIN — Human-Readable Physical Plan Rendering
+//! # Graph Query Plan Explainer & Cost Profiler
 //!▫~•◦-------------------------------------------------------------------‣
+//!
+//! Formats physical and logical graph query execution plans into tabular
+//! and visual tree representations for diagnostic profiling and optimization.
+//!
+//! ## Key Capabilities
+//! - **Plan Visualization:** Emits ASCII execution trees with cardinalities and operator costs.
+//! - **Profile Telemetry:** Breaks down runtime duration across scan, join, filter, and vector stages.
+//!
+/*▫~•◦------------------------------------------------------------------------------------‣
+ * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
+ *///•------------------------------------------------------------------------------------‣
 
 use crate::graph::query::physical::{PhysicalOp, PhysicalPlan};
 

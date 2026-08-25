@@ -1,7 +1,19 @@
-//! Builds immutable, dataset-backed vector/graph snapshots for benchmark runs.
+/* holosphere/src/bin/hnsqr_build_bench_db.rs */
+//!▫~•◦-------------------------------‣
+//! # Benchmark Database & Snapshot Generator CLI
+//!▫~•◦-------------------------------------------------------------------‣
 //!
-//! Benchmarks only attach these snapshots; index construction is intentionally
-//! excluded from their timed and untimed execution paths.
+//! Builds immutable, dataset-backed vector and graph snapshots for reproducible
+//! performance and certification benchmark suites.
+//!
+//! ## Key Capabilities
+//! - **Bulk Territory Construction:** Pre-indexes vector datasets using RiveroBulkBuilder.
+//! - **Multi-Metric Support:** Emits certified index files across Cosine, Dot Product, and Euclidean metrics.
+//! - **Artifact Specialization:** Generates .hnsqr snapshots and standalone frozen index files.
+//!
+/*▫~•◦------------------------------------------------------------------------------------‣
+ * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
+ *///•------------------------------------------------------------------------------------‣
 
 use std::fs::{self, File};
 use std::io::Read;

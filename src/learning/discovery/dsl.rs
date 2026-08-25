@@ -1,4 +1,18 @@
-//! Inspectable, versioned, resource-bounded reasoning operator language.
+/* holosphere/src/learning/discovery/dsl.rs */
+//!▫~•◦-------------------------------‣
+//! # Declarative Reasoning Operator DSL & AST
+//!▫~•◦-------------------------------------------------------------------‣
+//!
+//! Defines the inspectable, versioned, resource-bounded domain-specific language
+//! for representing synthesized causal reasoning programs and declarative rules.
+//!
+//! ## Key Capabilities
+//! - **Deterministic Execution:** Resource-bounded evaluation with cycle budgets and recursion limits.
+//! - **Program Synthesis:** Synthesizes executable programs directly from mined hypergraph motifs.
+//!
+/*▫~•◦------------------------------------------------------------------------------------‣
+ * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
+ *///•------------------------------------------------------------------------------------‣
 
 use std::collections::{BTreeMap, BTreeSet};
 

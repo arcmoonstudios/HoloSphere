@@ -1,4 +1,18 @@
-//! Deterministic projection of stored empirical experience into discovery cases.
+/* holosphere/src/learning/discovery/projection.rs */
+//!▫~•◦-------------------------------‣
+//! # Empirical Experience Projection Engine
+//!▫~•◦-------------------------------------------------------------------‣
+//!
+//! Projects stored empirical experiences, entity mutations, and episodic outcomes
+//! into structured discovery cases suitable for motif mining and inductive learning.
+//!
+//! ## Key Capabilities
+//! - **Deterministic Projection:** Losslessly formats raw experience records into feature vectors.
+//! - **Partition Assignment:** Assigns discovery cases to deterministic train/validation sets.
+//!
+/*▫~•◦------------------------------------------------------------------------------------‣
+ * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
+ *///•------------------------------------------------------------------------------------‣
 
 use std::collections::{BTreeMap, BTreeSet};
 

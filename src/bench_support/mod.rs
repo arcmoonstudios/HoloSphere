@@ -1,6 +1,19 @@
-//! Shared data, fixtures, and snapshot loaders for HoloSphere benchmark targets.
+/* holosphere/src/bench_support/mod.rs */
+//!▫~•◦-------------------------------‣
+//! # Benchmark Support & Synthetic Dataset Fixtures
+//!▫~•◦-------------------------------------------------------------------‣
 //!
-//! Kept in a module directory to preserve the crate's root-layout invariant.
+//! Provides shared dataset fixtures, .fvecs loaders, and pre-built snapshot
+//! attachments for HoloSphere benchmark targets.
+//!
+//! ## Key Capabilities
+//! - **Multi-Tier Benchmarking Scale:** Supports Smoke (1k), Dev (5k), Validation (25k), and Scale (1M) tiers.
+//! - **Synthetic & Public Corpus Ingestion:** Generates deterministic synthetic vectors and parses standard ANN benchmarks.
+//! - **Immutable Snapshot Attachments:** Pre-materializes read-only snapshots to isolate retrieval latency from indexing overhead.
+//!
+/*▫~•◦------------------------------------------------------------------------------------‣
+ * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
+ *///•------------------------------------------------------------------------------------‣
 
 use std::collections::HashMap;
 use std::fs::File;

@@ -32,6 +32,8 @@ pub enum RelationMutationError {
     RelationAlreadyExists { relation_id: RelationId },
     #[error("Relation {relation_id} not found")]
     RelationNotFound { relation_id: RelationId },
+    #[error("Relation {relation_id} is tombstoned")]
+    RelationTombstoned { relation_id: RelationId },
     #[error("Entity {entity_id} in role binding not found in current entity arena")]
     EntityNotFound { entity_id: u64 },
     #[error("Epistemic state transition error: {0}")]
@@ -239,6 +241,11 @@ impl RelationMutation {
                         relation_id: *relation_id,
                     },
                 )?;
+                if header.lifecycle() == LifecycleStatus::Tombstoned {
+                    return Err(RelationMutationError::RelationTombstoned {
+                        relation_id: *relation_id,
+                    });
+                }
 
                 let old_vrow_idx = header.version_row;
                 if old_vrow_idx != NULL_ROW_REF {
@@ -289,6 +296,11 @@ impl RelationMutation {
                         relation_id: *relation_id,
                     },
                 )?;
+                if header.lifecycle() == LifecycleStatus::Tombstoned {
+                    return Err(RelationMutationError::RelationTombstoned {
+                        relation_id: *relation_id,
+                    });
+                }
 
                 if header.epistemic() != *expected {
                     return Err(RelationMutationError::EpistemicTransition(format!(
@@ -339,11 +351,39 @@ impl RelationMutation {
                 Ok(())
             }
             RelationMutation::Tombstone { relation_id } => {
-                if !rel_seg.arena.delete(*relation_id) {
-                    return Err(RelationMutationError::RelationNotFound {
+                let (rel_idx, mut header) = rel_seg.arena.get_by_id(*relation_id).ok_or(
+                    RelationMutationError::RelationNotFound {
+                        relation_id: *relation_id,
+                    },
+                )?;
+                if header.lifecycle() == LifecycleStatus::Tombstoned {
+                    return Err(RelationMutationError::RelationTombstoned {
                         relation_id: *relation_id,
                     });
                 }
+
+                let old_vrow_idx = header.version_row;
+                let old_vrow = rel_seg.versions.get_row(old_vrow_idx).ok_or(
+                    RelationMutationError::RelationNotFound {
+                        relation_id: *relation_id,
+                    },
+                )?;
+                rel_seg.versions.close_version(old_vrow_idx, commit_lsn);
+                let (_, tombstone_vrow_idx) = rel_seg.versions.append(RelationVersionRow {
+                    relation_id: *relation_id,
+                    version_id: 0,
+                    valid_from_lsn: commit_lsn,
+                    valid_until_lsn: u64::MAX,
+                    prev_version_row: old_vrow_idx,
+                    provenance_row: old_vrow.provenance_row,
+                    epistemic_status: old_vrow.epistemic_status,
+                    lifecycle_status: LifecycleStatus::Tombstoned as u8,
+                    reserved: [0u8; 14],
+                });
+                header.version_row = tombstone_vrow_idx;
+                header.set_lifecycle(LifecycleStatus::Tombstoned);
+                rel_seg.arena.update_header(rel_idx, header);
+                debug_assert!(rel_seg.arena.delete(*relation_id));
                 Ok(())
             }
         }

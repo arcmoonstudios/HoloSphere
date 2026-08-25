@@ -228,9 +228,13 @@ impl RelationQuery {
                     .into_iter()
                     .filter_map(|rel_idx| rel_snap.segment.arena.index_to_id(rel_idx))
                     .collect()
+            } else if self.as_of_lsn.is_some() {
+                rel_snap.segment.arena.all_ids()
             } else {
                 rel_snap.segment.arena.live_ids()
             }
+        } else if self.as_of_lsn.is_some() {
+            rel_snap.segment.arena.all_ids()
         } else {
             rel_snap.segment.arena.live_ids()
         };
@@ -239,6 +243,9 @@ impl RelationQuery {
         let mut results = Vec::new();
         for rel_id in candidate_rel_ids {
             if let Some(resolved) = rel_snap.resolve_relation_at(rel_id, query_lsn, ent_snap) {
+                if resolved.lifecycle_status == crate::entity::status::LifecycleStatus::Tombstoned {
+                    continue;
+                }
                 // Check relation type if specified
                 if let Some(type_id) = self.type_id {
                     if resolved.type_id != type_id {

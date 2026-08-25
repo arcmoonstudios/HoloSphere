@@ -1,4 +1,18 @@
-//! Competitive predictive, explanatory, causal, calibration, and robustness evaluation.
+/* holosphere/src/learning/discovery/evaluation.rs */
+//!▫~•◦-------------------------------‣
+//! # Competitive Operator Evaluation & Benchmarking
+//!▫~•◦-------------------------------------------------------------------‣
+//!
+//! Compares competing reasoning operators across predictive accuracy, calibration error,
+//! causal validity, counterfactual robustness, and computational efficiency.
+//!
+//! ## Key Capabilities
+//! - **Multi-Metric Scoring:** Ranks candidate rules using Q32 fixed-point precision.
+//! - **Counterexample Tracking:** Captures falsifying test cases to drive automated rule revisions.
+//!
+/*▫~•◦------------------------------------------------------------------------------------‣
+ * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
+ *///•------------------------------------------------------------------------------------‣
 
 use std::collections::{BTreeMap, BTreeSet};
 

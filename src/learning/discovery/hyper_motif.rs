@@ -1,4 +1,18 @@
-//! Inverse hypergraph discovery over N-ary topology, roles, time, causality, and outcomes.
+/* holosphere/src/learning/discovery/hyper_motif.rs */
+//!▫~•◦-------------------------------‣
+//! # Temporal Hypergraph Motif Representation
+//!▫~•◦-------------------------------------------------------------------‣
+//!
+//! Models recurring structural, causal, and temporal patterns extracted across
+//! N-ary hyperedges, entity roles, timestamps, and task outcome states.
+//!
+//! ## Key Capabilities
+//! - **N-Ary Topology:** Captures multi-entity relational patterns beyond simple pairwise graphs.
+//! - **Causal Annotation:** Links motif structures directly to empirical success/failure utility.
+//!
+/*▫~•◦------------------------------------------------------------------------------------‣
+ * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
+ *///•------------------------------------------------------------------------------------‣
 
 use std::collections::{BTreeMap, BTreeSet};
 

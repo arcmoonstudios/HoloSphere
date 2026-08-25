@@ -1,4 +1,18 @@
-//! Continuous governed discovery lifecycle, immutable safety kernel, audit chain, and revision.
+/* holosphere/src/learning/discovery/lifecycle.rs */
+//!▫~•◦-------------------------------‣
+//! # Governed Operator Lifecycle & Audit Log
+//!▫~•◦-------------------------------------------------------------------‣
+//!
+//! Enforces the formal transition lifecycle (Provisional -> Falsification -> Shadow -> Admitted)
+//! with tamper-evident cryptographic audit logs and automated counterexample revision.
+//!
+//! ## Key Capabilities
+//! - **Immutable Safety Kernel:** Enforces hard upper limits on operator complexity and blast radius.
+//! - **Cryptographic Audit Chain:** Guarantees tamper-evident traceability for every rule evolution.
+//!
+/*▫~•◦------------------------------------------------------------------------------------‣
+ * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
+ *///•------------------------------------------------------------------------------------‣
 
 use std::collections::{BTreeMap, BTreeSet};
 

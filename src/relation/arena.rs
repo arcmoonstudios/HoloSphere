@@ -156,13 +156,19 @@ impl RelationArena {
             .collect()
     }
 
+    /// Returns every durable relation identity, including tombstones.  Temporal
+    /// reads use this set so an as-of query can resolve a relation before its
+    /// later deletion.
+    pub fn all_ids(&self) -> Vec<RelationId> {
+        self.index_to_id.read().clone()
+    }
+
     pub fn live_count(&self) -> usize {
         self.live_bitmap.read().len() as usize
     }
 
     pub fn delete(&self, id: RelationId) -> bool {
-        let mut id_map = self.id_to_index.write();
-        if let Some(index) = id_map.remove(&id) {
+        if let Some(index) = self.id_to_index.read().get(&id).copied() {
             self.live_bitmap.write().remove(index);
             let mut headers = self.headers.write();
             if let Some(h) = headers.get_mut(index as usize) {

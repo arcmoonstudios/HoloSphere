@@ -18,7 +18,7 @@ pub const SNAPSHOT_FORMAT_VERSION: u32 = 1;
 pub const RAFT_LOG_RECORD_VERSION: u32 = 1;
 
 /// Format version for storage-layout-independent canonical exports.
-pub const CANONICAL_EXPORT_VERSION: u32 = 1;
+pub const CANONICAL_EXPORT_VERSION: u32 = 2;
 
 /// Schema serialization version for universal entities and headers.
 pub const ENTITY_SCHEMA_VERSION: u32 = 1;

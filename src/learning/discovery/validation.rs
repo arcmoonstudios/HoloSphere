@@ -1,4 +1,18 @@
-//! Held-out falsification and deterministic operator admission metrics.
+/* holosphere/src/learning/discovery/validation.rs */
+//!▫~•◦-------------------------------‣
+//! # Operator Validation & Falsification Metrics
+//!▫~•◦-------------------------------------------------------------------‣
+//!
+//! Evaluates candidate and admitted operators against continuous observation streams,
+//! detecting accuracy decay, calibration drift, and invariant violations.
+//!
+//! ## Key Capabilities
+//! - **Automated Falsification:** Demotes operators when out-of-sample accuracy degrades.
+//! - **Continuous Calibration:** Computes calibration error across sliding empirical observation windows.
+//!
+/*▫~•◦------------------------------------------------------------------------------------‣
+ * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
+ *///•------------------------------------------------------------------------------------‣
 
 use std::collections::BTreeSet;
 

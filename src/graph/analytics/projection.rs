@@ -1,7 +1,18 @@
 /* holosphere/src/graph/analytics/projection.rs */
 //!▫~•◦-------------------------------‣
-//! # Graph Projection — Algorithm Input Abstraction
+//! # Graph Projection & Monopartite Substrates
 //!▫~•◦-------------------------------------------------------------------‣
+//!
+//! Provides abstract graph projection traits and in-memory CSR graph views
+//! for executing topological analytics over heterogeneous knowledge graphs.
+//!
+//! ## Key Capabilities
+//! - **GraphProjection Trait:** Uniform abstraction over directed, undirected, and filtered topologies.
+//! - **Monopartite Reduction:** Projects bipartite and hypergraph incidence structures into fast adjacency arrays.
+//!
+/*▫~•◦------------------------------------------------------------------------------------‣
+ * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
+ *///•------------------------------------------------------------------------------------‣
 
 use std::sync::Arc;
 

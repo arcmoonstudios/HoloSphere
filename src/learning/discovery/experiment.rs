@@ -1,4 +1,18 @@
-//! Safe active-experiment selection for uncertain or competing operators.
+/* holosphere/src/learning/discovery/experiment.rs */
+//!▫~•◦-------------------------------‣
+//! # Empirical Experiment Design & Hypothesis Testing
+//!▫~•◦-------------------------------------------------------------------‣
+//!
+//! Formulates structured empirical interventions to test causal hypotheses and
+//! measure the predictive utility of newly synthesized reasoning operators.
+//!
+//! ## Key Capabilities
+//! - **Hypothesis Generation:** Generates targeted validation queries for unproven predicates.
+//! - **Outcome Verification:** Measures real-world task success rates to validate theoretical models.
+//!
+/*▫~•◦------------------------------------------------------------------------------------‣
+ * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
+ *///•------------------------------------------------------------------------------------‣
 
 use std::collections::{BTreeMap, BTreeSet};
 

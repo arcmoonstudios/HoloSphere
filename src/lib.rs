@@ -120,7 +120,8 @@ pub use cluster::{
 };
 pub use conformance::{
     CANONICAL_EXPORT_VERSION, CanonicalExportArchive, ENTITY_SCHEMA_VERSION,
-    EXPERIENCE_SCHEMA_VERSION, ExportedEntity, ExportedExperience, ExportedRelation,
+    EXPERIENCE_SCHEMA_VERSION, ExportedEntity, ExportedExperience, ExportedLearningRecord,
+    ExportedRelation,
     INFERENCE_TRACE_VERSION, KernelError, LEARNING_SCHEMA_VERSION, RAFT_LOG_RECORD_VERSION,
     RELATION_SCHEMA_VERSION, SEMANTIC_KERNEL_VERSION, SNAPSHOT_FORMAT_VERSION,
     SYNTHESIS_TRACE_VERSION, WORLD_DIGEST_VERSION, create_v1_golden_fixture,

@@ -1,7 +1,18 @@
 /* holosphere/src/graph/analytics/k_core.rs */
 //!▫~•◦-------------------------------‣
-//! # K-Core Decomposition — Iterative Degree Peeling
+//! # K-Core Graph Decomposition & Subgraph Pruning
 //!▫~•◦-------------------------------------------------------------------‣
+//!
+//! Implements Batagelj-Zaversnik (|E|)$ degree-peeling algorithms to extract
+//! maximal $-core cohesive subgraphs and compute node coreness numbers.
+//!
+//! ## Key Capabilities
+//! - **Cohesive Subgraph Identification:** Isolates densely connected relational subgraphs.
+//! - **Topological Filtering:** Restricts vector and graph traversals to high-coreness clusters.
+//!
+/*▫~•◦------------------------------------------------------------------------------------‣
+ * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
+ *///•------------------------------------------------------------------------------------‣
 
 use crate::NodeIndex;
 use crate::graph::analytics::projection::GraphProjection;

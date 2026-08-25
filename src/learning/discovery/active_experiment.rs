@@ -1,4 +1,18 @@
-//! Information-gain experiment planning with sandbox and external-authorization boundaries.
+/* holosphere/src/learning/discovery/active_experiment.rs */
+//!▫~•◦-------------------------------‣
+//! # Information-Gain Active Experiment Planning
+//!▫~•◦-------------------------------------------------------------------‣
+//!
+//! Plans active epistemic experiments to resolve uncertainty among competing
+//! reasoning operators within strict sandboxing and authorization boundaries.
+//!
+//! ## Key Capabilities
+//! - **Expected Information Gain (EIG):** Maximizes epistemic entropy reduction per experiment.
+//! - **Safety Boundaries:** Distinguishes fully autonomous read-only probes from gated write actions.
+//!
+/*▫~•◦------------------------------------------------------------------------------------‣
+ * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
+ *///•------------------------------------------------------------------------------------‣
 
 use std::collections::{BTreeMap, BTreeSet};
 

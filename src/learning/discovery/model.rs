@@ -1,4 +1,18 @@
-//! Canonical evidence contracts for governed autonomous discovery.
+/* holosphere/src/learning/discovery/model.rs */
+//!▫~•◦-------------------------------‣
+//! # Governed Discovery Evidence & Data Contracts
+//!▫~•◦-------------------------------------------------------------------‣
+//!
+//! Core data models, identifier types, evidence partitions, and outcome contracts
+//! governing autonomous discovery, empirical validation, and operator representation.
+//!
+//! ## Key Capabilities
+//! - **Strong Typing:** Type-safe identifiers for Domains, Concepts, Features, and Resolutions.
+//! - **Fixed-Point Arithmetic:** Q32 fixed-point math for deterministic multi-platform consensus.
+//!
+/*▫~•◦------------------------------------------------------------------------------------‣
+ * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
+ *///•------------------------------------------------------------------------------------‣
 
 use std::collections::BTreeSet;
 

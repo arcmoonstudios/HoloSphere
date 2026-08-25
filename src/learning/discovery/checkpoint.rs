@@ -1,4 +1,18 @@
-//! Checksummed recovery checkpoints for the complete governed discovery state.
+/* holosphere/src/learning/discovery/checkpoint.rs */
+//!▫~•◦-------------------------------‣
+//! # Governed Discovery Checkpointing & Crash Recovery
+//!▫~•◦-------------------------------------------------------------------‣
+//!
+//! Implements SHA-256 verified recovery checkpoints for the complete governed
+//! autonomous discovery catalog, operators, schemas, and epistemic audit logs.
+//!
+//! ## Key Capabilities
+//! - **Atomic State Checkpoints:** Serializes discovery state snapshots with cryptographic integrity hashes.
+//! - **Idempotent Replay:** Reconstructs continuous discovery cycles cleanly across node restarts.
+//!
+/*▫~•◦------------------------------------------------------------------------------------‣
+ * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
+ *///•------------------------------------------------------------------------------------‣
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

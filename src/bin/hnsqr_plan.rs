@@ -24,7 +24,7 @@ fn main() {
         replication_factor: 3,
     };
 
-    let plan = CapacityPlanner::compute_plan(&req);
+    let plan = CapacityPlanner::compute_plan_local_calibrated(&req);
 
     println!("\n📋 DEPLOYMENT TARGET:");
     println!("   • Total Vectors:       {:>12}", "10,000,000");
@@ -69,5 +69,6 @@ fn main() {
     println!("   • Columnar OLAP Table Arena: {:>8.2} GB", 8.0);
     println!("   • In-Process Embedder Cache: {:>8.2} GB", 2.0);
 
-    println!("\n✨ SIZING ANALYSIS COMPLETE.\n");
+    println!("\n✨ SIZING ANALYSIS COMPLETE.");
+    println!("   CPU/memory throughput was calibrated locally; NVMe and network figures use the documented baseline until measured telemetry is supplied.\n");
 }

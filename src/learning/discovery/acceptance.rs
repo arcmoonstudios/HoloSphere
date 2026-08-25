@@ -1,3 +1,19 @@
+/* holosphere/src/learning/discovery/acceptance.rs */
+//!▫~•◦-------------------------------‣
+//! # Empirical Discovery Acceptance & Hypothesis Testing
+//!▫~•◦-------------------------------------------------------------------‣
+//!
+//! Evaluates candidate discovery operators against empirical acceptance thresholds,
+//! statistical power criteria, and held-out validation partitions.
+//!
+//! ## Key Capabilities
+//! - **Epistemic Acceptance Gates:** Validates accuracy, calibration error, and statistical significance.
+//! - **Partitioned Evaluation:** Enforces strict train/test/validation separation across discovery cases.
+//!
+/*▫~•◦------------------------------------------------------------------------------------‣
+ * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
+ *///•------------------------------------------------------------------------------------‣
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::*;

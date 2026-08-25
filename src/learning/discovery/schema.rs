@@ -1,4 +1,18 @@
-//! Governed induction of entity classes, N-ary relation types, roles, and hierarchies.
+/* holosphere/src/learning/discovery/schema.rs */
+//!▫~•◦-------------------------------‣
+//! # Autonomous Schema Induction & Hierarchy Evolution
+//!▫~•◦-------------------------------------------------------------------‣
+//!
+//! Induces new entity classes, N-ary relation types, structural roles, and taxonomy
+//! hierarchies directly from observed knowledge clustering and semantic invariants.
+//!
+//! ## Key Capabilities
+//! - **Dynamic Taxonomy:** Automatically proposes schema extensions when unmodeled entities appear.
+//! - **Backward Compatibility:** Validates schema evolution proposals against existing datasets.
+//!
+/*▫~•◦------------------------------------------------------------------------------------‣
+ * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
+ *///•------------------------------------------------------------------------------------‣
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;

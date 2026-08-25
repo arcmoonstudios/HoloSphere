@@ -1,7 +1,18 @@
 /* holosphere/src/graph/mutation/command.rs */
 //!▫~•◦-------------------------------‣
-//! # Graph Mutation Commands
+//! # Graph Mutation Commands & Replicated Operations
 //!▫~•◦-------------------------------------------------------------------‣
+//!
+//! Defines strongly typed graph mutation primitives (node creation, property update,
+//! edge insertion, deletion) for atomic state machine replication.
+//!
+//! ## Key Capabilities
+//! - **Atomic Multi-Model Mutations:** Fuses graph structural updates with vector bindings.
+//! - **Determinism & Replay:** Serializes commands with CRC32C validation for Raft replication.
+//!
+/*▫~•◦------------------------------------------------------------------------------------‣
+ * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
+ *///•------------------------------------------------------------------------------------‣
 
 use std::collections::HashMap;
 

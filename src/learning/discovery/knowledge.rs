@@ -1,4 +1,18 @@
-//! Canonical temporal knowledge snapshot consumed by open-ended discovery.
+/* holosphere/src/learning/discovery/knowledge.rs */
+//!▫~•◦-------------------------------‣
+//! # Canonical Temporal Knowledge Snapshots
+//!▫~•◦-------------------------------------------------------------------‣
+//!
+//! Provides point-in-time immutable knowledge representations and temporal hyperedge
+//! collections consumed during motif mining and schema induction cycles.
+//!
+//! ## Key Capabilities
+//! - **Point-in-Time Consistency:** Pins knowledge state at specific Raft LSNs during mining.
+//! - **Rich Provenance:** Retains origin hashes and observation timestamps for all evidence.
+//!
+/*▫~•◦------------------------------------------------------------------------------------‣
+ * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
+ *///•------------------------------------------------------------------------------------‣
 
 use std::collections::{BTreeMap, BTreeSet};
 

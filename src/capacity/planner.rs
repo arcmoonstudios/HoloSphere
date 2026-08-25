@@ -12,6 +12,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::planning::AutoForge;
+
 /// Input deployment requirements.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CapacityRequirements {
@@ -67,6 +69,33 @@ impl Default for MachineTelemetryProfile {
 pub struct CapacityPlanner;
 
 impl CapacityPlanner {
+    /// Captures the locally measurable CPU and memory characteristics before
+    /// sizing a deployment. Storage and network values remain explicit
+    /// assumptions until an operator supplies measured telemetry through
+    /// [`Self::compute_plan_calibrated`].
+    pub fn local_calibrated_telemetry() -> MachineTelemetryProfile {
+        let profile = AutoForge::calibrate();
+        let defaults = MachineTelemetryProfile::default();
+        let throughput_scale = (profile.simd_gflops as f64 / 250.0).clamp(0.25, 4.0);
+        MachineTelemetryProfile {
+            simd_scan_gbps: (profile.memory_bandwidth_gbps as f64).max(0.1),
+            rivero_candidates_per_us: defaults.rivero_candidates_per_us * throughput_scale,
+            proof_tree_nodes_per_us: defaults.proof_tree_nodes_per_us * throughput_scale,
+            lutz_candidates_per_us: defaults.lutz_candidates_per_us * throughput_scale,
+            ..defaults
+        }
+    }
+
+    /// Sizes an interactive local deployment from measured CPU and memory
+    /// throughput. Production callers should provide complete measured storage
+    /// and network telemetry with [`Self::compute_plan_calibrated`].
+    pub fn compute_plan_local_calibrated(req: &CapacityRequirements) -> ClusterCapacityPlan {
+        Self::compute_plan_calibrated(req, &Self::local_calibrated_telemetry())
+    }
+
+    /// Computes a portable estimate using documented baseline telemetry.
+    /// This remains useful for offline planning, but it is intentionally not
+    /// the CLI default because it is not machine-specific.
     pub fn compute_plan(req: &CapacityRequirements) -> ClusterCapacityPlan {
         Self::compute_plan_calibrated(req, &MachineTelemetryProfile::default())
     }

@@ -1,4 +1,4 @@
-/* holosphere/src/gateway.rs */
+/* holosphere/src/vector/folding.rs */
 //!▫~•◦-------------------------------‣
 //! # Real-to-Complex Embedding Gateway & Multi-Collection Router
 //!▫~•◦-------------------------------------------------------------------‣
@@ -45,6 +45,7 @@ use tower_http::cors::CorsLayer;
 use tracing::info;
 
 use crate::metadata::index::{FilterExpr, MetadataValue};
+use crate::vector::inference::{InferenceModelConfig, InProcessModelEmbedder};
 use crate::{
     HNSQRConfig, HNSQRError, HNSQRIndex, HNSQRResult, NodeIndex, SimilarityScore, VectorEmbedding,
 };
@@ -359,6 +360,69 @@ impl GatewayRouter {
     ) -> HNSQRResult<(Vec<(String, SimilarityScore)>, bool, Option<f32>)> {
         let target_index = self.get_or_create_collection(collection, llm_query.len())?;
         let complex_query = ComplexWeaver::fold_llm_embedding(llm_query);
+
+        Self::search_embedding_with_contract(
+            &target_index,
+            &complex_query,
+            k,
+            filter,
+            certified_exact,
+        )
+    }
+
+    /// Searches an existing collection using the built-in, deterministic text
+    /// embedder.  Text search never creates a collection: its embedding space
+    /// must be derived from data already admitted to that collection.
+    pub fn search_llm_text_with_contract(
+        &self,
+        collection: &str,
+        query_text: &str,
+        k: usize,
+        filter: Option<FilterExpr>,
+        certified_exact: bool,
+    ) -> HNSQRResult<(Vec<(String, SimilarityScore)>, bool, Option<f32>)> {
+        if query_text.trim().is_empty() {
+            return Err(HNSQRError::InvalidRequest(
+                "query_text must not be empty".to_string(),
+            ));
+        }
+
+        let target_index = self
+            .collections
+            .read()
+            .get(collection)
+            .cloned()
+            .ok_or_else(|| {
+                HNSQRError::SearchError(format!("Collection '{collection}' does not exist"))
+            })?;
+        let raw_dimension = target_index.dimension().checked_mul(2).ok_or_else(|| {
+            HNSQRError::InvalidConfig("collection dimension overflows text embedding space".into())
+        })?;
+
+        let config = InferenceModelConfig {
+            output_dimension: raw_dimension,
+            ..InferenceModelConfig::default()
+        };
+        let embedder = InProcessModelEmbedder::try_new(config)
+            .map_err(|error| HNSQRError::InvalidConfig(error.to_string()))?;
+        let complex_query = embedder.embed_text(query_text)?;
+
+        Self::search_embedding_with_contract(
+            &target_index,
+            &complex_query,
+            k,
+            filter,
+            certified_exact,
+        )
+    }
+
+    fn search_embedding_with_contract(
+        target_index: &Arc<HNSQRIndex>,
+        complex_query: &VectorEmbedding,
+        k: usize,
+        filter: Option<FilterExpr>,
+        certified_exact: bool,
+    ) -> HNSQRResult<(Vec<(String, SimilarityScore)>, bool, Option<f32>)> {
         let filter_mask = filter.and_then(|f| target_index.compile_filter_mask(&f).ok());
 
         if certified_exact {
@@ -435,8 +499,10 @@ struct InsertResponse {
 
 #[derive(Deserialize)]
 struct SearchRequest {
-    #[serde(alias = "vector")]
-    query: Vec<f32>,
+    #[serde(default, alias = "vector")]
+    query: Option<Vec<f32>>,
+    #[serde(default)]
+    query_text: Option<String>,
     #[serde(default = "default_k")]
     k: usize,
     #[serde(default)]
@@ -575,15 +641,29 @@ async fn search_handler(
     Path(collection): Path<String>,
     Json(payload): Json<SearchRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let (results, is_certified, upper_bound) = router
-        .search_llm_vector_with_contract(
+    let (results, is_certified, upper_bound) = match (payload.query, payload.query_text) {
+        (Some(query), None) => router.search_llm_vector_with_contract(
             &collection,
-            &payload.query,
+            &query,
             payload.k,
             payload.filter,
             payload.certified_exact,
-        )
-        .map_err(|e: HNSQRError| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ),
+        (None, Some(query_text)) => router.search_llm_text_with_contract(
+            &collection,
+            &query_text,
+            payload.k,
+            payload.filter,
+            payload.certified_exact,
+        ),
+        _ => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "provide exactly one of query/vector or query_text".to_string(),
+            ));
+        }
+    }
+    .map_err(|e: HNSQRError| (StatusCode::BAD_REQUEST, e.to_string()))?;
 
     let items: Vec<SearchResultItem> = results
         .into_iter()
@@ -709,6 +789,33 @@ mod tests {
         let res_llama = router.search_llm_vector("llama_mock", &v_llama, 1).unwrap();
         assert_eq!(res_llama.len(), 1);
         assert_eq!(res_llama[0].0, "doc_llama_1");
+    }
+
+    #[test]
+    fn text_search_uses_the_existing_collection_embedding_space() {
+        let temp_dir = std::env::temp_dir();
+        let router = GatewayRouter::new(&temp_dir.to_string_lossy(), false);
+        let mut config = InferenceModelConfig::default();
+        config.output_dimension = 64;
+        let embedder = InProcessModelEmbedder::try_new(config).unwrap();
+        let embedded = embedder.embed_text("liquid cooling for datacenters").unwrap();
+        let raw = ComplexWeaver::unfold_to_real(&embedded, 64);
+
+        router
+            .ingest_llm_vector("text_docs", "cooling", &raw)
+            .unwrap();
+        let (results, certified, _) = router
+            .search_llm_text_with_contract(
+                "text_docs",
+                "liquid cooling for datacenters",
+                1,
+                None,
+                true,
+            )
+            .unwrap();
+
+        assert!(certified);
+        assert_eq!(results[0].0, "cooling");
     }
 
     #[test]

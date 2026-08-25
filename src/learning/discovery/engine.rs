@@ -1,4 +1,18 @@
-//! Governed end-to-end discovery cycle and durable operator catalog.
+/* holosphere/src/learning/discovery/engine.rs */
+//!▫~•◦-------------------------------‣
+//! # Continuous Governed Discovery Engine
+//!▫~•◦-------------------------------------------------------------------‣
+//!
+//! Orchestrates the end-to-end background discovery lifecycle: motif mining, schema
+//! induction, operator synthesis, empirical evaluation, falsification, and catalog revision.
+//!
+//! ## Key Capabilities
+//! - **Autonomous Evolution:** Continuously refines internal reasoning models from empirical experience.
+//! - **Epistemic Governance:** Enforces the Immutable Safety Kernel and strict progression gates.
+//!
+/*▫~•◦------------------------------------------------------------------------------------‣
+ * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
+ *///•------------------------------------------------------------------------------------‣
 
 use std::collections::{BTreeMap, BTreeSet};
 

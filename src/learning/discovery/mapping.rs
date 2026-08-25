@@ -1,4 +1,18 @@
-//! Behavioral cross-domain concept mapping without vocabulary dependence.
+/* holosphere/src/learning/discovery/mapping.rs */
+//!▫~•◦-------------------------------‣
+//! # Cross-Domain Analogical Concept Mapping
+//!▫~•◦-------------------------------------------------------------------‣
+//!
+//! Maps concepts across disparate semantic domains based on structural and behavioral
+//! isomorphism, enabling zero-shot analogical reasoning without vocabulary overlap.
+//!
+//! ## Key Capabilities
+//! - **Vocabulary-Agnostic Alignment:** Discovers structural analogies between distinct problem domains.
+//! - **Isomorphism Scoring:** Computes algebraic mapping confidence via Clifford rotor invariants.
+//!
+/*▫~•◦------------------------------------------------------------------------------------‣
+ * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
+ *///•------------------------------------------------------------------------------------‣
 
 use std::collections::{BTreeMap, BTreeSet};
 

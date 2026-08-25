@@ -11,7 +11,8 @@
 use std::sync::Arc;
 
 use crate::conformance::export::{
-    CanonicalExportArchive, ExportedEntity, ExportedExperience, ExportedRelation,
+    CanonicalExportArchive, ExportedEntity, ExportedExperience, ExportedLearningRecord,
+    ExportedRelation,
 };
 use crate::conformance::version::CANONICAL_EXPORT_VERSION;
 use crate::entity::status::EpistemicStatus;
@@ -69,12 +70,22 @@ pub fn create_v1_golden_fixture() -> CanonicalExportArchive {
         Arc::from("experience:latency_mitigation:v1"),
     ];
 
+    let learning_records = vec![ExportedLearningRecord {
+        record_id: 7001,
+        subject_id: 1001,
+        kind: Arc::from("causal_hypothesis"),
+        epistemic_status: EpistemicStatus::Provisional,
+        provenance_id: 9001,
+        payload_digest: [7u8; 32],
+    }];
+
     CanonicalExportArchive {
         format_version: CANONICAL_EXPORT_VERSION,
         snapshot_lsn: 10_000,
         entities,
         relations,
         experiences,
+        learning_records,
         schema_signatures,
     }
 }

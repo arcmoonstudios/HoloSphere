@@ -417,4 +417,62 @@ mod tests {
 
         verify_all(&compacted_rel, &compacted_ent);
     }
+
+    #[test]
+    fn tombstones_preserve_pre_delete_history_without_leaking_current_queries() {
+        let ent_seg = Arc::new(EntitySegment::new(1, 1));
+        let rel_seg = Arc::new(RelationSegment::new(1, 1));
+        for id in [10, 20] {
+            EntityMutation::Create {
+                entity_id: id,
+                header: EntityHeader::default(),
+                initial_version_id: id,
+                provenance_id: 0,
+                provenance_record: None,
+                epistemic_status: EpistemicStatus::Observed,
+            }
+            .apply(&ent_seg, 10)
+            .unwrap();
+        }
+        rel_seg.register_type(RelationType {
+            id: 1,
+            name: Arc::from("CAUSES"),
+            schema_version: 1,
+            state: RelationTypeState::Admitted,
+            roles: vec![
+                RoleSchema { role_id: 1, name: Arc::from("source"), min_count: 1, max_count: 1, required: true },
+                RoleSchema { role_id: 2, name: Arc::from("target"), min_count: 1, max_count: 1, required: true },
+            ],
+            binary_projection: None,
+            provenance_id: 0,
+            structural_fingerprint: 0,
+        });
+        RelationMutation::CreateRelation {
+            relation_id: 99,
+            relation_type_id: 1,
+            bindings: vec![
+                DurableRoleBinding { entity_id: 10, role_id: 1 },
+                DurableRoleBinding { entity_id: 20, role_id: 2 },
+            ],
+            provenance_id: 0,
+            provenance_record: None,
+            epistemic_status: EpistemicStatus::Observed,
+        }
+        .apply(&rel_seg, &ent_seg, 100)
+        .unwrap();
+        RelationMutation::Tombstone { relation_id: 99 }
+            .apply(&rel_seg, &ent_seg, 200)
+            .unwrap();
+
+        let current_rel = rel_seg.read_snapshot(250);
+        let current_ent = ent_seg.read_snapshot(250);
+        assert!(RelationQuery::new().with_type(1).execute(&current_rel, &current_ent).is_empty());
+        assert!(RelationQuery::new().with_type(1).with_role(1, 10).execute(&current_rel, &current_ent).is_empty());
+
+        let historical = RelationQuery::new().with_type(1).with_as_of(150).execute(&current_rel, &current_ent);
+        assert_eq!(historical.len(), 1);
+        assert_eq!(historical[0].relation_id, 99);
+        assert_eq!(historical[0].lifecycle_status, crate::entity::status::LifecycleStatus::Active);
+        assert!(current_rel.as_of(99, 250, &current_ent).is_some());
+    }
 }

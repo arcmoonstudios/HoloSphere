@@ -25,7 +25,7 @@ fn test_phase11_canonical_version_constants() {
     assert_eq!(SEMANTIC_KERNEL_VERSION, 1);
     assert_eq!(SNAPSHOT_FORMAT_VERSION, 1);
     assert_eq!(RAFT_LOG_RECORD_VERSION, 1);
-    assert_eq!(CANONICAL_EXPORT_VERSION, 1);
+    assert_eq!(CANONICAL_EXPORT_VERSION, 2);
     assert_eq!(ENTITY_SCHEMA_VERSION, 1);
     assert_eq!(RELATION_SCHEMA_VERSION, 1);
     assert_eq!(EXPERIENCE_SCHEMA_VERSION, 1);

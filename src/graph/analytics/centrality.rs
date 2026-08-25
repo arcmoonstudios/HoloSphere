@@ -1,7 +1,18 @@
 /* holosphere/src/graph/analytics/centrality.rs */
 //!▫~•◦-------------------------------‣
-//! # Degree Centrality
+//! # Graph Degree & Centrality Analytics
 //!▫~•◦-------------------------------------------------------------------‣
+//!
+//! Computes normalized in-degree and out-degree centrality metrics over
+//! CSR/CSC graph projections for topological influence ranking.
+//!
+//! ## Key Capabilities
+//! - **Normalized Degree Centrality:** (|V|)$ computation of directional node influence.
+//! - **Zero-Copy Adjacency Traversal:** Direct evaluation over projected graph topology.
+//!
+/*▫~•◦------------------------------------------------------------------------------------‣
+ * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
+ *///•------------------------------------------------------------------------------------‣
 
 use crate::NodeIndex;
 use crate::graph::analytics::projection::GraphProjection;

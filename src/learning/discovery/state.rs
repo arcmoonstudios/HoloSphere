@@ -1,4 +1,18 @@
-//! Replicated MVCC state for the complete governed discovery lifecycle.
+/* holosphere/src/learning/discovery/state.rs */
+//!▫~•◦-------------------------------‣
+//! # Replicated Governed Discovery State & MVCC
+//!▫~•◦-------------------------------------------------------------------‣
+//!
+//! Implements multi-version concurrency control (MVCC) and Raft-replicated state
+//! machines for active operators, active experiments, schemas, and audit records.
+//!
+//! ## Key Capabilities
+//! - **Replicated State Machine:** Fully integrates continuous learning into Raft consensus.
+//! - **Lock-Free Snapshots:** Provides fast read-only snapshots for concurrent search queries.
+//!
+/*▫~•◦------------------------------------------------------------------------------------‣
+ * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
+ *///•------------------------------------------------------------------------------------‣
 
 use std::collections::BTreeMap;
 

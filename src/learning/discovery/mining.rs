@@ -1,4 +1,18 @@
-//! Deterministic schema induction and bounded cross-domain motif mining.
+/* holosphere/src/learning/discovery/mining.rs */
+//!▫~•◦-------------------------------‣
+//! # Deterministic Schema & Hypergraph Motif Mining
+//!▫~•◦-------------------------------------------------------------------‣
+//!
+//! Mines frequent subgraphs, temporal patterns, and candidate entity schema
+//! hierarchies from empirical relational hyperedges under strict resource bounds.
+//!
+//! ## Key Capabilities
+//! - **Bounded Search Depth:** Prevents combinatorial explosion during sub-isomorphism checks.
+//! - **Support & Confidence Pruning:** Filters low-utility patterns before program synthesis.
+//!
+/*▫~•◦------------------------------------------------------------------------------------‣
+ * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
+ *///•------------------------------------------------------------------------------------‣
 
 use std::collections::{BTreeMap, BTreeSet};
 

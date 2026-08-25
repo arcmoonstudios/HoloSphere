@@ -158,14 +158,17 @@ fn main() {
         source.display()
     );
 
-    // Hard stop on corpus fabrication: requested cardinality must not exceed source records.
+    // If the dataset file contains fewer vectors than requested, cap the build to what exists.
     if corpus.len() < vectors {
-        panic!(
-            "BenchmarkDatasetTooSmall: requested {} vectors, but dataset {} only provides {}",
+        eprintln!(
+            "warning: requested {} vectors, but '{}' only supplies {} — \
+             building snapshot with {} vectors",
             vectors,
             source.display(),
+            corpus.len(),
             corpus.len()
         );
+        vectors = corpus.len();
     }
 
     fs::create_dir_all(&output).expect("failed to create benchmark database directory");

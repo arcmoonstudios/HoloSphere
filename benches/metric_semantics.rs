@@ -15,6 +15,7 @@ fn main() {
         "╚══════════════════════════════════════════════════════════════════════════════════════╝\n"
     );
 
+    // Loads real vectors from datasets/; warns (does not panic) if fewer than 5000 are available.
     let corpus = generate_realistic_text_corpus(5_000, 100, 64, common::DEFAULT_BENCH_SEED);
 
     // ════════════════════════════════════════════════════════════════════════

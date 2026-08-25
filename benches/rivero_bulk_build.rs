@@ -2,7 +2,7 @@ use hnsqr::bench_support as common;
 
 use std::time::Instant;
 
-use common::{BenchScale, DEFAULT_BENCH_SEED, generate_realistic_text_corpus};
+use common::{BenchScale, DEFAULT_BENCH_SEED, find_best_matching_dataset, read_fvecs};
 use hnsqr::rivero::RiveroProfile;
 use hnsqr::rivero::bulk::RiveroBulkBuilder;
 use hnsqr::{HNSQRConfig, HNSQRIndex, VectorEmbedding};
@@ -196,11 +196,19 @@ fn main() {
         "╚══════════════════════════════════════════════════════════════════════════════════════╝\n"
     );
 
-    let corpus = generate_realistic_text_corpus(n, 10, 64, DEFAULT_BENCH_SEED);
+    let (base_path, _, _) = find_best_matching_dataset(64);
+    let (folded_corpus, _) = read_fvecs(&base_path, Some(n))
+        .unwrap_or_else(|_| panic!("failed to load dataset from {}", base_path.display()));
+    assert!(
+        !folded_corpus.is_empty(),
+        "dataset '{}' is empty — run hnsqr_build_bench_db to verify dataset files",
+        base_path.display()
+    );
+    let _ = DEFAULT_BENCH_SEED; // kept for compatibility with BenchScale env
 
-    benchmark_thread_scaling(&corpus.folded_corpus);
-    benchmark_profile_scaling(&corpus.folded_corpus);
-    benchmark_incremental_vs_bulk(&corpus.folded_corpus);
+    benchmark_thread_scaling(&folded_corpus);
+    benchmark_profile_scaling(&folded_corpus);
+    benchmark_incremental_vs_bulk(&folded_corpus);
 
     println!(
         "════════════════════════════════════════════════════════════════════════════════════════"

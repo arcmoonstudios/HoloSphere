@@ -45,15 +45,17 @@ fn run_experiment(exp: &ExperimentConfig) -> BenchmarkResult {
     );
     println!("═══════════════════════════════════════════════════════════════════════════════");
 
-    // 1. Generate Synthetic Corpus & Queries using realistic text embeddings
-    let dataset = common::generate_realistic_text_corpus(
-        exp.n_corpus,
-        exp.n_queries,
-        exp.d_real,
-        0x4200_0000 + exp.d_real as u64,
+    // 1. Load real corpus & queries from datasets/
+    let (base_path, query_path, _) = common::find_best_matching_dataset(exp.d_real);
+    let (corpus, _) = common::read_fvecs(&base_path, Some(exp.n_corpus))
+        .unwrap_or_else(|_| panic!("failed to load {}", base_path.display()));
+    let (queries, _) = common::read_fvecs(&query_path, Some(exp.n_queries))
+        .unwrap_or_else(|_| panic!("failed to load {}", query_path.display()));
+    assert!(
+        !corpus.is_empty(),
+        "dataset '{}' is missing or empty — ensure datasets/ are populated",
+        base_path.display()
     );
-    let corpus = dataset.folded_corpus;
-    let queries = dataset.folded_queries;
 
     // 2. Build Rivero Index (64 Foundations GlobalMix)
     println!("   ⚙️ Building Rivero Coarse Index...");

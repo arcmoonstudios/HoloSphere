@@ -2,7 +2,6 @@ use hnsqr::bench_support as common;
 
 use std::time::Instant;
 
-use common::generate_realistic_text_corpus;
 use hnsqr::NodeIndex;
 use hnsqr::rivero::{AdaptivePolicy, RiveroProfile};
 
@@ -47,15 +46,30 @@ fn main() {
         "  ├────────┼──────────────┼────────────────────────┼───────────────────────────────────────────┼──────────────┤"
     );
 
+    let (base_path, query_path, _) = common::find_best_matching_dataset(dim * 2);
+    let max_n = *sizes.iter().max().unwrap_or(&0);
+    let (all_corpus, _) = common::read_fvecs(&base_path, Some(max_n)).unwrap_or_default();
+    let (all_queries, _) = common::read_fvecs(&query_path, Some(num_queries)).unwrap_or_default();
+    assert!(
+        !all_corpus.is_empty(),
+        "dataset '{}' is missing or empty — ensure datasets/ are populated",
+        base_path.display()
+    );
+    assert!(
+        !all_queries.is_empty(),
+        "query file '{}' is missing or empty",
+        query_path.display()
+    );
+    let actual_complex_dim = all_corpus.first().map(|v| v.dimension()).unwrap_or(dim);
+
     for &n in &sizes {
-        let dataset =
-            generate_realistic_text_corpus(n, num_queries, dim * 2, common::DEFAULT_BENCH_SEED);
+        let folded_corpus = all_corpus[..n.min(all_corpus.len())].to_vec();
+        let folded_queries = all_queries[..num_queries.min(all_queries.len())].to_vec();
 
         // Ground truth calculation
         let mut ground_truth: Vec<Vec<NodeIndex>> = Vec::with_capacity(num_queries);
-        for q in &dataset.folded_queries {
-            let mut scored: Vec<(NodeIndex, f32)> = dataset
-                .folded_corpus
+        for q in &folded_queries {
+            let mut scored: Vec<(NodeIndex, f32)> = folded_corpus
                 .iter()
                 .enumerate()
                 .map(|(idx, doc)| {
@@ -67,17 +81,17 @@ fn main() {
             ground_truth.push(scored.iter().take(10).map(|s| s.0).collect());
         }
 
-        // Build or load cached Snapshot Index
+        // Load prebuilt snapshot index
         let index = common::open_prebuilt_index(
             &format!("crossover_sweep_n{n}"),
-            &dataset.folded_corpus,
-            dataset.complex_dim,
+            &folded_corpus,
+            actual_complex_dim,
             RiveroProfile::Balanced,
         );
 
         // 1. Exact Scan
         let mut exact_lats = Vec::with_capacity(num_queries);
-        for (q, _gt) in dataset.folded_queries.iter().zip(ground_truth.iter()) {
+        for (q, _gt) in folded_queries.iter().zip(ground_truth.iter()) {
             let t0 = Instant::now();
             let _ = index.search_indices_exact(q, 10, None).unwrap();
             exact_lats.push(t0.elapsed().as_secs_f64() * 1000.0);
@@ -87,7 +101,7 @@ fn main() {
         // 2. Fast Rivero
         let mut fast_lats = Vec::with_capacity(num_queries);
         let mut fast_rec = 0.0f64;
-        for (q, gt) in dataset.folded_queries.iter().zip(ground_truth.iter()) {
+        for (q, gt) in folded_queries.iter().zip(ground_truth.iter()) {
             let t0 = Instant::now();
             let (res, _) = index
                 .search_indices_profile(q, 10, None, RiveroProfile::Fast)
@@ -107,7 +121,7 @@ fn main() {
         let mut strict_accepted = 0usize;
         let mut _fallback_used = 0usize;
 
-        for (q, gt) in dataset.folded_queries.iter().zip(ground_truth.iter()) {
+        for (q, gt) in folded_queries.iter().zip(ground_truth.iter()) {
             let t0 = Instant::now();
             let (res, diag) = index
                 .search_indices_adaptive(q, 10, None, AdaptivePolicy::AllowGraphFallback)
@@ -134,7 +148,7 @@ fn main() {
 
         // 4. GraphOnly Traversal
         let mut graph_lats = Vec::with_capacity(num_queries);
-        for (q, _gt) in dataset.folded_queries.iter().zip(ground_truth.iter()) {
+        for (q, _gt) in folded_queries.iter().zip(ground_truth.iter()) {
             let t0 = Instant::now();
             let _ = index.search_indices_graph(q, 10, None).unwrap();
             graph_lats.push(t0.elapsed().as_secs_f64() * 1000.0);

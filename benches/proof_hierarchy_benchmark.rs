@@ -73,31 +73,16 @@ fn generate_semantic_manifold_corpus(
     let (mut corpus, _) = common::read_fvecs(&base_path, Some(n_corpus)).unwrap_or_default();
     let (mut queries, _) = common::read_fvecs(&query_path, Some(n_queries)).unwrap_or_default();
 
-    if corpus.is_empty() {
-        let text_corpus = common::generate_realistic_text_corpus(n_corpus, n_queries, d_real, seed);
-        corpus = text_corpus.folded_corpus;
-        queries = text_corpus.folded_queries;
-    }
-
-    if corpus.len() < n_corpus && !corpus.is_empty() {
-        let orig_len = corpus.len();
-        while corpus.len() < n_corpus {
-            let take = (n_corpus - corpus.len()).min(orig_len);
-            for i in 0..take {
-                corpus.push(corpus[i].clone());
-            }
-        }
-    }
-
-    if queries.len() < n_queries && !queries.is_empty() {
-        let orig_len = queries.len();
-        while queries.len() < n_queries {
-            let take = (n_queries - queries.len()).min(orig_len);
-            for i in 0..take {
-                queries.push(queries[i].clone());
-            }
-        }
-    }
+    assert!(
+        !corpus.is_empty(),
+        "dataset '{}' is missing or empty — ensure datasets/ are populated",
+        base_path.display()
+    );
+    assert!(
+        !queries.is_empty(),
+        "query file '{}' is missing or empty",
+        query_path.display()
+    );
 
     (corpus, queries)
 }

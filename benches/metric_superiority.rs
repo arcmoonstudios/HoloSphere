@@ -95,20 +95,10 @@ fn generate_dataset(seed: u64) -> Dataset {
         common::read_fvecs(&query_path, Some(QUERY_COUNT)).unwrap_or_default();
 
     if complex_corpus.is_empty() {
-        let text_corpus =
-            common::generate_realistic_text_corpus(total_vectors, QUERY_COUNT, D_REAL, seed);
-        complex_corpus = text_corpus.folded_corpus;
-        complex_queries = text_corpus.folded_queries;
-    }
-
-    if complex_corpus.len() < total_vectors && !complex_corpus.is_empty() {
-        let orig_len = complex_corpus.len();
-        while complex_corpus.len() < total_vectors {
-            let take = (total_vectors - complex_corpus.len()).min(orig_len);
-            for i in 0..take {
-                complex_corpus.push(complex_corpus[i].clone());
-            }
-        }
+        panic!(
+            "dataset '{}' is missing or empty — ensure datasets/ are populated",
+            base_path.display()
+        );
     }
 
     let real_corpus: Vec<Vec<f32>> = complex_corpus

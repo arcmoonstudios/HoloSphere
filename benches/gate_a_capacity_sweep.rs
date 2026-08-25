@@ -341,10 +341,18 @@ fn main() {
     print_table_header();
 
     for &d_real in &dimensions {
-        let corpus_data =
-            common::generate_realistic_text_corpus(n, q, d_real, 0x5a5a_0000 + d_real as u64);
-        let corpus = &corpus_data.folded_corpus;
-        let queries = &corpus_data.folded_queries;
+        let (base_path, query_path, _) = common::find_best_matching_dataset(d_real);
+        let (folded_corpus, _) = common::read_fvecs(&base_path, Some(n))
+            .unwrap_or_else(|_| panic!("failed to load {}", base_path.display()));
+        let (folded_queries, _) = common::read_fvecs(&query_path, Some(q))
+            .unwrap_or_else(|_| panic!("failed to load {}", query_path.display()));
+        assert!(
+            !folded_corpus.is_empty(),
+            "dataset '{}' is missing or empty",
+            base_path.display()
+        );
+        let corpus = &folded_corpus;
+        let queries = &folded_queries;
 
         let geometries = vec![
             RunConfig {

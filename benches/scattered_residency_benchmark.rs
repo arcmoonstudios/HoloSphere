@@ -2,7 +2,6 @@ use hnsqr::bench_support as common;
 
 use std::time::Instant;
 
-use common::generate_realistic_text_corpus;
 use hnsqr::proof::lutz::{LutzCertifier, LutzCode, LutzQueryTable, exact_rerank_locality_sorted};
 use hnsqr::rivero::{RiveroCompiler, RiveroTerritoryIndex};
 use hnsqr::{NodeIndex, SimilarityScore};
@@ -36,8 +35,22 @@ fn run_residency_benchmark(
 ) -> ResidencyResult {
     let k = 10;
     let n = 10_000;
-    let dataset =
-        generate_realistic_text_corpus(n, num_queries, real_dim, common::DEFAULT_BENCH_SEED);
+    let (base_path, query_path, _) = common::find_best_matching_dataset(real_dim);
+    let (folded_corpus, _) = common::read_fvecs(&base_path, Some(n))
+        .unwrap_or_else(|_| panic!("failed to load {}", base_path.display()));
+    let (folded_queries, _) = common::read_fvecs(&query_path, Some(num_queries))
+        .unwrap_or_else(|_| panic!("failed to load {}", query_path.display()));
+    // Wrap as a minimal struct to minimize downstream changes
+    struct Dataset {
+        folded_corpus: Vec<hnsqr::VectorEmbedding>,
+        folded_queries: Vec<hnsqr::VectorEmbedding>,
+        queries_raw: Vec<Vec<f32>>,
+    }
+    let dataset = Dataset {
+        folded_corpus,
+        folded_queries,
+        queries_raw: Vec::new(), // not used by this bench
+    };
 
     let compiler = RiveroCompiler::new(complex_dim);
     let territory_index = RiveroTerritoryIndex::new();
@@ -66,7 +79,7 @@ fn run_residency_benchmark(
     let mut unique_pages_list = Vec::with_capacity(num_queries);
     let mut lutz_evals_list = Vec::with_capacity(num_queries);
 
-    for (q_idx, _raw_q) in dataset.queries_raw.iter().enumerate() {
+    for q_idx in 0..dataset.folded_queries.len() {
         let folded_q = &dataset.folded_queries[q_idx];
         let q_addr = compiler.compile(folded_q.complex_data());
 

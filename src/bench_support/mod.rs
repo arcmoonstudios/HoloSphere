@@ -1,6 +1,6 @@
 /* holosphere/src/bench_support/mod.rs */
 //!▫~•◦-------------------------------‣
-//! # Benchmark Support & Synthetic Dataset Fixtures
+//! # Benchmark Support & Dataset Fixtures
 //!▫~•◦-------------------------------------------------------------------‣
 //!
 //! Provides shared dataset fixtures, .fvecs loaders, and pre-built snapshot
@@ -8,8 +8,14 @@
 //!
 //! ## Key Capabilities
 //! - **Multi-Tier Benchmarking Scale:** Supports Smoke (1k), Dev (5k), Validation (25k), and Scale (1M) tiers.
-//! - **Synthetic & Public Corpus Ingestion:** Generates deterministic synthetic vectors and parses standard ANN benchmarks.
+//! - **Public Corpus Ingestion:** Reads real `.fvecs` datasets from `datasets/`; never generates synthetic data.
 //! - **Immutable Snapshot Attachments:** Pre-materializes read-only snapshots to isolate retrieval latency from indexing overhead.
+//!
+//! ## Contract
+//! **No benchmark binary may build or reindex at run time.**
+//! All bench binaries must load real vectors from `datasets/` (read-only .fvecs I/O) and,
+//! when an index is required, attach a prebuilt snapshot from `benchmark_databases/`.
+//! Use `hnsqr_build_bench_db` once to materialise any missing snapshot artifacts.
 //!
 /*▫~•◦------------------------------------------------------------------------------------‣
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
@@ -274,6 +280,35 @@ pub fn find_best_matching_dataset(target_dim: usize) -> (PathBuf, PathBuf, usize
     }
 }
 
+/// Returns the number of vectors available in the best-matching dataset for `target_dim`.
+///
+/// Reads only the file size and the first header word; never allocates vector data.
+/// Returns 0 if no matching file exists on disk.
+/// Sweep benchmarks should call this to clamp their probe lists before requesting a
+/// corpus slice, so they never request more vectors than the `.fvecs` file contains.
+pub fn corpus_available_count(target_dim: usize) -> usize {
+    let (base_path, _, _) = find_best_matching_dataset(target_dim);
+    if !base_path.exists() {
+        return 0;
+    }
+    let Ok(mut file) = std::fs::File::open(&base_path) else {
+        return 0;
+    };
+    let mut dim_buf = [0u8; 4];
+    let Ok(()) = std::io::Read::read_exact(&mut file, &mut dim_buf) else {
+        return 0;
+    };
+    let dim = u32::from_le_bytes(dim_buf) as usize;
+    if dim == 0 {
+        return 0;
+    }
+    let Ok(meta) = std::fs::metadata(&base_path) else {
+        return 0;
+    };
+    let bytes_per_vec = 4 + dim * 4; // 4-byte header + dim floats
+    (meta.len() as usize) / bytes_per_vec
+}
+
 /// Loads a real public dataset best matching the requested scale and dimensionality.
 pub fn generate_realistic_text_corpus(
     n: usize,
@@ -296,20 +331,24 @@ pub fn generate_realistic_text_corpus(
         (Vec::new(), Vec::new(), actual_dim)
     };
 
-    // Fail closed if dataset on disk is smaller than requested n
+    // If the dataset file holds fewer vectors than requested, load what is available.
+    // Callers that require an exact cardinality must either pre-check corpus_available_count()
+    // or use open_prebuilt_index(), which asserts against the snapshot row count.
     if folded_corpus.len() < n && !folded_corpus.is_empty() {
-        panic!(
-            "BenchmarkDatasetTooSmall: requested {n} corpus vectors from {}, but only loaded {}",
+        eprintln!(
+            "[bench_support] warning: requested {n} corpus vectors from '{}', \
+             only {loaded} available — proceeding with {loaded}",
             base_path.display(),
-            folded_corpus.len()
+            loaded = folded_corpus.len()
         );
     }
 
     if folded_queries.len() < num_queries && !folded_queries.is_empty() {
-        panic!(
-            "BenchmarkDatasetTooSmall: requested {num_queries} query vectors from {}, but only loaded {}",
+        eprintln!(
+            "[bench_support] warning: requested {num_queries} query vectors from '{}', \
+             only {loaded} available — proceeding with {loaded}",
             query_path.display(),
-            folded_queries.len()
+            loaded = folded_queries.len()
         );
     }
 

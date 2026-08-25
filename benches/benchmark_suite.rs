@@ -44,32 +44,22 @@ use hnsqr::{
 };
 use num_complex::Complex32;
 
-/// Loads a realistic embedding dataset from real public datasets in datasets/.
+/// Loads a real embedding dataset from datasets/ for the requested dimensionality.
 fn generate_clustered_dataset(
     num_vectors: usize,
     dim: usize,
     _num_clusters: usize,
 ) -> (Vec<(NodeId, VectorEmbedding)>, Vec<VectorEmbedding>, usize) {
     let (base_path, query_path, _) = common::find_best_matching_dataset(dim * 2);
-    let (mut corpus_vecs, _) =
+    let (corpus_vecs, _) =
         common::read_fvecs(&base_path, Some(num_vectors)).unwrap_or_default();
-    let (mut query_vecs, _) = common::read_fvecs(&query_path, Some(200)).unwrap_or_default();
+    let (query_vecs, _) = common::read_fvecs(&query_path, Some(200)).unwrap_or_default();
 
-    if corpus_vecs.is_empty() {
-        let text_corpus = common::generate_realistic_text_corpus(num_vectors, 200, dim * 2, 0x1234);
-        corpus_vecs = text_corpus.folded_corpus;
-        query_vecs = text_corpus.folded_queries;
-    }
-
-    if corpus_vecs.len() < num_vectors && !corpus_vecs.is_empty() {
-        let orig_len = corpus_vecs.len();
-        while corpus_vecs.len() < num_vectors {
-            let take = (num_vectors - corpus_vecs.len()).min(orig_len);
-            for i in 0..take {
-                corpus_vecs.push(corpus_vecs[i].clone());
-            }
-        }
-    }
+    assert!(
+        !corpus_vecs.is_empty(),
+        "dataset '{}' is missing or empty — ensure datasets/ are populated",
+        base_path.display()
+    );
 
     let actual_dim = corpus_vecs.first().map(|v| v.dimension()).unwrap_or(dim);
 

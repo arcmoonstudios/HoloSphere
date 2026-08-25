@@ -29,20 +29,12 @@ const SEED: u64 = 0x536e_6170_7368_6f74;
 
 fn generate_dataset(n: usize, d: usize, _seed: u64) -> Vec<VectorEmbedding> {
     let (base_path, _, _) = common::find_best_matching_dataset(d);
-    let (mut corpus, _) = common::read_fvecs(&base_path, Some(n)).unwrap_or_default();
-    if corpus.is_empty() {
-        let text_corpus = common::generate_realistic_text_corpus(n, 10, d, SEED);
-        corpus = text_corpus.folded_corpus;
-    }
-    if corpus.len() < n && !corpus.is_empty() {
-        let orig_len = corpus.len();
-        while corpus.len() < n {
-            let take = (n - corpus.len()).min(orig_len);
-            for i in 0..take {
-                corpus.push(corpus[i].clone());
-            }
-        }
-    }
+    let (corpus, _) = common::read_fvecs(&base_path, Some(n)).unwrap_or_default();
+    assert!(
+        !corpus.is_empty(),
+        "dataset '{}' is missing or empty — ensure datasets/ are populated",
+        base_path.display()
+    );
     corpus
 }
 

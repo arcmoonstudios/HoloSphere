@@ -56,10 +56,13 @@ fn measure_point(n: usize, complex_dim: usize, num_queries: usize) -> (f64, f64)
     (exact_p50, rivero_p50)
 }
 
-fn find_crossover(complex_dim: usize) -> (usize, f64, f64) {
+fn find_crossover(complex_dim: usize) -> Option<(usize, f64, f64)> {
     let num_queries = 16;
+    // Compute the real-dim for this complex_dim tier and check dataset capacity.
+    let real_dim = complex_dim * 2;
+    let available = common::corpus_available_count(real_dim);
 
-    let test_points: Vec<usize> = match complex_dim {
+    let all_test_points: Vec<usize> = match complex_dim {
         16..=32 => vec![25_000, 40_000, 50_000, 60_000, 75_000],
         33..=64 => vec![12_000, 20_000, 26_000, 32_000, 40_000],
         65..=128 => vec![6_000, 10_000, 14_000, 18_000, 24_000],
@@ -72,6 +75,17 @@ fn find_crossover(complex_dim: usize) -> (usize, f64, f64) {
         1025..=1536 => vec![800, 1_300, 1_900, 2_600, 3_500],
         _ => vec![600, 1_000, 1_500, 2_100, 2_800],
     };
+
+    // Clamp to what the dataset file actually contains.
+    let test_points: Vec<usize> = all_test_points
+        .into_iter()
+        .filter(|&n| n <= available)
+        .collect();
+
+    if test_points.len() < 2 {
+        // Not enough probe points to bracket a crossover — skip this dimension tier.
+        return None;
+    }
 
     let mut points: Vec<(usize, f64, f64)> = Vec::new();
     for &n in &test_points {
@@ -95,12 +109,12 @@ fn find_crossover(complex_dim: usize) -> (usize, f64, f64) {
             let n_cross = (n1 as f64 + t * (n2 as f64 - n1 as f64)).round() as usize;
             let e_cross = e1 + t * (e2 - e1);
             let r_cross = r1 + t * (r2 - r1);
-            return (n_cross, e_cross, r_cross);
+            return Some((n_cross, e_cross, r_cross));
         }
     }
 
     let (n_last, e_last, r_last) = points.last().copied().unwrap();
-    (n_last, e_last, r_last)
+    Some((n_last, e_last, r_last))
 }
 
 fn fit_model(results: &[DimCrossoverResult]) -> (f64, f64, f64) {
@@ -184,17 +198,29 @@ fn main() {
     let mut results: Vec<DimCrossoverResult> = Vec::new();
 
     for &(real_d, complex_d) in &dims {
-        let (n_cross, e_lat, r_lat) = find_crossover(complex_d);
-        results.push(DimCrossoverResult {
-            real_dim: real_d,
-            complex_dim: complex_d,
-            measured_crossover: n_cross,
-        });
-
-        println!(
-            "  │ {:>6} │ {:>7} │ {:>15} N │ {:>6.3} ms  /  {:>6.3} ms    │",
-            real_d, complex_d, n_cross, e_lat, r_lat
-        );
+        match find_crossover(complex_d) {
+            Some((n_cross, e_lat, r_lat)) => {
+                results.push(DimCrossoverResult {
+                    real_dim: real_d,
+                    complex_dim: complex_d,
+                    measured_crossover: n_cross,
+                });
+                println!(
+                    "  │ {:>6} │ {:>7} │ {:>15} N │ {:>6.3} ms  /  {:>6.3} ms    │",
+                    real_d, complex_d, n_cross, e_lat, r_lat
+                );
+            }
+            None => {
+                let available = common::corpus_available_count(real_d);
+                println!(
+                    "  │ {:>6} │ {:>7} │ {:>15} │ {:>31} │",
+                    real_d,
+                    complex_d,
+                    "SKIPPED",
+                    format!("dataset only has {available} vectors")
+                );
+            }
+        }
     }
     println!("  └────────┴─────────┴───────────────────┴────────────────────────────────┘\n");
 

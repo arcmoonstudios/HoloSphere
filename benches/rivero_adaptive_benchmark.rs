@@ -48,34 +48,19 @@ use hnsqr::bench_support as common;
 
 fn load_real_workload(name: &str, n: usize, d: usize, q_count: usize) -> Workload {
     let (base_path, query_path, _) = common::find_best_matching_dataset(d);
-    let (mut corpus, _) = common::read_fvecs(&base_path, Some(n)).unwrap_or_default();
-    let (mut queries, _) = common::read_fvecs(&query_path, Some(q_count)).unwrap_or_default();
+    let (corpus, _) = common::read_fvecs(&base_path, Some(n)).unwrap_or_default();
+    let (queries, _) = common::read_fvecs(&query_path, Some(q_count)).unwrap_or_default();
 
-    if corpus.is_empty() {
-        let text_corpus = common::generate_realistic_text_corpus(n, q_count, d, SEED);
-        corpus = text_corpus.folded_corpus;
-        queries = text_corpus.folded_queries;
-    }
-
-    if corpus.len() < n && !corpus.is_empty() {
-        let orig_len = corpus.len();
-        while corpus.len() < n {
-            let take = (n - corpus.len()).min(orig_len);
-            for i in 0..take {
-                corpus.push(corpus[i].clone());
-            }
-        }
-    }
-
-    if queries.len() < q_count && !queries.is_empty() {
-        let orig_len = queries.len();
-        while queries.len() < q_count {
-            let take = (q_count - queries.len()).min(orig_len);
-            for i in 0..take {
-                queries.push(queries[i].clone());
-            }
-        }
-    }
+    assert!(
+        !corpus.is_empty(),
+        "dataset '{}' is missing or empty — ensure datasets/ are populated",
+        base_path.display()
+    );
+    assert!(
+        !queries.is_empty(),
+        "query file '{}' is missing or empty",
+        query_path.display()
+    );
 
     let ground_truth = compute_exact_ground_truth(&corpus, &queries, K_BENCH);
     Workload {

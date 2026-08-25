@@ -68,36 +68,19 @@ fn generate_master(
     query_count: usize,
 ) -> (Vec<VectorEmbedding>, Vec<VectorEmbedding>) {
     let (base_path, query_path, _) = common::find_best_matching_dataset(dimension);
-    let (mut corpus, _) = common::read_fvecs(&base_path, Some(count)).unwrap_or_default();
-    let (mut queries, _) = common::read_fvecs(&query_path, Some(query_count)).unwrap_or_default();
+    let (corpus, _) = common::read_fvecs(&base_path, Some(count)).unwrap_or_default();
+    let (queries, _) = common::read_fvecs(&query_path, Some(query_count)).unwrap_or_default();
 
-    if corpus.is_empty() {
-        let text_corpus =
-            common::generate_realistic_text_corpus(count, query_count, dimension, SEED);
-        corpus = text_corpus.folded_corpus;
-        queries = text_corpus.folded_queries;
-    }
-
-    if corpus.len() < count && !corpus.is_empty() {
-        let orig_len = corpus.len();
-        while corpus.len() < count {
-            let take = (count - corpus.len()).min(orig_len);
-            for i in 0..take {
-                corpus.push(corpus[i].clone());
-            }
-        }
-    }
-
-    if queries.len() < query_count && !queries.is_empty() {
-        let orig_len = queries.len();
-        while queries.len() < query_count {
-            let take = (query_count - queries.len()).min(orig_len);
-            for i in 0..take {
-                queries.push(queries[i].clone());
-            }
-        }
-    }
-
+    assert!(
+        !corpus.is_empty(),
+        "dataset '{}' is missing or empty — ensure datasets/ are populated",
+        base_path.display()
+    );
+    assert!(
+        !queries.is_empty(),
+        "query file '{}' is missing or empty",
+        query_path.display()
+    );
     (corpus, queries)
 }
 

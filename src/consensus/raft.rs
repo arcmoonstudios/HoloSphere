@@ -228,8 +228,10 @@ pub struct RaftNode {
     pub microbatcher: AdaptiveMicrobatcher,
     pub pending_proposals: Arc<PendingProposals>,
     pub read_index_engine: Arc<ReadIndexEngine>,
+    pub durability_controller: Arc<crate::consensus::durability_controller::DurabilityController>,
     pub storage: Arc<dyn RaftStorage>,
 }
+
 
 impl RaftNode {
     pub fn new(id: RaftNodeId, initial_voting_peers: Vec<RaftNodeId>) -> Self {
@@ -284,8 +286,10 @@ impl RaftNode {
             microbatcher: AdaptiveMicrobatcher::default(),
             pending_proposals: Arc::new(PendingProposals::default()),
             read_index_engine: Arc::new(ReadIndexEngine::default()),
+            durability_controller: Arc::new(crate::consensus::durability_controller::DurabilityController::default()),
             storage,
         })
+
     }
 
     pub fn with_storage(
@@ -602,7 +606,18 @@ impl RaftNode {
         }
 
         let term = *self.current_term.read();
+        let plan = self.durability_controller.current_plan();
+        self.pipeline_telemetry.write().microbatch_size_last = commands.len().min(plan.max_batch_size);
+        self.durability_controller.record_telemetry(crate::consensus::durability_controller::StorageTelemetry {
+            p50_fsync_micros: self.storage_health.read().fsync_latency_p99_us / 2,
+            p99_fsync_micros: self.storage_health.read().fsync_latency_p99_us,
+            mutation_arrival_rate_per_sec: commands.len() as u64 * 1000,
+            outstanding_wal_bytes: (commands.len() * 128) as u64,
+            replication_rtt_micros: 350,
+        });
+
         let mut log = self.log.write();
+
         let mut indices = Vec::with_capacity(commands.len());
         let mut new_entries = Vec::with_capacity(commands.len());
 

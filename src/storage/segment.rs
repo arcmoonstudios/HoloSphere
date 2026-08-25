@@ -531,6 +531,7 @@ pub struct SegmentedEngine {
     active_mutable: RwLock<Arc<MutableSegment>>,
     immutable_segments: RwLock<Vec<Arc<ImmutableSegment>>>,
     metadata_store: RwLock<HashMap<Arc<str>, HashMap<String, MetadataValue>>>,
+    pub io_budget: Arc<crate::storage::io_budget::IoBudgetManager>,
     pub wal: RwLock<Option<Arc<WalManager>>>,
     pub wal_durability: RwLock<DurabilityPolicy>,
 }
@@ -547,10 +548,12 @@ impl SegmentedEngine {
             active_mutable: RwLock::new(initial_mutable),
             immutable_segments: RwLock::new(Vec::new()),
             metadata_store: RwLock::new(HashMap::new()),
+            io_budget: Arc::new(crate::storage::io_budget::IoBudgetManager::default()),
             wal: RwLock::new(None),
             wal_durability: RwLock::new(DurabilityPolicy::WalSync),
         }
     }
+
 
     /// Returns the current monotonic segment storage generation.
     pub fn active_generation(&self) -> u64 {
@@ -874,6 +877,7 @@ impl SegmentedEngine {
         let compiler = RiveroCompiler::new(self.dimension);
         let territories = RiveroTerritoryIndex::new();
         let mut inserted_ids = std::collections::HashSet::with_capacity(live_count);
+        let bytes_per_vec = (self.dimension * std::mem::size_of::<num_complex::Complex32>()) as u64;
 
         // Streaming transfer: extract vectors, encode LUTz and populate Rivero in a single pass
         for seg in immutables.iter().rev() {
@@ -882,9 +886,11 @@ impl SegmentedEngine {
                 if !tombstones.contains(slot as u32) {
                     let id = &seg.slot_to_id[slot];
                     if inserted_ids.insert(id.clone()) {
+                        let _ = self.io_budget.acquire_maintenance_budget(bytes_per_vec);
                         let new_slot = merged_vectors.len() as u32;
                         merged_id_to_slot.insert(id.clone(), new_slot);
                         merged_slot_to_id.push(id.clone());
+
 
                         let addr = compiler.compile(v.complex_data());
                         territories.insert(&addr, new_slot);

@@ -294,16 +294,23 @@ pub struct RespServer {
     kv_store: Arc<MemoryKvStore>,
     pubsub: Arc<PubSubBroker>,
     streams: Arc<RedisStreamEngine>,
+    index: Option<Arc<crate::HNSQRIndex>>,
 }
 
 impl RespServer {
     pub fn new(kv_store: Arc<MemoryKvStore>) -> Self {
+        Self::with_index(kv_store, None)
+    }
+
+    pub fn with_index(kv_store: Arc<MemoryKvStore>, index: Option<Arc<crate::HNSQRIndex>>) -> Self {
         Self {
             kv_store,
             pubsub: Arc::new(PubSubBroker::new()),
             streams: Arc::new(RedisStreamEngine::new()),
+            index,
         }
     }
+
 
     /// Dispatches raw byte slice command arguments with zero UTF-8 allocation overhead.
     pub fn handle_raw_command(&self, args: &[&[u8]]) -> RespFrame {
@@ -409,12 +416,54 @@ impl RespServer {
             }
             let graph_name = String::from_utf8_lossy(args[1]);
             let cypher_query = String::from_utf8_lossy(args[2]);
-            RespFrame::Array(Some(vec![
-                RespFrame::BulkString(Some(format!("Graph: {}", graph_name).into_bytes())),
-                RespFrame::BulkString(Some(format!("Query: {}", cypher_query).into_bytes())),
-                RespFrame::SimpleString("OK".into()),
-            ]))
+            if let Some(ref idx) = self.index {
+                let lc = crate::graph::catalog::labels::LabelCatalog::default();
+                let rc = crate::graph::catalog::relationships::RelTypeCatalog::default();
+                match crate::graph::query::planner::QueryPlanner::compile(&cypher_query, &lc, &rc, None) {
+                    Ok(compiled) => {
+                        let gen_lock = Arc::new(parking_lot::RwLock::new(
+                            crate::graph::storage::generation::GraphGeneration::new_mutable(1),
+                        ));
+                        let read_gen = Arc::new(crate::graph::storage::generation::GraphReadGeneration::new(
+                            gen_lock, 1,
+                        ));
+                        let mut exec_ctx = crate::graph::query::executor::ExecutionContext::new(read_gen);
+                        match exec_ctx.execute_with_vector_engine(
+                            &compiled.plan,
+                            idx,
+                            &HashMap::new(),
+                        ) {
+                            Ok(q_res) => {
+                                let mut rows_out = Vec::with_capacity(q_res.rows.len() + 1);
+                                let header_cells = compiled
+                                    .column_names
+                                    .into_iter()
+                                    .map(|name| RespFrame::BulkString(Some(name.into_bytes())))
+                                    .collect();
+                                rows_out.push(RespFrame::Array(Some(header_cells)));
+                                for row in q_res.rows {
+                                    let row_cells = row
+                                        .into_iter()
+                                        .map(|node_id| RespFrame::Integer(node_id as i64))
+                                        .collect();
+                                    rows_out.push(RespFrame::Array(Some(row_cells)));
+                                }
+                                RespFrame::Array(Some(rows_out))
+                            }
+                            Err(e) => RespFrame::Error(format!("ERR graph execution failed: {e}")),
+                        }
+                    }
+                    Err(e) => RespFrame::Error(format!("ERR cypher compilation failed: {e}")),
+                }
+            } else {
+                RespFrame::Array(Some(vec![
+                    RespFrame::BulkString(Some(format!("Graph: {}", graph_name).into_bytes())),
+                    RespFrame::BulkString(Some(format!("Query: {}", cypher_query).into_bytes())),
+                    RespFrame::SimpleString("OK".into()),
+                ]))
+            }
         } else if cmd.eq_ignore_ascii_case(b"FT.SEARCH") {
+
             if args.len() < 3 {
                 return RespFrame::Error(
                     "ERR wrong number of arguments for 'ft.search' command".into(),

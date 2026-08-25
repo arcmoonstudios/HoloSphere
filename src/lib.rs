@@ -5076,7 +5076,40 @@ impl HNSQRIndex {
             intent.filter_mask.as_deref().cloned()
         };
 
-        let base_results = self.search_indices_filtered(query, k * 3, compiled_mask.as_ref())?;
+        let base_results = if let Some(ref affect) = intent.affect {
+            let contract = crate::planning::planner::RetrievalContract::HighRecall(0.99);
+            let n = self.arena.live_len();
+            let plan = crate::planning::planner::UniversalPlanner::plan_with_affect(
+                n,
+                self.dimension,
+                compiled_mask.as_ref().map(|m| m.len() as usize),
+                contract,
+                self.mmap_arena.is_some(),
+                affect,
+            );
+            match plan {
+                crate::planning::planner::ExecutionPlan::LutzGlobalCertified { .. } => {
+                    self.search_indices_with_contract(
+                        query,
+                        k * 3,
+                        compiled_mask.as_ref(),
+                        crate::planning::planner::RetrievalContract::Certified,
+                    )?
+                }
+                crate::planning::planner::ExecutionPlan::LutzPacRelaxed {
+                    epsilon, delta, ..
+                } => self.search_indices_with_contract(
+                    query,
+                    k * 3,
+                    compiled_mask.as_ref(),
+                    crate::planning::planner::RetrievalContract::PacRelaxed { epsilon, delta },
+                )?,
+                _ => self.search_indices_filtered(query, k * 3, compiled_mask.as_ref())?,
+            }
+        } else {
+            self.search_indices_filtered(query, k * 3, compiled_mask.as_ref())?
+        };
+
 
         let mut reranked = Vec::with_capacity(base_results.len());
         let now = current_unix_timestamp();

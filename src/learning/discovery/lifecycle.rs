@@ -332,8 +332,10 @@ pub struct ContinuousDiscoveryReport {
     pub monitoring_transitions: Vec<OperatorTransitionPlan>,
     pub revisions: Vec<OperatorRevisionProposal>,
     pub experiments: Vec<ActiveExperimentProposal>,
+    pub dpo_distillation_pairs: Vec<crate::learning::discovery::distillation::DpoReasoningPair>,
     pub audit: DiscoveryAuditLog,
 }
+
 
 impl ContinuousDiscoveryReport {
     /// Produces the complete deterministic mutation stream needed to make this
@@ -1037,11 +1039,24 @@ impl ContinuousDiscoveryEngine {
                             revision: revision.id,
                         },
                     );
+                    report.dpo_distillation_pairs.push(
+                        crate::learning::discovery::distillation::AutonomousDistillationExporter::create_pair(
+                            format!("distill_{:x}_{:x}", admitted.id.0[0], revision.id.0[0]),
+                            format!("Resolve context under predicates: {:?}", admitted.predicates),
+                            format!("{:?}", revision.program),
+                            (revision.epistemic.predictive_accuracy_q32 as f32) / ((1u64 << 32) as f32),
+                            format!("Admitted revision with {} provenance roots", revision.epistemic.provenance_roots.len()),
+                            format!("{:?}", admitted.program),
+                            (monitoring_evaluation.held_out_accuracy_q32 as f32) / ((1u64 << 32) as f32),
+                            format!("Deprecated due to {} monitoring counterexamples", monitoring_evaluation.counterexamples.len()),
+                        ),
+                    );
                     report.revisions.push(OperatorRevisionProposal {
                         previous: admitted.id,
                         revision,
                         excluded_counterexamples: monitoring_evaluation.counterexamples,
                     });
+
                 }
             }
         }

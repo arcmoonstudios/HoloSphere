@@ -67,7 +67,7 @@ impl ColumnarFloatArray {
         let mut sum = 0.0f64;
         let mut min = f64::MAX;
         let mut max = f64::MIN;
-        let mut sum_sq = 0.0f64;
+        let mut accumulator = crate::entity::stats::OnlineStatsAccumulator::new();
 
         for (i, &v) in self.values.iter().enumerate() {
             if self.null_bitmap[i] {
@@ -82,7 +82,7 @@ impl ColumnarFloatArray {
             let val_f64 = v as f64;
             count += 1;
             sum += val_f64;
-            sum_sq += val_f64 * val_f64;
+            accumulator.update(val_f64);
             if val_f64 < min {
                 min = val_f64;
             }
@@ -101,13 +101,11 @@ impl ColumnarFloatArray {
             OlapAggregationOp::Avg => Some(sum / count as f64),
             OlapAggregationOp::Min => Some(min),
             OlapAggregationOp::Max => Some(max),
-            OlapAggregationOp::Variance => {
-                let mean = sum / count as f64;
-                Some((sum_sq / count as f64) - (mean * mean))
-            }
+            OlapAggregationOp::Variance => Some(accumulator.variance()),
         }
     }
 }
+
 
 /// Columnar OLAP Table and Embedded Media Store.
 pub struct ColumnarOlapEngine {

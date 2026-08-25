@@ -98,15 +98,27 @@ fn run_experiment(exp: &ExperimentConfig) -> BenchmarkResult {
         proof_tree.total_vectors()
     );
 
-    let mut exact_cfg = hnsqr::HNSQRConfig::default();
-    exact_cfg.distance_function = DistanceFunction::Cosine;
-    exact_cfg.rivero_enabled = false;
-    let exact_index = hnsqr::HNSQRIndex::new(exact_cfg, complex_dim);
-    for (i, v) in corpus.iter().enumerate() {
-        exact_index
-            .insert(format!("doc_{i}"), v.clone())
-            .expect("exact insert");
-    }
+    // Exact baseline index — cached so the sequential insert loop only pays its
+    // cost once.  The proof tree and Rivero territory are cheap to rebuild and
+    // access the raw territory handle directly, so they stay unconditional.
+    let exact_cache_key = format!(
+        "gate_b_exact_d{}_n{}",
+        exp.d_real, exp.n_corpus
+    );
+    let exact_index = {
+        let corpus_for_exact = corpus.clone();
+        common::open_or_build_snapshot(&exact_cache_key, move || {
+            let mut cfg = hnsqr::HNSQRConfig::default();
+            cfg.distance_function = DistanceFunction::Cosine;
+            cfg.rivero_enabled = false;
+            let idx = hnsqr::HNSQRIndex::new(cfg, complex_dim);
+            for (i, v) in corpus_for_exact.iter().enumerate() {
+                idx.insert(format!("doc_{i}"), v.clone())
+                    .expect("exact insert");
+            }
+            idx
+        })
+    };
 
     // 5. Execute Evaluation
     let mut total_gt_matches = 0usize;

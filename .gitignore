@@ -19,3 +19,5 @@ Thumbs.db
 holosphere.txt
 datasets/
 benchmark_databases/
+/performance-baseline-v1/
+benches/benches.txt

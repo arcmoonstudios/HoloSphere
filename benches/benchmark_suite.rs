@@ -158,11 +158,27 @@ fn run_full_benchmark(
     println!("│ 1. INGESTION BENCHMARK (Single-Threaded & Multi-Threaded Concurrent)          │");
     println!("└──────────────────────────────────────────────────────────────────────────────┘");
 
-    let index_seq = HNSQRIndex::new(config.clone(), dim);
+    // Cache key: sanitize title for use in a filename, then append dim + N so
+    // different run_full_benchmark invocations don't share the same snapshot.
+    let cache_key = format!(
+        "benchmark_suite_{}_d{dim}_n{num_vectors}",
+        title
+            .chars()
+            .map(|c| if c.is_alphanumeric() { c } else { '_' })
+            .collect::<String>()
+    );
     let start_seq = Instant::now();
-    for (id, vec) in dataset {
-        index_seq.insert(id.as_ref(), vec.clone()).unwrap();
-    }
+    let index_seq = {
+        let cfg_for_closure = config.clone();
+        let dataset_for_closure: Vec<(NodeId, VectorEmbedding)> = dataset.to_vec();
+        common::open_or_build_snapshot(&cache_key, move || {
+            let idx = HNSQRIndex::new(cfg_for_closure, dim);
+            for (id, vec) in &dataset_for_closure {
+                idx.insert(id.as_ref(), vec.clone()).unwrap();
+            }
+            idx
+        })
+    };
     let dur_seq = start_seq.elapsed();
     let seq_qps = num_vectors as f64 / dur_seq.as_secs_f64();
     let seq_latency_us = (dur_seq.as_micros() as f64) / num_vectors as f64;

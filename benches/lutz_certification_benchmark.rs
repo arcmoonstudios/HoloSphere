@@ -60,15 +60,26 @@ fn run_pipeline_benchmark(
 
     let candidate_slots: Vec<NodeIndex> = (0..candidate_pool_size as NodeIndex).collect();
 
-    let mut exact_cfg = hnsqr::HNSQRConfig::default();
-    exact_cfg.distance_function = hnsqr::DistanceFunction::Cosine;
-    exact_cfg.rivero_enabled = false;
-    let exact_index = hnsqr::HNSQRIndex::new(exact_cfg, complex_dim);
-    for (i, v) in dataset.folded_corpus.iter().enumerate() {
-        exact_index
-            .insert(format!("doc_{i}"), v.clone())
-            .expect("exact insert");
-    }
+    // Exact baseline index — cached so the sequential insert loop only pays its
+    // cost on the first run.  Key encodes real_dim, complex_dim, and pool size
+    // so different pipeline configurations get independent snapshots.
+    let exact_index = {
+        let corpus_for_exact = dataset.folded_corpus.clone();
+        common::open_or_build_snapshot(
+            &format!("lutz_cert_d{real_dim}_c{complex_dim}_n{candidate_pool_size}"),
+            move || {
+                let mut cfg = hnsqr::HNSQRConfig::default();
+                cfg.distance_function = hnsqr::DistanceFunction::Cosine;
+                cfg.rivero_enabled = false;
+                let idx = hnsqr::HNSQRIndex::new(cfg, complex_dim);
+                for (i, v) in corpus_for_exact.iter().enumerate() {
+                    idx.insert(format!("doc_{i}"), v.clone())
+                        .expect("exact insert");
+                }
+                idx
+            },
+        )
+    };
 
     // 1. Measure Baseline: Exhaustive Production Exact SIMD Scan
     let mut base_latencies = Vec::with_capacity(num_queries);

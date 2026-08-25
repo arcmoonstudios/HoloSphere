@@ -466,6 +466,51 @@ pub fn open_prebuilt_index(
     index
 }
 
+/// Attaches a cached `HNSQRIndex` snapshot keyed by `cache_key`, or builds it by
+/// calling `build_fn` and persisting the result for subsequent runs.
+///
+/// This consolidates the build-once / attach-many caching pattern that every bench
+/// binary should follow.  The closure receives the `bench_cache_dir()` snapshot path
+/// and must return a fully-constructed, frozen `HNSQRIndex` (call
+/// `index.freeze_rivero_routing()` inside the closure when Rivero routing is needed).
+/// The returned index is always obtained from the saved snapshot, so every caller
+/// gets the same mmap-backed, zero-copy attach path whether or not the snapshot
+/// was already present.
+///
+/// # Example
+/// ```ignore
+/// let exact_index = common::open_or_build_snapshot(
+///     &format!("my_bench_d{dim}_n{n}"),
+///     || {
+///         let idx = HNSQRIndex::new(cfg, dim);
+///         for (i, v) in corpus.iter().enumerate() {
+///             idx.insert(format!("doc_{i}"), v.clone()).unwrap();
+///         }
+///         idx
+///     },
+/// );
+/// ```
+pub fn open_or_build_snapshot<F>(cache_key: &str, build_fn: F) -> HNSQRIndex
+where
+    F: FnOnce() -> HNSQRIndex,
+{
+    let snap_path = bench_cache_dir().join(format!("{cache_key}.snapshot"));
+    let _ = std::fs::create_dir_all(bench_cache_dir());
+
+    if snap_path.exists() {
+        return HNSQRIndex::open_snapshot_v2(&snap_path, SnapshotOpenOptions::default())
+            .unwrap_or_else(|e| panic!("cached snapshot '{}' failed to open: {e}", snap_path.display()));
+    }
+
+    let index = build_fn();
+    index
+        .save_snapshot_v2(&snap_path)
+        .unwrap_or_else(|e| panic!("failed to save snapshot '{}': {e}", snap_path.display()));
+
+    HNSQRIndex::open_snapshot_v2(&snap_path, SnapshotOpenOptions::default())
+        .unwrap_or_else(|e| panic!("freshly-saved snapshot '{}' failed to open: {e}", snap_path.display()))
+}
+
 /// Fixed Adversarial Regression Corpus ($N=2,000$).
 #[derive(Clone)]
 pub struct AdversarialRegressionCorpus {

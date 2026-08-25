@@ -57,19 +57,32 @@ fn main() {
     println!(" building parallel HNSQR Rivero index across all foundations...");
     let compiler = RiveroCompiler::new(complex_dim);
     let territory_index = RiveroTerritoryIndex::new();
-    let mut hnsqr_config = hnsqr::HNSQRConfig::strict_rivero_for_dim(complex_dim);
-    hnsqr_config.max_elements = n + 1000;
-    hnsqr_config.rivero_witness_degree = 16;
-    hnsqr_config.rivero_witness_seeds = 32;
-    hnsqr_config.rivero_witness_second_seeds = 16;
-    hnsqr_config.rivero_cell_budget = 32;
-    let hnsqr_index = hnsqr::HNSQRIndex::new(hnsqr_config, complex_dim);
 
     for (i, v) in dataset.folded_corpus.iter().enumerate() {
         let addr = compiler.compile(v.complex_data());
         territory_index.insert(&addr, i as NodeIndex);
-        hnsqr_index.insert(format!("node_{i}"), v.clone()).unwrap();
     }
+
+    let hnsqr_index = {
+        let corpus_for_exact = dataset.folded_corpus.clone();
+        common::open_or_build_snapshot(
+            &format!("scorecard_rivero_d{real_dim}_n{n}"),
+            move || {
+                let mut hnsqr_config = hnsqr::HNSQRConfig::strict_rivero_for_dim(complex_dim);
+                hnsqr_config.max_elements = n + 1000;
+                hnsqr_config.rivero_witness_degree = 16;
+                hnsqr_config.rivero_witness_seeds = 32;
+                hnsqr_config.rivero_witness_second_seeds = 16;
+                hnsqr_config.rivero_cell_budget = 32;
+                let idx = hnsqr::HNSQRIndex::new(hnsqr_config, complex_dim);
+                for (i, v) in corpus_for_exact.iter().enumerate() {
+                    idx.insert(format!("node_{i}"), v.clone()).unwrap();
+                }
+                idx.freeze_rivero_routing();
+                idx
+            },
+        )
+    };
 
     let lutz_codes: Vec<LutzCode> = dataset
         .folded_corpus
@@ -516,34 +529,8 @@ fn main() {
         "════════════════════════════════════════════════════════════════════════════════════════"
     );
 
-    let segment_engine = Arc::new(SegmentedEngine::new(complex_dim, 4096));
-    for i in 0..5000 {
-        segment_engine
-            .insert(format!("doc_{i}"), dataset.folded_corpus[i].clone())
-            .unwrap();
-    }
-
-    println!(
-        "  ┌──────────────────────┬──────────┬──────────┬──────────────┬──────────────────────────────┐"
-    );
-    println!(
-        "  │ Workload Mix         │ Lat (p50)│ Lat (p95)│ Search QPS   │ Compaction P99 Cliff         │"
-    );
-    println!(
-        "  ├──────────────────────┼──────────┼──────────┼──────────────┼──────────────────────────────┤"
-    );
-    println!(
-        "  │ 100% Read            │   520.1 µs│   580.4 µs│    1,922 QPS │ None (Zero-Downtime)         │"
-    );
-    println!(
-        "  │  95% Read / 5% Write │   538.5 µs│   612.0 µs│    1,857 QPS │ < 1.15x (No Lock Contention) │"
-    );
-    println!(
-        "  │  75% Read / 25% Write│   582.0 µs│   690.8 µs│    1,718 QPS │ < 1.25x                      │"
-    );
-    println!(
-        "  └──────────────────────┴──────────┴──────────┴──────────────┴──────────────────────────────┘"
-    );
+    let _segment_engine = Arc::new(SegmentedEngine::new(complex_dim, 4096));
+    println!("  [NOT YET IMPLEMENTED - Concurrent R/W load test harness pending]");
 
     // =========================================================================
     // 7. UNIVERSAL PLANNER REGRET
@@ -555,10 +542,5 @@ fn main() {
     println!(
         "════════════════════════════════════════════════════════════════════════════════════════"
     );
-    println!("  • Planner Optimal Plan Hit Rate:        100.0% (128 / 128 queries)");
-    println!("  • Queries within 5% of Oracle:          100.0%");
-    println!("  • Mean Regret:                            0.0%");
-    println!("  • P95 Regret:                             0.0%");
-    println!("  • Worst Regret Observed:                  0.0%");
-    println!("  • Status: UNIVERSAL PLANNER CONTRACT VERIFIED & OPTIMAL ✓\n");
+    println!("  [NOT YET IMPLEMENTED - Oracle regret measurement loop pending]\n");
 }

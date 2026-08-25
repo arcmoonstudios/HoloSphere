@@ -301,6 +301,9 @@ pub struct ContinuousDiscoveryInput {
     /// schema and mapping hypotheses remain Proposed.
     pub validation_knowledge: Option<KnowledgeSnapshot>,
     pub evaluation_observations: Vec<EvaluationObservation>,
+    /// Completed, replicated experiments whose returned observations are
+    /// automatically folded into this cycle's falsification evidence.
+    pub completed_experiments: Vec<ActiveExperimentProposal>,
     pub incumbent_accuracy_q32: i64,
     pub admitted_operators: Vec<DeclarativeOperator>,
     /// Previously replicated Provisional/Falsification/Shadow candidates,
@@ -434,6 +437,42 @@ impl ContinuousDiscoveryEngine {
         self.cycle = self.cycle.saturating_add(1);
         let audit_lsn = input.knowledge.lsn;
         let mut report = ContinuousDiscoveryReport::default();
+        let induction_snapshot_roots: BTreeSet<_> = input
+            .knowledge
+            .concept_profiles
+            .iter()
+            .flat_map(|profile| profile.empirical_roots.iter().copied())
+            .chain(
+                input
+                    .knowledge
+                    .hyperedges
+                    .iter()
+                    .flat_map(|edge| edge.empirical_roots.iter().copied()),
+            )
+            .chain(
+                input
+                    .knowledge
+                    .cases
+                    .iter()
+                    .flat_map(|case| case.empirical_roots.iter().copied()),
+            )
+            .collect();
+        let mut evaluation_observations = input.evaluation_observations.clone();
+        for experiment in input.completed_experiments.iter().filter(|experiment| {
+            experiment.status
+                == crate::learning::discovery::active_experiment::ExperimentStatus::Completed
+        }) {
+            if let Some(result) = &experiment.result {
+                evaluation_observations.extend(result.observations.iter().cloned());
+            }
+        }
+        let mut seen_observations = BTreeSet::new();
+        evaluation_observations.retain(|observation| {
+            seen_observations.insert(
+                bincode::serialize(observation)
+                    .expect("evaluation observations are deterministically serializable"),
+            )
+        });
         report.schemas = induce_evolved_schemas(&input.knowledge, self.policy.schema);
         report.mappings = learn_concept_mappings(
             &derive_concept_behaviors(&input.knowledge),
@@ -691,6 +730,17 @@ impl ContinuousDiscoveryEngine {
             if known_operator_ids.contains(&operator.id) {
                 continue;
             }
+            operator.epistemic.training_snapshot_roots = induction_snapshot_roots.clone();
+            let independent_validation: Vec<_> = evaluation_observations
+                .iter()
+                .filter(|observation| {
+                    !operator
+                        .epistemic
+                        .training_snapshot_roots
+                        .contains(&observation.empirical_root)
+                })
+                .cloned()
+                .collect();
             operator.epistemic.training_evidence = input
                 .knowledge
                 .cases
@@ -701,14 +751,13 @@ impl ContinuousDiscoveryEngine {
                 })
                 .map(|case| case.id)
                 .collect();
-            operator.epistemic.validation_evidence = input
-                .evaluation_observations
+            operator.epistemic.validation_evidence = independent_validation
                 .iter()
                 .map(|observation| observation.case_id)
                 .collect();
             let evaluation = evaluate_program_competitively(
                 &operator.program,
-                &input.evaluation_observations,
+                &independent_validation,
                 input.incumbent_accuracy_q32,
                 self.policy.evaluation,
             );
@@ -741,8 +790,7 @@ impl ContinuousDiscoveryEngine {
                     OperatorLifecycle::Shadow,
                     Some(OperatorLifecycle::FalsificationTesting),
                 );
-                let shadow_count = input
-                    .evaluation_observations
+                let shadow_count = independent_validation
                     .iter()
                     .filter(|observation| observation.role == EvaluationRole::Shadow)
                     .count();
@@ -799,14 +847,23 @@ impl ContinuousDiscoveryEngine {
                 continue;
             }
             let mut operator = pending.clone();
-            operator.epistemic.validation_evidence = input
-                .evaluation_observations
+            let independent_validation: Vec<_> = evaluation_observations
+                .iter()
+                .filter(|observation| {
+                    !operator
+                        .epistemic
+                        .training_snapshot_roots
+                        .contains(&observation.empirical_root)
+                })
+                .cloned()
+                .collect();
+            operator.epistemic.validation_evidence = independent_validation
                 .iter()
                 .map(|observation| observation.case_id)
                 .collect();
             let evaluation = evaluate_program_competitively(
                 &operator.program,
-                &input.evaluation_observations,
+                &independent_validation,
                 input.incumbent_accuracy_q32,
                 self.policy.evaluation,
             );
@@ -837,8 +894,7 @@ impl ContinuousDiscoveryEngine {
                     );
                     current = OperatorLifecycle::Shadow;
                 }
-                let shadow_count = input
-                    .evaluation_observations
+                let shadow_count = independent_validation
                     .iter()
                     .filter(|observation| observation.role == EvaluationRole::Shadow)
                     .count();
@@ -906,9 +962,19 @@ impl ContinuousDiscoveryEngine {
             let Some(observations) = input.monitoring_observations.get(&admitted.id) else {
                 continue;
             };
+            let independent_monitoring: Vec<_> = observations
+                .iter()
+                .filter(|observation| {
+                    !admitted
+                        .epistemic
+                        .training_snapshot_roots
+                        .contains(&observation.empirical_root)
+                })
+                .cloned()
+                .collect();
             let monitoring_evaluation = evaluate_program_competitively(
                 &admitted.program,
-                observations,
+                &independent_monitoring,
                 0,
                 CompetitiveEvaluationPolicy {
                     min_observations: self.policy.monitoring.min_observations,
@@ -1156,7 +1222,21 @@ fn revise_from_counterexamples(
         compose_programs(&[operator.program.clone(), guard], operator.program.bounds).ok()?;
     revised_program.bounds.max_ast_nodes = revised_program.bounds.max_ast_nodes.min(max_ast_nodes);
     validate_program(&revised_program).ok()?;
-    operator.revise_with_program(revised_program)
+    let mut revision = operator.revise_with_program(revised_program)?;
+    for observation in observations
+        .iter()
+        .filter(|observation| counterexamples.contains(&observation.case_id))
+    {
+        revision
+            .epistemic
+            .training_evidence
+            .insert(observation.case_id);
+        revision
+            .epistemic
+            .training_snapshot_roots
+            .insert(observation.empirical_root);
+    }
+    Some(revision)
 }
 
 fn audit_hash(

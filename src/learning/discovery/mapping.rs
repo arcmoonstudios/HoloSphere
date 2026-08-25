@@ -102,12 +102,21 @@ impl Default for MappingInductionPolicy {
 }
 
 pub fn derive_concept_behaviors(snapshot: &KnowledgeSnapshot) -> Vec<ConceptBehavior> {
+    derive_concept_behaviors_excluding_roots(snapshot, &BTreeSet::new())
+}
+
+pub(crate) fn derive_concept_behaviors_excluding_roots(
+    snapshot: &KnowledgeSnapshot,
+    excluded_roots: &BTreeSet<EmpiricalRootId>,
+) -> Vec<ConceptBehavior> {
     let mut behaviors = BTreeMap::<(DomainId, ConceptId), ConceptBehavior>::new();
-    for profile in snapshot
-        .concept_profiles
-        .iter()
-        .filter(|profile| profile.certified_evidence)
-    {
+    for profile in snapshot.concept_profiles.iter().filter(|profile| {
+        profile.certified_evidence
+            && profile
+                .empirical_roots
+                .iter()
+                .any(|root| !excluded_roots.contains(root))
+    }) {
         let behavior = behaviors
             .entry((profile.domain, profile.concept))
             .or_insert_with(|| ConceptBehavior {
@@ -126,7 +135,11 @@ pub fn derive_concept_behaviors(snapshot: &KnowledgeSnapshot) -> Vec<ConceptBeha
             .extend(profile.roles.iter().map(|role| role.temporal_position));
     }
 
-    for edge in snapshot.certified_hyperedges() {
+    for edge in snapshot.certified_hyperedges().filter(|edge| {
+        edge.empirical_roots
+            .iter()
+            .any(|root| !excluded_roots.contains(root))
+    }) {
         let role_ordinals = canonical_role_ordinals(edge.members.iter().map(|member| member.role));
         for member in &edge.members {
             let behavior = behaviors
@@ -245,7 +258,8 @@ pub fn validate_concept_mapping(
     validation_snapshot: &KnowledgeSnapshot,
     policy: MappingValidationPolicy,
 ) -> MappingValidation {
-    let behaviors = derive_concept_behaviors(validation_snapshot);
+    let behaviors =
+        derive_concept_behaviors_excluding_roots(validation_snapshot, &hypothesis.empirical_roots);
     let by_key: BTreeMap<_, _> = behaviors
         .iter()
         .map(|behavior| ((behavior.domain, behavior.concept), behavior))

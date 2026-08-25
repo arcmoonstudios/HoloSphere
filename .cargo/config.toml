@@ -1,2 +1,133 @@
 [build]
-rustflags = ["-C", "target-cpu=native"]
+rustflags = [
+  "-C", "target-cpu=native"
+  "-A", "unexpected_cfgs",
+  "-A", "deprecated",
+  "-A", "dead_code",
+  "-A", "unused_imports",
+  "-A", "mismatched_lifetime_syntaxes",
+  "-A", "unused_unsafe",
+  "-A", "unpredictable_function_pointer_comparisons",
+  "-A", "static_mut_refs",
+  "-A", "unused_attributes",
+  "-A", "unknown_lints",
+  "-A", "renamed_and_removed_lints",
+  "-A", "useless_ptr_null_checks",
+  "-A", "unused_must_use"
+]
+
+holo-fmt = [
+  "fmt",
+  "--all",
+  "--",
+  "--config-path",
+  "X:\\_Repos\\holo-substrate"
+]
+
+holo-check = [
+    "check",
+    "--workspace",
+    "--lib",
+    "--bins"
+]
+
+holo-clippy = [
+    "clippy",
+    "--workspace",
+    "--lib",
+    "--bins",
+    "--",
+    "-W", "clippy::all",
+    "-W", "clippy::pedantic",
+    "-W", "clippy::nursery",
+    "-W", "clippy::cargo",
+    "-W", "rust_2018_idioms",
+    "-W", "rust_2021_compatibility",
+    "-W", "rust_2024_compatibility",
+    "-A", "clippy::multiple_crate_versions",
+    "-A", "clippy::missing_errors_doc",
+    "-A", "clippy::missing_panics_doc",
+    "-A", "clippy::too_many_lines",
+    "-A", "clippy::module_name_repetitions",
+    "-A", "clippy::cast_precision_loss",
+    "-A", "clippy::cast_possible_truncation",
+    "-A", "clippy::cast_sign_loss",
+    "-A", "clippy::similar_names",
+    "-A", "clippy::must_use_candidate",
+    "-A", "clippy::needless_pass_by_ref_mut",
+    "-A", "clippy::unused_async",
+    "-A", "clippy::non_std_lazy_statics",
+    "-A", "clippy::significant_drop_tightening",
+    "-A", "clippy::redundant_clone",
+    "-A", "clippy::uninlined_format_args",
+    "-A", "clippy::option_if_let_else",
+    "-A", "clippy::branches_sharing_code",
+    "-A", "clippy::unnecessary_wraps",
+    "-A", "clippy::inline_always",
+    "-A", "clippy::format_collect",
+    "-A", "clippy::unused_self",
+    "-A", "clippy::redundant_closure",
+    "-A", "clippy::needless_continue",
+    "-A", "clippy::manual_let_else",
+    "-A", "clippy::significant_drop_in_scrutinee",
+    "-A", "clippy::type_complexity",
+    "-A", "clippy::missing_const_for_fn",
+    "-A", "clippy::trivially_copy_pass_by_ref",
+    "-A", "clippy::single_match",
+    "-A", "clippy::match_same_arms",
+    "-A", "clippy::let_underscore_untyped",
+    "-A", "clippy::expl_impl_clone_on_copy",
+    "-A", "clippy::too_many_arguments",
+    "-A", "clippy::format_push_string",
+    "-A", "clippy::items_after_statements",
+    "-A", "clippy::struct_excessive_bools",
+    "-A", "clippy::used_underscore_binding",
+    "-A", "clippy::collection_is_never_read",
+    "-A", "clippy::unnecessary_map_or",
+    "-A", "clippy::iter_nth_zero",
+    "-A", "clippy::manual_clamp",
+    "-A", "clippy::ptr_as_ptr",
+    "-A", "clippy::suboptimal_flops",
+    "-A", "clippy::manual_midpoint",
+    "-A", "clippy::large_stack_arrays",
+    "-A", "clippy::doc_markdown",
+    "-A", "clippy::wildcard_imports",
+    "-A", "clippy::enum_variant_names"
+]
+
+holo-test = [
+  "test",
+  "--workspace",
+  "--all-features",
+  "--all-targets",
+  "--no-fail-fast",
+  "-j", "1"
+]
+
+# --- Test Aliases ---
+
+holo-test = ["test", "-p", "holosphere", "--all-features"]
+
+# --- Bench Aliases ---
+
+holo-bench = ["bench", "-p", "holosphere", "--all-features"]
+
+# --- Clippy Aliases (General) ---
+
+holo-clippy = "clippy -p holosphere --no-deps --lib --bins --tests --benches -- -D warnings -W clippy::all -W clippy::pedantic -W clippy::nursery -W clippy::cargo -W rust_2018_idioms -W rust_2021_compatibility -W rust_2024_compatibility -A clippy::multiple_crate_versions -A clippy::missing_errors_doc -A clippy::missing_panics_doc -A clippy::too_many_lines -A clippy::module_name_repetitions -A clippy::cast_precision_loss -A clippy::cast_possible_truncation -A clippy::cast_sign_loss -A clippy::similar_names -A clippy::must_use_candidate -A clippy::needless_pass_by_ref_mut -A clippy::unused_async -A clippy::non_std_lazy_statics -A clippy::significant_drop_tightening -A clippy::redundant_clone -A clippy::uninlined_format_args -A clippy::option_if_let_else -A clippy::branches_sharing_code -A clippy::unnecessary_wraps -A clippy::inline_always -A clippy::format_collect -A clippy::unused_self -A clippy::redundant_closure -A clippy::needless_continue -A clippy::manual_let_else -A clippy::significant_drop_in_scrutinee -A clippy::type_complexity -A clippy::missing_const_for_fn -A clippy::trivially_copy_pass_by_ref -A clippy::single_match -A clippy::match_same_arms -A clippy::let_underscore_untyped -A clippy::expl_impl_clone_on_copy -A clippy::too_many_arguments -A clippy::format_push_string -A clippy::items_after_statements -A clippy::struct_excessive_bools -A clippy::used_underscore_binding -A clippy::collection_is_never_read -A clippy::unnecessary_map_or -A clippy::iter_nth_zero -A clippy::manual_clamp -A clippy::ptr_as_ptr -A clippy::suboptimal_flops -A clippy::manual_midpoint -A clippy::large_stack_arrays -A clippy::doc_markdown -A clippy::wildcard_imports -A clippy::enum_variant_names"
+
+# --- Check Aliases (Clippy General) ---
+
+holo-check- = "check -p holosphere --lib --bins --tests --benches"
+
+# --- CUDA Environment ---
+# Permanent fix: ensures cargo build-scripts always find the CUDA toolkit
+# regardless of shell environment inheritance. 'force = false' means any
+# explicit shell-level override (e.g. a different CUDA version) still wins.
+[env]
+CUDA_PATH  = { value = "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.8", force = false }
+CUDA_ROOT  = { value = "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.8", force = false }
+# Increase rustc thread stack size to prevent STATUS_STACK_BUFFER_OVERRUN on
+# large crates with deep generic monomorphization (holo-gpf, holo-lore, holo-fin).
+# Default is 8 MB; 128 MB covers the deepest observed recursion in this workspace.
+RUST_MIN_STACK = { value = "134217728", force = false }

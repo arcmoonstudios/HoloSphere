@@ -95,6 +95,9 @@ pub struct EvolvedSchemaProposal {
     pub kind: EvolvedSchemaKind,
     pub supporting_domains: BTreeSet<DomainId>,
     pub empirical_roots: BTreeSet<EmpiricalRootId>,
+    /// Every empirical root visible in the induction snapshot. Validation may
+    /// not reuse any of them, even if a root did not support this proposal.
+    pub discovery_snapshot_roots: BTreeSet<EmpiricalRootId>,
     pub proposed_at_lsn: u64,
 }
 
@@ -122,6 +125,23 @@ pub fn induce_evolved_schemas(
     snapshot: &KnowledgeSnapshot,
     policy: SchemaInductionPolicy,
 ) -> Vec<EvolvedSchemaProposal> {
+    let discovery_snapshot_roots: BTreeSet<_> = snapshot
+        .concept_profiles
+        .iter()
+        .flat_map(|profile| profile.empirical_roots.iter().copied())
+        .chain(
+            snapshot
+                .hyperedges
+                .iter()
+                .flat_map(|edge| edge.empirical_roots.iter().copied()),
+        )
+        .chain(
+            snapshot
+                .cases
+                .iter()
+                .flat_map(|case| case.empirical_roots.iter().copied()),
+        )
+        .collect();
     type EntitySignature = (BTreeSet<FeatureId>, BTreeSet<StructuralRole>);
     let mut entity_groups = BTreeMap::<EntitySignature, Vec<_>>::new();
     for profile in snapshot
@@ -167,6 +187,7 @@ pub fn induce_evolved_schemas(
             },
             supporting_domains: domains.clone(),
             empirical_roots: roots.clone(),
+            discovery_snapshot_roots: discovery_snapshot_roots.clone(),
             proposed_at_lsn: snapshot.lsn,
         });
         if concepts.len() > 1 {
@@ -182,6 +203,7 @@ pub fn induce_evolved_schemas(
                 kind: EvolvedSchemaKind::ConceptEquivalence { concepts },
                 supporting_domains: domains,
                 empirical_roots: roots,
+                discovery_snapshot_roots: discovery_snapshot_roots.clone(),
                 proposed_at_lsn: snapshot.lsn,
             });
         }
@@ -238,6 +260,7 @@ pub fn induce_evolved_schemas(
             },
             supporting_domains: domains,
             empirical_roots: roots,
+            discovery_snapshot_roots: discovery_snapshot_roots.clone(),
             proposed_at_lsn: snapshot.lsn,
         });
     }
@@ -272,6 +295,7 @@ pub fn induce_evolved_schemas(
             },
             supporting_domains: BTreeSet::new(),
             empirical_roots: BTreeSet::new(),
+            discovery_snapshot_roots: discovery_snapshot_roots.clone(),
             proposed_at_lsn: snapshot.lsn,
         });
         for specialized in specializations {
@@ -288,6 +312,7 @@ pub fn induce_evolved_schemas(
                 },
                 supporting_domains: BTreeSet::new(),
                 empirical_roots: BTreeSet::new(),
+                discovery_snapshot_roots: discovery_snapshot_roots.clone(),
                 proposed_at_lsn: snapshot.lsn,
             });
         }
@@ -379,6 +404,13 @@ pub fn validate_evolved_schema(
                 .iter()
                 .filter(|profile| profile.certified_evidence)
             {
+                if profile
+                    .empirical_roots
+                    .iter()
+                    .all(|root| proposal.discovery_snapshot_roots.contains(root))
+                {
+                    continue;
+                }
                 let applicable = !capabilities.is_disjoint(&profile.capabilities)
                     || !structural_roles.is_disjoint(&profile.roles);
                 if !applicable {
@@ -403,6 +435,13 @@ pub fn validate_evolved_schema(
                 .certified_hyperedges()
                 .filter(|edge| edge.arity() == *arity as usize)
             {
+                if edge
+                    .empirical_roots
+                    .iter()
+                    .all(|root| proposal.discovery_snapshot_roots.contains(root))
+                {
+                    continue;
+                }
                 record_schema_observation(
                     &mut result,
                     edge.domain,
@@ -413,7 +452,10 @@ pub fn validate_evolved_schema(
         }
         EvolvedSchemaKind::ConceptEquivalence { concepts } => {
             let behaviors =
-                crate::learning::discovery::mapping::derive_concept_behaviors(validation);
+                crate::learning::discovery::mapping::derive_concept_behaviors_excluding_roots(
+                    validation,
+                    &proposal.discovery_snapshot_roots,
+                );
             let by_key: BTreeMap<_, _> = behaviors
                 .iter()
                 .map(|behavior| ((behavior.domain, behavior.concept), behavior))
@@ -475,10 +517,10 @@ pub fn validate_evolved_schema(
     }
     result
         .empirical_roots
-        .retain(|root| !proposal.empirical_roots.contains(root));
+        .retain(|root| !proposal.discovery_snapshot_roots.contains(root));
     result
         .counterexample_roots
-        .retain(|root| !proposal.empirical_roots.contains(root));
+        .retain(|root| !proposal.discovery_snapshot_roots.contains(root));
     result.structural_accuracy_q32 = ratio_q32(result.structural_matches, result.observations);
     result.passed = result.observations >= policy.min_observations
         && result.domains.len() >= policy.min_domains

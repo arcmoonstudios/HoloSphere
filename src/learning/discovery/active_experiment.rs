@@ -96,6 +96,9 @@ pub struct SandboxExperimentResult {
     pub resolution_votes: BTreeMap<ResolutionId, u32>,
     pub disagreements: u32,
     pub empirical_case_ids: BTreeSet<u64>,
+    /// Exact evidence returned by the authorized experiment, ready for the
+    /// next falsification cycle.
+    pub observations: Vec<EvaluationObservation>,
 }
 
 #[derive(Error, Clone, Debug, PartialEq, Eq)]
@@ -350,6 +353,7 @@ pub fn execute_sandbox_experiment(
         }
         result.disagreements += u32::from(trial_resolutions.len() > 1);
         result.empirical_case_ids.insert(observation.case_id.0);
+        result.observations.push(observation.clone());
         result.trials += 1;
     }
     Ok(result)

@@ -169,6 +169,39 @@ fn acceptance_induces_classes_relations_roles_hierarchies_and_competing_mappings
             .iter()
             .any(|mapping| !mapping.competing_hypotheses.is_empty())
     );
+    let mut leaked_validation = snapshot.clone();
+    leaked_validation.lsn += 1;
+    let entity_schema = schemas
+        .iter()
+        .find(|schema| matches!(schema.kind, EvolvedSchemaKind::EntityClass { .. }))
+        .unwrap();
+    assert!(
+        !validate_evolved_schema(
+            entity_schema,
+            &leaked_validation,
+            &schemas,
+            SchemaValidationPolicy {
+                min_observations: 1,
+                min_domains: 1,
+                min_independent_roots: 1,
+                min_structural_accuracy_q32: 0,
+            },
+        )
+        .passed
+    );
+    assert!(
+        !validate_concept_mapping(
+            &mappings[0],
+            &leaked_validation,
+            MappingValidationPolicy {
+                min_independent_roots: 1,
+                min_role_similarity_q32: 0,
+                min_outcome_similarity_q32: 0,
+                min_total_score_q32: 0,
+            },
+        )
+        .passed
+    );
 }
 
 #[test]
@@ -544,6 +577,10 @@ fn acceptance_active_planner_selects_safe_and_authorized_experiments() {
     complete_experiment(&mut simulation, result).unwrap();
     assert_eq!(simulation.status, ExperimentStatus::Completed);
     assert!(simulation.result.is_some());
+    assert_eq!(
+        simulation.result.as_ref().unwrap().observations,
+        observations
+    );
 
     let replicated = GovernedDiscoveryState::new();
     replicated
@@ -735,6 +772,35 @@ fn acceptance_continuous_cycle_admits_monitors_revises_retires_audits_and_rolls_
             version: 1,
         }),
     };
+    let discovery_roots: Vec<_> = knowledge
+        .hyperedges
+        .iter()
+        .flat_map(|edge| edge.empirical_roots.iter().copied())
+        .chain(
+            knowledge
+                .concept_profiles
+                .iter()
+                .flat_map(|profile| profile.empirical_roots.iter().copied()),
+        )
+        .collect();
+    let mut leaked_observations = observations.clone();
+    for (index, observation) in leaked_observations.iter_mut().enumerate() {
+        observation.empirical_root = discovery_roots[index % discovery_roots.len()];
+    }
+    let mut leak_guard_engine = ContinuousDiscoveryEngine::new(policy.clone()).unwrap();
+    let leak_guard_report = leak_guard_engine
+        .run_cycle(&ContinuousDiscoveryInput {
+            knowledge: knowledge.clone(),
+            evaluation_observations: leaked_observations,
+            incumbent_accuracy_q32: q32(1, 2),
+            ..ContinuousDiscoveryInput::default()
+        })
+        .unwrap();
+    assert!(leak_guard_report.transition_plans.iter().all(|plans| {
+        plans
+            .last()
+            .is_none_or(|plan| plan.operator.lifecycle != OperatorLifecycle::Admitted)
+    }));
     let mut engine = ContinuousDiscoveryEngine::new(policy.clone()).unwrap();
     let mut validation_knowledge = knowledge.clone();
     validation_knowledge.lsn += 1;
@@ -759,11 +825,39 @@ fn acceptance_continuous_cycle_admits_monitors_revises_retires_audits_and_rolls_
             .map(|root| EmpiricalRootId(root.0 + 50_000))
             .collect();
     }
+    let completed_experiment_id = ExperimentProposalId([91; 32]);
+    let completed_experiment = ActiveExperimentProposal {
+        id: completed_experiment_id,
+        kind: ActiveExperimentKind::ShadowReplay,
+        status: ExperimentStatus::Completed,
+        operators: Vec::new(),
+        target_domains: BTreeSet::from([DomainId(1), DomainId(2)]),
+        required_features: BTreeSet::new(),
+        candidate_resolutions: BTreeSet::from([RESOLUTION_A]),
+        expected_information_gain_q32: 1i64 << 32,
+        risk: RiskLevel::None,
+        requires_external_authorization: false,
+        maximum_trials: observations.len() as u32,
+        authorization: Some(ExperimentAuthorization {
+            authority_id: 8,
+            policy_id: 9,
+            authorized_at_lsn: 490,
+            expires_at_lsn: 600,
+        }),
+        result: Some(SandboxExperimentResult {
+            proposal_id: Some(completed_experiment_id),
+            trials: observations.len() as u32,
+            empirical_case_ids: observations.iter().map(|item| item.case_id.0).collect(),
+            observations: observations.clone(),
+            ..SandboxExperimentResult::default()
+        }),
+    };
     let first = engine
         .run_cycle(&ContinuousDiscoveryInput {
             knowledge: knowledge.clone(),
             validation_knowledge: Some(validation_knowledge),
-            evaluation_observations: observations.clone(),
+            evaluation_observations: Vec::new(),
+            completed_experiments: vec![completed_experiment],
             incumbent_accuracy_q32: q32(1, 2),
             ..ContinuousDiscoveryInput::default()
         })
@@ -921,6 +1015,7 @@ fn acceptance_continuous_cycle_admits_monitors_revises_retires_audits_and_rolls_
             knowledge: knowledge.clone(),
             validation_knowledge: None,
             evaluation_observations: observations.clone(),
+            completed_experiments: Vec::new(),
             incumbent_accuracy_q32: q32(1, 2),
             admitted_operators: vec![admitted.clone()],
             pending_operators: Vec::new(),
@@ -960,6 +1055,7 @@ fn acceptance_continuous_cycle_admits_monitors_revises_retires_audits_and_rolls_
             knowledge,
             validation_knowledge: None,
             evaluation_observations: observations,
+            completed_experiments: Vec::new(),
             incumbent_accuracy_q32: q32(1, 2),
             admitted_operators: vec![deprecated],
             pending_operators: vec![pending_revision.clone()],

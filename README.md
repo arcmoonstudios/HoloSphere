@@ -2,7 +2,7 @@
 
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
 [![Rust: 2024](https://img.shields.io/badge/Rust-2024%20Edition-orange.svg)](https://www.rust-lang.org/)
-[![Tests](https://img.shields.io/badge/Tests-269%2F269%20Passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-332%2F332%20Passing-brightgreen.svg)]()
 [![Clippy](https://img.shields.io/badge/Clippy%20-D%20warnings-clean-brightgreen.svg)]()
 [![PGO: Optimized](https://img.shields.io/badge/PGO-LLVM%20Profile%20Guided-purple.svg)](docs/PROFILE_GUIDED_OPTIMIZATION.md)
 
@@ -43,42 +43,56 @@ hypergraph layer:
 
 ### Governed Cross-Domain Discovery
 
-The learning subsystem can now turn repeated, certified problem-solving episodes
-into inspectable resolution proposals without adding executable code:
+The `learning::discovery` subsystem implements governed open-ended discovery over
+pinned entity, experience, and canonical N-ary relation snapshots:
 
-`project_experience` reads pinned `ExperienceSegment` and entity-provenance snapshots,
-classifies outcomes with deterministic metric rules, and content-addresses context
-features, domains, action plans, and empirical roots into a `DiscoveryCorpus`. An LSN
-cutoff reserves later outcomes for validation, so the engine can operate directly on
-durable experience rather than a caller-authored pattern table.
+1. Schema induction proposes new entity classes, relation types, role cardinalities,
+   concept equivalences, and generalization/specialization hierarchies. A distinct,
+   later snapshot tests every proposal through `Proposed -> FalsificationTesting ->
+   ShadowValidated -> Admitted`; discovery roots are excluded from validation roots.
+   Admitted relation schemas are synchronized into the canonical relation catalog.
+2. Vocabulary-independent mining discovers repeated N-ary topology, causal sequences,
+   invariant role arrangements, before/after outcomes, domain-relabeling invariants,
+   and outcome anomalies. It compares roles, topology, time, context, causal ancestry,
+   and outcomes rather than names alone.
+3. Cross-domain mappings are learned from role behavior, capabilities, temporal
+   position, and outcome associations. Competing mappings remain Proposed and inert;
+   only independently validated, externally authorized Confirmed mappings enter the
+   runtime concept resolver.
+4. Candidate reasoning laws are inspectable `OperatorProgram` data. The sandboxed DSL
+   supports Boolean, numeric, temporal, causal, domain, constraint, prediction,
+   resolution, derived-value, and declarative hypergraph-transformation operations.
+   It cannot execute native code or mutate the hypergraph directly, and every program
+   carries enforceable AST, depth, effect, and numeric resource limits.
+5. Operators compete on held-out accuracy, improvement over the incumbent set,
+   counterfactual and intervention accuracy, worst-domain transfer, calibration,
+   adversarial robustness, independent roots, and minimum description length. Their
+   replicated lifecycle is `Generated -> Provisional -> FalsificationTesting ->
+   Shadow -> ShadowValidated -> Admitted -> Monitored`, followed by rejection,
+   deprecation, revision, or supersession as evidence requires. Admission always
+   requires an external replicated policy or human authority.
+6. The active experiment planner selects simulations, shadow replays, diagnostics,
+   missing-evidence requests, A/B tests, or controlled changes by expected information
+   gain and risk. Every execution requires a recorded authorization and lifecycle;
+   live interventions remain external. Completed findings are replicated and folded
+   into the next falsification cycle.
+7. Every cycle emits an ordered Raft mutation stream for its kernel, schemas,
+   mappings, operators, evaluations, experiments, and hash-chained audit events.
+   Repeated cycles are idempotent against pinned prior state. Checksummed recovery
+   checkpoints restore the complete learning state and rebuild evolved relation types.
 
-1. `ConceptProfile` records domain-local concepts using canonical capabilities and
-   N-ary structural roles. `induce_schemas` proposes cross-domain concept classes
-   when those signatures recur across independently evidenced domains.
-2. `mine_motifs` searches a deterministic, policy-bounded space of feature
-   conjunctions for resolutions that succeeded across domains. The conjunction was
-   not scripted as a rule; it is derived from the evidence corpus.
-3. Mining and validation use explicit, disjoint evidence partitions. A generated
-   declarative operator must reproduce on reserved certified cases, beat its
-   resolution baseline, satisfy contradiction limits, and pass independently in
-   the required number of domains and empirical roots. Validation cases sharing an
-   empirical root with discovery evidence are excluded from admission metrics.
-4. Operators are content-addressed data with a fixed predicate/effect vocabulary;
-   they can propose a resolution but cannot execute native code or mutate admitted
-   knowledge. Their replicated lifecycle is `Provisional -> Shadow -> Admitted`,
-   with admission requiring a policy or human authority. Rejection and deprecation
-   are durable states, and historical versions remain visible at pinned LSNs.
-5. Admitted operators can match a structurally compatible new problem—even in a
-   previously unseen domain—and return the discovered resolution with its source
-   motifs. Conflicts and missing-domain coverage produce bounded shadow-replay
-   experiment proposals; the planner never executes interventions itself.
+The non-self-modifying `ImmutableSafetyKernel` requires certified evidence,
+provenance, temporal isolation, external admission, evidence-independence accounting,
+circular-support prevention, resource bounds, sandboxing, audit chaining, and
+compensating-only rollback. No governed discovery mutation or learned-operator
+transition is accepted before that kernel is committed.
 
-This warrants a precise claim: HoloSphere can discover and reuse bounded,
-cross-domain declarative patterns over supplied semantic features, subject to
-out-of-sample falsification and governance. It does **not** warrant unrestricted
-autonomous discovery: it does not invent arbitrary predicates, semantic primitives,
-or executable reasoning laws, and its results remain limited by representation and
-evidence quality.
+This warrants the bounded claim: **HoloSphere performs governed, open-ended autonomous
+discovery—it can induce new concepts, propose new declarative reasoning laws, falsify
+them against independent evidence, plan authorized experiments, and incorporate
+validated operators into future reasoning.** It is not unrestricted self-modification:
+the safety constitution and DSL primitives remain engineered, and result quality still
+depends on representative structured evidence and valid objectives.
 
 The compact property-graph engine remains an acceleration and traversal paradigm;
 it is not the canonical ontology or provenance store.

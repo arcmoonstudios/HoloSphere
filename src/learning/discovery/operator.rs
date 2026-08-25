@@ -74,6 +74,9 @@ pub struct OperatorEpistemicRecord {
     pub applicable_contexts: BTreeSet<FeatureId>,
     pub counterexamples: BTreeSet<DiscoveryCaseId>,
     pub provenance_roots: BTreeSet<EmpiricalRootId>,
+    /// All roots visible at induction time, used solely to prevent validation
+    /// leakage from cumulative later snapshots.
+    pub training_snapshot_roots: BTreeSet<EmpiricalRootId>,
     pub ancestry: BTreeSet<DiscoveredOperatorId>,
     pub previous_version: Option<DiscoveredOperatorId>,
     pub predictive_accuracy_q32: i64,
@@ -117,6 +120,7 @@ impl DeclarativeOperator {
                 applicable_domains: motif.supporting_domains.clone(),
                 applicable_contexts: motif.conditions.iter().copied().collect(),
                 provenance_roots: motif.empirical_roots.clone(),
+                training_snapshot_roots: motif.empirical_roots.clone(),
                 predictive_accuracy_q32: motif.precision_q32,
                 uncertainty_q32: (1i64 << 32).saturating_sub(motif.precision_q32),
                 ..OperatorEpistemicRecord::default()
@@ -182,6 +186,7 @@ impl DeclarativeOperator {
             source_hypergraph_motifs: vec![source_motif],
             program,
             epistemic: OperatorEpistemicRecord {
+                training_snapshot_roots: provenance_roots.clone(),
                 provenance_roots,
                 applicable_domains,
                 previous_version,
@@ -216,6 +221,7 @@ impl DeclarativeOperator {
                 ancestry,
                 previous_version,
                 provenance_roots: self.epistemic.provenance_roots.clone(),
+                training_snapshot_roots: self.epistemic.training_snapshot_roots.clone(),
                 ..OperatorEpistemicRecord::default()
             },
             admission_authority: None,

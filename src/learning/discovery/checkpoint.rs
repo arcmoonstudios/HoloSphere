@@ -5,13 +5,13 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::learning::discovery::{
-    DeclarativeOperator, DiscoveryAuditLog, DiscoveryStateSnapshot, OperatorLifecycle,
-    materialize_relation_type,
+    DeclarativeOperator, DiscoveryAuditLog, DiscoveryStateSnapshot, ExperimentStatus,
+    MappingLifecycle, OperatorLifecycle, SchemaProposalState, materialize_relation_type,
 };
 use crate::learning::read::LearningSegment;
 use crate::relation::RelationSegment;
 
-pub const DISCOVERY_CHECKPOINT_VERSION: u32 = 1;
+pub const DISCOVERY_CHECKPOINT_VERSION: u32 = 2;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct GovernedDiscoveryCheckpoint {
@@ -34,6 +34,8 @@ pub enum DiscoveryCheckpointError {
     InvalidAuditChain,
     #[error("governed-discovery checkpoint contains an invalid operator")]
     InvalidOperator,
+    #[error("governed-discovery checkpoint contains invalid governed lifecycle state")]
+    InvalidGovernedState,
     #[error("governed-discovery checkpoint relation schema collides with the target catalog")]
     RelationSchemaCollision,
     #[error("governed-discovery checkpoint payload cannot be decoded")]
@@ -96,6 +98,47 @@ impl GovernedDiscoveryCheckpoint {
         }) {
             return Err(DiscoveryCheckpointError::InvalidOperator);
         }
+        if self.state.schemas.iter().any(|record| {
+            matches!(
+                record.proposal.state,
+                SchemaProposalState::ShadowValidated | SchemaProposalState::Admitted
+            ) && record
+                .validation
+                .as_ref()
+                .is_none_or(|validation| !validation.passed)
+                || (record.proposal.state == SchemaProposalState::Admitted
+                    && record.authority.is_none())
+        }) || self.state.mappings.iter().any(|record| {
+            matches!(
+                record.hypothesis.lifecycle,
+                MappingLifecycle::ShadowValidated | MappingLifecycle::Confirmed
+            ) && record
+                .validation
+                .as_ref()
+                .is_none_or(|validation| !validation.passed)
+                || (record.hypothesis.lifecycle == MappingLifecycle::Confirmed
+                    && record.authority.is_none())
+        }) || self.state.experiments.iter().any(|experiment| {
+            matches!(
+                experiment.status,
+                ExperimentStatus::Authorized
+                    | ExperimentStatus::Running
+                    | ExperimentStatus::Completed
+            ) && experiment.authorization.is_none()
+                || (experiment.status == ExperimentStatus::Completed && experiment.result.is_none())
+        }) {
+            return Err(DiscoveryCheckpointError::InvalidGovernedState);
+        }
+        let operator_ids: std::collections::BTreeSet<_> =
+            self.operators.iter().map(|operator| operator.id).collect();
+        if self
+            .state
+            .evaluations
+            .keys()
+            .any(|operator| !operator_ids.contains(operator))
+        {
+            return Err(DiscoveryCheckpointError::InvalidGovernedState);
+        }
         Ok(())
     }
 
@@ -147,7 +190,7 @@ impl GovernedDiscoveryCheckpoint {
 
     fn compute_digest(&self) -> [u8; 32] {
         let mut hasher = Sha256::new();
-        hasher.update(b"HOLOSPHERE_GOVERNED_DISCOVERY_CHECKPOINT_V1");
+        hasher.update(b"HOLOSPHERE_GOVERNED_DISCOVERY_CHECKPOINT_V2");
         hasher.update(self.format_version.to_le_bytes());
         hasher.update(self.lsn.to_le_bytes());
         hasher.update(

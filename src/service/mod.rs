@@ -352,12 +352,34 @@ impl SearchService for StandaloneService {
     fn graph_query(
         &self,
         _ctx: &RequestContext,
-        _query: &str,
+        query: &str,
     ) -> HNSQRResult<crate::graph::query::executor::QueryResult> {
-        Err(HNSQRError::UnsupportedFeature(
-            "Graph queries require ClusterService".to_string(),
-        ))
+        let label_catalog = crate::graph::catalog::labels::LabelCatalog::default();
+        let rel_catalog = crate::graph::catalog::relationships::RelTypeCatalog::default();
+        let compiled = crate::graph::query::planner::QueryPlanner::compile(
+            query,
+            &label_catalog,
+            &rel_catalog,
+            None,
+        )
+        .map_err(|e| HNSQRError::Internal(e.to_string()))?;
+
+        let gen_lock = Arc::new(parking_lot::RwLock::new(
+            crate::graph::storage::generation::GraphGeneration::new_mutable(1),
+        ));
+        let read_gen = Arc::new(crate::graph::storage::generation::GraphReadGeneration::new(
+            gen_lock, 1,
+        ));
+        let mut exec_ctx = crate::graph::query::executor::ExecutionContext::new(read_gen);
+        let mut result = exec_ctx.execute_with_vector_engine(
+            &compiled.plan,
+            &self.index,
+            &std::collections::HashMap::new(),
+        )?;
+        result.column_names = compiled.column_names;
+        Ok(result)
     }
+
 }
 
 impl HNSQRService for StandaloneService {}

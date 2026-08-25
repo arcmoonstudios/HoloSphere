@@ -3361,7 +3361,14 @@ impl HNSQRIndex {
             deadline,
         );
 
+        if proof.globally_exact && proof.leaf_vectors_considered > 0 {
+            let warmer = crate::storage::predictive_warming::PredictiveWarmer::default();
+            let threat_slots: Vec<NodeIndex> = results.iter().map(|(s, _)| *s).collect();
+            warmer.record_proof_access(proof.proof_regions_popped, &threat_slots);
+        }
+
         if proof.deadline_exceeded {
+
             Ok(CertifiedSearchOutcome::DeadlineExceeded {
                 partial_results: results,
                 proof,

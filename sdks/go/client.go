@@ -381,6 +381,45 @@ func (c *Client) GetBillingReport(ctx context.Context, tenantID string) (map[str
 	return report, err
 }
 
+func (c *Client) McpURL() string {
+	return fmt.Sprintf("%s/mcp", c.config.Endpoints[0])
+}
+
+func (c *Client) CallModelTool(ctx context.Context, operation string, payload map[string]interface{}) (map[string]interface{}, error) {
+	paths := map[string]string{
+		"search":         "/v1/knowledge/search",
+		"traverse":       "/v1/knowledge/traverse",
+		"resolve":        "/v1/knowledge/resolve",
+		"remember":       "/v1/knowledge/remember",
+		"record_outcome": "/v1/knowledge/outcomes",
+	}
+	p, ok := paths[operation]
+	if !ok {
+		return nil, fmt.Errorf("unknown model tool operation: %s", operation)
+	}
+	isWrite := operation == "remember" || operation == "record_outcome"
+	endpoint, err := c.selectEndpoint(isWrite)
+	if err != nil {
+		return nil, err
+	}
+	data, _ := json.Marshal(payload)
+	url := fmt.Sprintf("%s%s", endpoint, p)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	c.headers(req, "")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var result map[string]interface{}
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	return result, err
+}
+
+
 func (c *Client) Upsert(ctx context.Context, collection string, id string, vector []float32, metadata map[string]interface{}, idempotencyKey string) (*MutationReceipt, error) {
 	payload := map[string]interface{}{
 		"id":       id,

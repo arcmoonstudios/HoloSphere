@@ -161,8 +161,8 @@ eligible non-Exact indexed routes, `UniversalPlanner::plan_with_affect` applies 
 explicit policies: low reversibility forces `Certified`, while high novelty plus high
 reversibility may relax a requested `HighRecall` route to a bounded PAC plan. Exact
 retrieval remains Exact. The tensor can also be quantized to a nearest $E_8$ lattice
-point for deterministic routing; that quantization is not a claim of emotion or
-consciousness.
+point for deterministic lattice representation; that quantization is not a claim of
+emotion or consciousness.
 
 The compact property-graph engine remains an acceleration and traversal paradigm;
 it is not the canonical ontology or provenance store.

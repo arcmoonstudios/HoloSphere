@@ -1,4 +1,4 @@
-# ⟁ SIGNAL TRACE ✕ M.A.C.R.O.S⁴ rePro
+# ⟁ HoloSphere ✕ M.A.C.R.O.S⁴ 
 
 ## ArcMoon Studios ◦ Full-Spectrum Repository Intelligence & Production Architecture Protocol
 

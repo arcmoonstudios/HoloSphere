@@ -368,4 +368,31 @@ export class HNSQRClient {
 
     throw lastError || new HNSQRError("Upsert retries exhausted");
   }
+
+  public get mcpUrl(): string {
+    return `${this.endpoints[0].replace(/\/$/, "")}/mcp`;
+  }
+
+  public async callModelTool(operation: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const paths: Record<string, string> = {
+      search: "/v1/knowledge/search",
+      traverse: "/v1/knowledge/traverse",
+      resolve: "/v1/knowledge/resolve",
+      remember: "/v1/knowledge/remember",
+      record_outcome: "/v1/knowledge/outcomes",
+    };
+    const path = paths[operation];
+    if (!path) throw new HNSQRError(`Unknown model tool operation: ${operation}`);
+    const isWrite = operation === "remember" || operation === "record_outcome";
+    const endpoint = this.selectEndpoint(isWrite);
+    const res = await fetch(`${endpoint.replace(/\/$/, "")}${path}`, {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(this.timeoutMs),
+    });
+    if (!res.ok) throw new HNSQRError(`Model tool '${operation}' failed: ${res.status}`);
+    return (await res.json()) as Record<string, unknown>;
+  }
 }
+

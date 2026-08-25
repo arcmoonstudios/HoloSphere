@@ -170,26 +170,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let server = resp_server.clone();
                 tokio::spawn(async move {
                     let mut buf = [0u8; 4096];
+                    let mut byte_buffer = bytes::BytesMut::with_capacity(65536);
                     while let Ok(n) = socket.read(&mut buf).await {
                         if n == 0 {
                             break;
                         }
-                        let raw_str = String::from_utf8_lossy(&buf[..n]);
-                        let args: Vec<String> = raw_str
-                            .lines()
-                            .filter(|l| !l.starts_with('*') && !l.starts_with('$') && !l.is_empty())
-                            .map(|s| s.trim().to_string())
-                            .collect();
-
-                        let response = if !args.is_empty() {
-                            server.handle_command(&args)
-                        } else {
-                            RespFrame::SimpleString("PONG".into())
-                        };
-
-                        let wire_bytes = response.serialize();
-                        let _ = socket.write_all(&wire_bytes).await;
+                        byte_buffer.extend_from_slice(&buf[..n]);
+                        while let Some((args, consumed)) =
+                            hnsqr::transport::resp::StreamingRespParser::parse_command_slices(
+                                &byte_buffer,
+                            )
+                        {
+                            let response = server.handle_raw_command(&args);
+                            let wire_bytes = response.serialize();
+                            let _ = socket.write_all(&wire_bytes).await;
+                            let _ = byte_buffer.split_to(consumed);
+                        }
                     }
+
                 });
             }
         }

@@ -440,30 +440,33 @@ impl DistributedCoordinator {
             guard.values().cloned().collect()
         };
 
-        let mut global_candidates = Vec::with_capacity(shards.len() * k);
-        for shard in shards {
-            let shard_topk = if let Some((immutables, active)) =
-                snapshot.all_shard_snapshots.get(&shard.shard_id)
-            {
-                shard
-                    .engine
-                    .search_pinned(immutables, active, query, k, rerank_plan)
-            } else {
-                shard.engine.search_pinned(
-                    &snapshot.immutable_segments,
-                    &snapshot.active_segment,
-                    query,
-                    k,
-                    rerank_plan,
-                )
-            };
-            global_candidates.extend(shard_topk);
-        }
+        use rayon::prelude::*;
+        let mut global_candidates: Vec<(Arc<str>, SimilarityScore)> = shards
+            .par_iter()
+            .flat_map(|shard| {
+                if let Some((immutables, active)) =
+                    snapshot.all_shard_snapshots.get(&shard.shard_id)
+                {
+                    shard
+                        .engine
+                        .search_pinned(immutables, active, query, k, rerank_plan)
+                } else {
+                    shard.engine.search_pinned(
+                        &snapshot.immutable_segments,
+                        &snapshot.active_segment,
+                        query,
+                        k,
+                        rerank_plan,
+                    )
+                }
+            })
+            .collect();
 
         global_candidates.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
         global_candidates.truncate(k);
         global_candidates
     }
+
 
     /// Scatter-gather query across all shards with global Top-K merging.
     pub fn search(

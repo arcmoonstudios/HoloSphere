@@ -410,7 +410,7 @@ pub use transport::{
     EmbeddingDescriptor, EvidenceEnvelope, KnowledgeRecord, MCP_PROTOCOL_VERSION, ModelGatewayAuth,
     ModelKnowledgeStore, ModelOutcomeRecord, ModelToolService, RecordOutcomeToolRequest,
     RememberToolRequest, ResolveToolRequest, SearchToolRequest, TraverseToolRequest,
-    create_mcp_router, create_model_api_router,
+    create_mcp_router, create_model_api_router, process_mcp_payload,
 };
 pub use vector::folding::{ComplexWeaver, GatewayRouter, create_http_router, run_http_server};
 pub use vector::quantization::PolarQuantizedVector;

@@ -123,7 +123,9 @@ impl QueryPlanner {
 
     // ── AST → LogicalPlan ─────────────────────────────────────────────────
 
-    fn build_logical_plan(ast: &QueryAst, symbols: &SymbolTable) -> LogicalPlan {
+    /// Lowers an already parsed and semantically analyzed AST into a logical plan.
+    /// Use `compile` when starting from query text.
+    pub fn build_logical_plan(ast: &QueryAst, symbols: &SymbolTable) -> LogicalPlan {
         // Determine the root scan.
         let mut plan: LogicalPlan = if let Some(vm) = &ast.vector_match {
             let binding = symbols.get(&vm.binding).unwrap_or(SymbolId(0));
@@ -234,6 +236,33 @@ impl QueryPlanner {
                         direction: *direction,
                         min_hops: *min_hops,
                         max_hops: *max_hops,
+                    };
+                }
+                GraphPattern::HyperMatch {
+                    antecedent_aliases,
+                    rel_alias,
+                    rel_type,
+                    consequent_aliases,
+                    direction,
+                } => {
+                    let ant_bindings: Vec<SymbolId> = antecedent_aliases
+                        .iter()
+                        .filter_map(|a| symbols.get(a))
+                        .collect();
+                    let rel_binding = rel_alias.as_deref().and_then(|r| symbols.get(r));
+                    let cons_binding = consequent_aliases
+                        .first()
+                        .and_then(|c| symbols.get(c))
+                        .unwrap_or(SymbolId(0));
+                    plan = LogicalPlan::Expand {
+                        input: Box::new(plan),
+                        src_binding: ant_bindings.first().copied().unwrap_or(SymbolId(0)),
+                        rel_binding,
+                        dst_binding: cons_binding,
+                        rel_type_filter: *rel_type,
+                        direction: *direction,
+                        min_hops: 1,
+                        max_hops: 1,
                     };
                 }
             }

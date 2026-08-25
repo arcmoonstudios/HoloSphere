@@ -115,3 +115,30 @@ impl IncidenceIndex {
         self.postings.write().clear();
     }
 }
+
+/// Unified traverser over both 2-ary graph CSR/CSC and N-ary hypergraph incidence postings.
+pub struct IncidenceTraverser<'a> {
+    pub incidence: &'a IncidenceIndex,
+}
+
+impl<'a> IncidenceTraverser<'a> {
+    pub fn new(incidence: &'a IncidenceIndex) -> Self {
+        Self { incidence }
+    }
+
+    /// Dispatches query to single or multi-role incidence intersection.
+    pub fn query_role_intersection(
+        &self,
+        type_id: RelationTypeId,
+        bindings: &[(RoleId, EntityIndex)],
+    ) -> Vec<RelationIndex> {
+        if bindings.is_empty() {
+            return Vec::new();
+        }
+        let posting_lists: Vec<Vec<RelationIndex>> = bindings
+            .iter()
+            .map(|&(role_id, entity)| self.incidence.lookup(type_id, role_id, entity))
+            .collect();
+        IncidenceIndex::intersect(&posting_lists)
+    }
+}

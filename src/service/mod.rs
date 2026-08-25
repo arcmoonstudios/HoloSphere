@@ -341,6 +341,7 @@ impl HNSQRService for StandaloneService {}
 
 pub struct ClusterService {
     coordinator: Arc<DistributedCoordinator>,
+    stream_ingestor: Option<Arc<crate::cluster::stream_ingest::AsyncLogStreamIngestor>>,
     slo_manager: Option<Arc<crate::telemetry::slo::SloManager>>,
 }
 
@@ -348,6 +349,7 @@ impl ClusterService {
     pub fn new(coordinator: Arc<DistributedCoordinator>) -> Self {
         Self {
             coordinator,
+            stream_ingestor: None,
             slo_manager: None,
         }
     }
@@ -355,6 +357,20 @@ impl ClusterService {
     pub fn with_slo(mut self, slo: Arc<crate::telemetry::slo::SloManager>) -> Self {
         self.slo_manager = Some(slo);
         self
+    }
+
+    pub fn with_stream_ingestor(
+        mut self,
+        ingestor: Arc<crate::cluster::stream_ingest::AsyncLogStreamIngestor>,
+    ) -> Self {
+        self.stream_ingestor = Some(ingestor);
+        self
+    }
+
+    pub fn stream_ingestor(
+        &self,
+    ) -> Option<&Arc<crate::cluster::stream_ingest::AsyncLogStreamIngestor>> {
+        self.stream_ingestor.as_ref()
     }
 
     pub fn coordinator(&self) -> &Arc<DistributedCoordinator> {

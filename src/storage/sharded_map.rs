@@ -117,6 +117,42 @@ impl<K: Hash + Eq + Clone, V: Clone> ShardedConcurrentMap<K, V> {
     }
 }
 
+use std::sync::Arc;
+
+impl<V: Clone> ShardedConcurrentMap<Arc<str>, V> {
+    #[inline]
+    fn shard_index_str(&self, key: &str) -> usize {
+        let mut hasher = DefaultHasher::new();
+        key.hash(&mut hasher);
+        (hasher.finish() as usize) % NUM_SHARDS
+    }
+
+    /// Gets a value by borrowed `&str` key without allocating an `Arc<str>`.
+    pub fn get_str(&self, key: &str) -> Option<V> {
+        let idx = self.shard_index_str(key);
+        let guard = self.shards[idx].read();
+        guard.get(key).cloned()
+    }
+
+    /// Checks if a `&str` key exists without allocating an `Arc<str>`.
+    pub fn contains_key_str(&self, key: &str) -> bool {
+        let idx = self.shard_index_str(key);
+        let guard = self.shards[idx].read();
+        guard.contains_key(key)
+    }
+
+    /// Removes a key by borrowed `&str`.
+    pub fn remove_str(&self, key: &str) -> Option<V> {
+        let idx = self.shard_index_str(key);
+        let mut guard = self.shards[idx].write();
+        let prev = guard.remove(key);
+        if prev.is_some() {
+            self.count.fetch_sub(1, Ordering::Relaxed);
+        }
+        prev
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

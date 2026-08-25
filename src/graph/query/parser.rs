@@ -374,6 +374,15 @@ impl<'src> Parser<'src> {
                     Some(GraphPattern::Expand { dst_alias, .. })
                     | Some(GraphPattern::OptionalExpand { dst_alias, .. }) => dst_alias.clone(),
                     Some(GraphPattern::NodePattern { alias, .. }) => alias.clone(),
+                    Some(GraphPattern::HyperMatch {
+                        antecedent_aliases,
+                        consequent_aliases,
+                        ..
+                    }) => consequent_aliases
+                        .last()
+                        .or_else(|| antecedent_aliases.last())
+                        .cloned()
+                        .unwrap_or_else(|| src_alias.clone()),
                     None => src_alias.clone(),
                 }
             } else {

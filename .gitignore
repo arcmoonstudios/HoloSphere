@@ -5,6 +5,8 @@ Cargo.lock
 *.tmp
 *.hnsqr
 *.log
+__pycache__/
+*.py[cod]
 .DS_Store
 Thumbs.db
 .vscode/*

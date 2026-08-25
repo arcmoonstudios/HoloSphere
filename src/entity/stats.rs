@@ -61,3 +61,44 @@ impl DeterministicEvidenceStats {
             && self.contradiction_count <= max_contradictions
     }
 }
+
+/// Canonical Welford online mean and variance statistical accumulator.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct OnlineStatsAccumulator {
+    pub count: usize,
+    pub mean: f64,
+    pub m2: f64,
+}
+
+impl OnlineStatsAccumulator {
+    pub fn new() -> Self {
+        Self {
+            count: 0,
+            mean: 0.0,
+            m2: 0.0,
+        }
+    }
+
+    /// Records a new sample value using Welford's recurrence relation.
+    pub fn update(&mut self, val: f64) {
+        self.count += 1;
+        let delta = val - self.mean;
+        self.mean += delta / self.count as f64;
+        let delta2 = val - self.mean;
+        self.m2 += delta * delta2;
+    }
+
+    /// Computes the sample variance.
+    pub fn variance(&self) -> f64 {
+        if self.count < 2 {
+            0.0
+        } else {
+            self.m2 / (self.count - 1) as f64
+        }
+    }
+
+    /// Computes the standard deviation.
+    pub fn std_dev(&self) -> f64 {
+        self.variance().sqrt()
+    }
+}

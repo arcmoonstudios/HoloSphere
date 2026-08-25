@@ -154,6 +154,10 @@ pub enum FilterExpr {
     In(String, Vec<MetadataValue>),
     /// Numeric range check: `min <= field <= max`.
     Range(String, f64, f64),
+    /// Spatial point-in-polygon filter: `field IN polygon`.
+    GeoWithin(String, crate::metadata::geo::GeoPolygon),
+    /// Spatial radial distance filter: `distance(field, center) <= max_km`.
+    GeoRadius(String, crate::metadata::geo::GeoPoint, f64),
     /// Boolean conjunction: all child filters must match (`A AND B AND C`).
     And(Vec<FilterExpr>),
     /// Boolean disjunction: at least one child filter must match (`A OR B OR C`).
@@ -176,6 +180,20 @@ impl FilterExpr {
     /// Helper to construct a numeric range filter.
     pub fn range(field: impl Into<String>, min_val: f64, max_val: f64) -> Self {
         FilterExpr::Range(field.into(), min_val, max_val)
+    }
+
+    /// Helper to construct a geospatial point-in-polygon filter.
+    pub fn geo_within(field: impl Into<String>, polygon: crate::metadata::geo::GeoPolygon) -> Self {
+        FilterExpr::GeoWithin(field.into(), polygon)
+    }
+
+    /// Helper to construct a geospatial radial distance filter.
+    pub fn geo_radius(
+        field: impl Into<String>,
+        center: crate::metadata::geo::GeoPoint,
+        max_km: f64,
+    ) -> Self {
+        FilterExpr::GeoRadius(field.into(), center, max_km)
     }
 
     /// Helper to construct an AND conjunction.
@@ -432,6 +450,42 @@ impl MetadataInvertedIndex {
                 if let Some(btree) = num.get(field) {
                     for (_, bm) in btree.range(min_scaled..=max_scaled) {
                         out |= bm;
+                    }
+                }
+                out
+            }
+            FilterExpr::GeoWithin(field, polygon) => {
+                let mut out = RoaringBitmap::new();
+                if let Some(field_map) = cat.get(field) {
+                    for (val_str, bm) in field_map {
+                        if let Some((lat_s, lon_s)) = val_str.split_once(',') {
+                            if let (Ok(lat), Ok(lon)) =
+                                (lat_s.trim().parse::<f64>(), lon_s.trim().parse::<f64>())
+                            {
+                                let pt = crate::metadata::geo::GeoPoint::new(lat, lon);
+                                if polygon.contains_point(&pt) {
+                                    out |= bm;
+                                }
+                            }
+                        }
+                    }
+                }
+                out
+            }
+            FilterExpr::GeoRadius(field, center, max_km) => {
+                let mut out = RoaringBitmap::new();
+                if let Some(field_map) = cat.get(field) {
+                    for (val_str, bm) in field_map {
+                        if let Some((lat_s, lon_s)) = val_str.split_once(',') {
+                            if let (Ok(lat), Ok(lon)) =
+                                (lat_s.trim().parse::<f64>(), lon_s.trim().parse::<f64>())
+                            {
+                                let pt = crate::metadata::geo::GeoPoint::new(lat, lon);
+                                if center.haversine_distance_km(&pt) <= *max_km {
+                                    out |= bm;
+                                }
+                            }
+                        }
                     }
                 }
                 out

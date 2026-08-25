@@ -592,6 +592,24 @@ impl ExecutionContext {
             // post-execution filtering by the caller.
             ScalarPredicate::Eq(PredicateValue::Literal(a), PredicateValue::Literal(b)) => a == b,
             ScalarPredicate::Ne(PredicateValue::Literal(a), PredicateValue::Literal(b)) => a != b,
+            ScalarPredicate::Lt(
+                PredicateValue::Literal(serde_json::Value::Number(a)),
+                PredicateValue::Literal(serde_json::Value::Number(b)),
+            ) => a.as_f64().unwrap_or(0.0) < b.as_f64().unwrap_or(0.0),
+            ScalarPredicate::Le(
+                PredicateValue::Literal(serde_json::Value::Number(a)),
+                PredicateValue::Literal(serde_json::Value::Number(b)),
+            ) => a.as_f64().unwrap_or(0.0) <= b.as_f64().unwrap_or(0.0),
+            ScalarPredicate::Gt(
+                PredicateValue::Literal(serde_json::Value::Number(a)),
+                PredicateValue::Literal(serde_json::Value::Number(b)),
+            ) => a.as_f64().unwrap_or(0.0) > b.as_f64().unwrap_or(0.0),
+            ScalarPredicate::Ge(
+                PredicateValue::Literal(serde_json::Value::Number(a)),
+                PredicateValue::Literal(serde_json::Value::Number(b)),
+            ) => a.as_f64().unwrap_or(0.0) >= b.as_f64().unwrap_or(0.0),
+            ScalarPredicate::IsNull(PredicateValue::Literal(v)) => v.is_null(),
+            ScalarPredicate::IsNotNull(PredicateValue::Literal(v)) => !v.is_null(),
             ScalarPredicate::And(l, r) => {
                 Self::eval_predicate(l, _morsel, _row) && Self::eval_predicate(r, _morsel, _row)
             }

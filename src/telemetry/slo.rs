@@ -60,6 +60,7 @@ pub struct SloReport {
 pub struct SloManager {
     config: SloTargetConfig,
     recent_events: RwLock<VecDeque<(u64, bool)>>, // (timestamp_ms, is_success)
+    latency_tracker: RwLock<crate::entity::stats::OnlineStatsAccumulator>,
 }
 
 impl SloManager {
@@ -67,7 +68,20 @@ impl SloManager {
         Self {
             config,
             recent_events: RwLock::new(VecDeque::with_capacity(10_000)),
+            latency_tracker: RwLock::new(crate::entity::stats::OnlineStatsAccumulator::new()),
         }
+    }
+
+    pub fn record_query_latency_ms(&self, latency_ms: f64) {
+        self.latency_tracker.write().update(latency_ms);
+    }
+
+    pub fn query_latency_mean_ms(&self) -> f64 {
+        self.latency_tracker.read().mean
+    }
+
+    pub fn query_latency_std_dev_ms(&self) -> f64 {
+        self.latency_tracker.read().std_dev()
     }
 
     pub fn record_query_event(&self, is_success: bool) {

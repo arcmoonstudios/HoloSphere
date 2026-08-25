@@ -114,9 +114,18 @@ impl AuditLogger {
         Ok(record)
     }
 
-    /// Returns the latest checkpoint hash of the audit chain.
+    /// Returns the most recent hash for external checkpoint signing.
     pub fn latest_checkpoint_hash(&self) -> String {
         self.last_hash_hex.read().clone()
+    }
+
+    /// Exports all audit records formatted according to the requested SIEM standard.
+    pub fn export_siem_events(&self, format: crate::security::siem::SiemFormat) -> Vec<String> {
+        let records = self.records.read();
+        records
+            .iter()
+            .map(|r| crate::security::siem::SiemExporter::format_record(r, format))
+            .collect()
     }
 
     /// Alias for append to log an action.

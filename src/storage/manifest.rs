@@ -27,6 +27,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::metadata::index::MetadataValue;
 use crate::proof::lutz::LutzCode;
 use crate::proof::tree::SemanticProofTree;
+use crate::rivero::bulk::BuiltRiveroState;
 use crate::{HNSQRError, HNSQRResult, VectorEmbedding};
 use memmap2::Mmap;
 use roaring::RoaringBitmap;
@@ -142,6 +143,7 @@ impl UnifiedSnapshotEngine {
         tombstones: Option<&RoaringBitmap>,
         proof_tree: Option<&SemanticProofTree>,
         lutz_codes: Option<&[LutzCode]>,
+        rivero_state: Option<&BuiltRiveroState>,
     ) -> HNSQRResult<SnapshotManifest> {
         let snapshot_dir = snapshot_dir.as_ref().to_path_buf();
         std::fs::create_dir_all(&snapshot_dir)?;
@@ -252,6 +254,21 @@ impl UnifiedSnapshotEngine {
                 .map_err(|e| HNSQRError::CorruptedSnapshot(format!("LUTz serialize error: {e}")))?;
             let sec_lutz = write_section(SectionKind::LutzCodes, &lutz_bytes, codes.len() as u64)?;
             manifest.add_section(sec_lutz);
+        }
+
+        // 7. Rivero State Section
+        if let Some(r_state) = rivero_state {
+            let r_bytes =
+                bincode::serialize(&(&r_state.descriptor, &r_state.witnesses, &r_state.addresses))
+                    .map_err(|e| {
+                        HNSQRError::CorruptedSnapshot(format!("RiveroState serialize error: {e}"))
+                    })?;
+            let sec_rivero = write_section(
+                SectionKind::RiveroState,
+                &r_bytes,
+                r_state.witnesses.len() as u64,
+            )?;
+            manifest.add_section(sec_rivero);
         }
 
         // Flush and sync data file

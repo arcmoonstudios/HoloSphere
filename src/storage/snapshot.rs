@@ -568,6 +568,20 @@ impl HNSQRIndex {
             HNSQRError::IoError(format!("Failed to rename snapshot tmp to target: {}", e))
         })?;
 
+        // Auto-emit unified manifest if saving to a structured directory
+        if let Some(parent) = path.parent() {
+            let manifest = crate::storage::manifest::SnapshotManifest::new(
+                header.generation,
+                1,
+                dimension,
+                vector_count,
+            );
+            if let Ok(manifest_bytes) = manifest.encode() {
+                let manifest_path = parent.join(format!("gen_{}.manifest", header.generation));
+                let _ = std::fs::write(&manifest_path, manifest_bytes);
+            }
+        }
+
         let total_time_ms = start_time.elapsed().as_secs_f64() * 1000.0;
         let file_size_bytes = current_file_offset;
         let throughput_mb = if total_time_ms > 0.0 {
@@ -627,6 +641,13 @@ impl HNSQRIndex {
                 HNSQRError::IoError(format!("Mmap snapshot failed: {}", e))
             })?
         };
+
+        if options.prefault == PrefaultMode::Eager {
+            let prefault_engine =
+                crate::storage::adaptive_prefault::AdaptivePrefaultEngine::default();
+            let _ = prefault_engine.warm_slice(&mmap[..HEADER_SIZE_V2 as usize], true);
+        }
+
         let mmap_creation_us = t1.elapsed().as_micros() as f64;
 
         // 1. Validate Header

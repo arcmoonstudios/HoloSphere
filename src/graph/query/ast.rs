@@ -75,6 +75,14 @@ pub enum GraphPattern {
         min_hops: u8,
         max_hops: u8,
     },
+    /// `MATCH (a, b, c)-[h:TYPE]->(d)` — N-ary hyperedge incidence pattern.
+    HyperMatch {
+        antecedent_aliases: Vec<String>,
+        rel_alias: Option<String>,
+        rel_type: Option<RelTypeId>,
+        consequent_aliases: Vec<String>,
+        direction: Direction,
+    },
 }
 
 /// Inline vector search clause (HNSQR extension).

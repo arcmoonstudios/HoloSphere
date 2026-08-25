@@ -73,7 +73,8 @@ async fn mcp_is_fail_closed_and_enforces_write_roles() {
                 "idempotency_key": "key-1",
                 "id": "fact-1",
                 "kind": "fact",
-                "content": "thermal load is reduced by liquid cooling"
+                "content": "thermal load is reduced by liquid cooling",
+                "provenance": [{"source_id": "test", "content_hash": "sha256:test"}]
             }
         }
     });
@@ -102,7 +103,8 @@ async fn rest_search_returns_evidence_without_cross_tenant_leakage() {
         "idempotency_key": "key-1",
         "id": "fact-1",
         "kind": "fact",
-        "content": "thermal load is reduced by liquid cooling"
+        "content": "thermal load is reduced by liquid cooling",
+        "provenance": [{"source_id": "test", "content_hash": "sha256:test"}]
     });
     let inserted = app
         .clone()

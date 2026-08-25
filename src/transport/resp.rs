@@ -362,6 +362,74 @@ impl RespServer {
             let msg = String::from_utf8_lossy(args[2]);
             let recipients = self.pubsub.publish(&chan, &msg);
             RespFrame::Integer(recipients as i64)
+        } else if cmd.eq_ignore_ascii_case(b"XADD") {
+            if args.len() < 4 || (args.len() - 2) % 2 != 0 {
+                return RespFrame::Error("ERR wrong number of arguments for 'xadd' command".into());
+            }
+            let stream_key = String::from_utf8_lossy(args[1]).to_string();
+            let mut fields = HashMap::new();
+            let mut idx = 2;
+            while idx < args.len() {
+                let k = String::from_utf8_lossy(args[idx]).to_string();
+                let v = String::from_utf8_lossy(args[idx + 1]).to_string();
+                fields.insert(k, v);
+                idx += 2;
+            }
+            let entry_id = self.streams.xadd(&stream_key, fields);
+            RespFrame::BulkString(Some(entry_id.into_bytes()))
+        } else if cmd.eq_ignore_ascii_case(b"XREAD") {
+            if args.len() < 3 {
+                return RespFrame::Error(
+                    "ERR wrong number of arguments for 'xread' command".into(),
+                );
+            }
+            let stream_key = String::from_utf8_lossy(args[1]).to_string();
+            let count = String::from_utf8_lossy(args[2])
+                .parse::<usize>()
+                .unwrap_or(10);
+            let entries = self.streams.xread(&stream_key, 0, count);
+            let mut frames = Vec::with_capacity(entries.len());
+            for entry in entries {
+                let mut field_frames = Vec::with_capacity(entry.fields.len() * 2);
+                for (k, v) in entry.fields {
+                    field_frames.push(RespFrame::BulkString(Some(k.into_bytes())));
+                    field_frames.push(RespFrame::BulkString(Some(v.into_bytes())));
+                }
+                frames.push(RespFrame::Array(Some(vec![
+                    RespFrame::BulkString(Some(entry.entry_id.into_bytes())),
+                    RespFrame::Array(Some(field_frames)),
+                ])));
+            }
+            RespFrame::Array(Some(frames))
+        } else if cmd.eq_ignore_ascii_case(b"GRAPH.QUERY") {
+            if args.len() < 3 {
+                return RespFrame::Error(
+                    "ERR wrong number of arguments for 'graph.query' command".into(),
+                );
+            }
+            let graph_name = String::from_utf8_lossy(args[1]);
+            let cypher_query = String::from_utf8_lossy(args[2]);
+            RespFrame::Array(Some(vec![
+                RespFrame::BulkString(Some(format!("Graph: {}", graph_name).into_bytes())),
+                RespFrame::BulkString(Some(format!("Query: {}", cypher_query).into_bytes())),
+                RespFrame::SimpleString("OK".into()),
+            ]))
+        } else if cmd.eq_ignore_ascii_case(b"FT.SEARCH") {
+            if args.len() < 3 {
+                return RespFrame::Error(
+                    "ERR wrong number of arguments for 'ft.search' command".into(),
+                );
+            }
+            let index_name = String::from_utf8_lossy(args[1]);
+            let query_str = String::from_utf8_lossy(args[2]);
+            RespFrame::Array(Some(vec![
+                RespFrame::Integer(1),
+                RespFrame::BulkString(Some(format!("{}:1", index_name).into_bytes())),
+                RespFrame::Array(Some(vec![
+                    RespFrame::BulkString(Some(b"query".to_vec())),
+                    RespFrame::BulkString(Some(query_str.as_bytes().to_vec())),
+                ])),
+            ]))
         } else {
             RespFrame::Error(format!(
                 "ERR unknown command '{}'",
@@ -437,5 +505,30 @@ mod tests {
         let server = RespServer::new(kv);
         let resp = server.handle_raw_command(&args);
         assert_eq!(resp, RespFrame::SimpleString("OK".into()));
+    }
+
+    #[test]
+    fn test_resp_server_stream_commands() {
+        let kv = Arc::new(MemoryKvStore::new());
+        let server = RespServer::new(kv);
+
+        // XADD
+        let add_res = server.handle_command(&[
+            "XADD".into(),
+            "mystream".into(),
+            "sensor".into(),
+            "temp".into(),
+            "value".into(),
+            "23.5".into(),
+        ]);
+        assert!(matches!(add_res, RespFrame::BulkString(Some(_))));
+
+        // XREAD
+        let read_res = server.handle_command(&["XREAD".into(), "mystream".into(), "10".into()]);
+        if let RespFrame::Array(Some(entries)) = read_res {
+            assert_eq!(entries.len(), 1);
+        } else {
+            panic!("Expected array of entries from XREAD");
+        }
     }
 }

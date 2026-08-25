@@ -333,7 +333,7 @@ The daemon mounts a single provider-neutral MCP endpoint at `/mcp`. Model access
 fail-closed by default. Configure `HNSQR_MODEL_READ_TOKEN`,
 `HNSQR_MODEL_WRITE_TOKEN`, or `HNSQR_MODEL_ADMIN_TOKEN`; anonymous access requires the
 explicit development-only `HNSQR_MODEL_ALLOW_ANONYMOUS=true` setting. Knowledge and
-outcome writes are idempotent and fsynced to
+outcome writes are idempotent, require provenance, and are fsynced to
 `HNSQR_DATA_DIR/model-knowledge.jsonl`, which is replayed at startup.
 
 Text-only calls use the dependency-free local lexical embedding. Production semantic
@@ -343,6 +343,29 @@ in the calling application.
 
 See [OpenAI, Gemini, and Claude Integration](docs/MODEL_API_INTEGRATION.md) for setup,
 MCP initialization, provider configuration, authorization, and embedding-space rules.
+
+For local autonomous agent use, build the native STDIO transport and register it once
+with Codex, Google Antigravity (Gemini), and Claude Code:
+
+```powershell
+cargo build --release --bin hnsqr_mcp_stdio
+.\scripts\install_agent_integrations.ps1
+```
+
+All three clients then launch the same binary, use tenant `local-agents`, and share the
+durable journal at `%LOCALAPPDATA%\HoloSphere\model-agent\model-knowledge.jsonl`. MCP
+server instructions tell each model to search for relevant prior knowledge and patterns,
+traverse relations, request evidence-backed resolutions, remember conclusions verified
+by tests or explicit confirmation, and record measured outcomes. Antigravity receives
+the narrow `mcp(holosphere/*)` allow rule; Claude pre-approves only
+`mcp__holosphere__*`. Neither client receives a global permission bypass. Codex,
+Antigravity, and Claude sessions that were already running must reload MCP servers or
+start a new session before the new tools appear.
+
+The configuration follows the official [Google Antigravity MCP](https://antigravity.google/docs/mcp/)
+and [CLI permission](https://antigravity.google/docs/cli/permissions) formats. If
+`GEMINI_API_KEY` already exists, the installer selects Antigravity CLI's `gemini`
+provider but never copies the key into a file.
 
 ---
 

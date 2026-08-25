@@ -74,3 +74,65 @@ impl ClusterTopology {
         self.epoch = self.epoch.wrapping_add(1);
     }
 }
+
+use super::world_digest::WorldStateDigest;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+/// Node liveness state in cluster topology.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum NodeLiveness {
+    Healthy,
+    Degraded,
+    Dead,
+}
+
+/// Cluster heartbeat frame carrying liveness and world state digest.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ClusterHeartbeat {
+    pub node_id: String,
+    pub term: u64,
+    pub world_digest: Option<WorldStateDigest>,
+}
+
+/// Topology manager coordinating cluster membership and anti-entropy reconciliation.
+pub struct TopologyManager {
+    pub topology: parking_lot::RwLock<ClusterTopology>,
+    pub local_digest: parking_lot::RwLock<Option<WorldStateDigest>>,
+    pub anti_entropy_triggers: AtomicUsize,
+}
+
+impl TopologyManager {
+    pub fn new(num_shards: u32) -> Self {
+        Self {
+            topology: parking_lot::RwLock::new(ClusterTopology::new(num_shards)),
+            local_digest: parking_lot::RwLock::new(None),
+            anti_entropy_triggers: AtomicUsize::new(0),
+        }
+    }
+
+    pub fn update_local_digest(&self, digest: WorldStateDigest) {
+        *self.local_digest.write() = Some(digest);
+    }
+
+    /// Handles an incoming heartbeat and triggers anti-entropy if digests diverge.
+    pub fn handle_heartbeat(&self, heartbeat: ClusterHeartbeat) -> bool {
+        if let Some(remote_digest) = &heartbeat.world_digest {
+            let local_opt = *self.local_digest.read();
+            if let Some(local_digest) = local_opt {
+                if local_digest.combined_digest != remote_digest.combined_digest {
+                    self.trigger_anti_entropy_reconciliation(&heartbeat.node_id, remote_digest);
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    pub fn trigger_anti_entropy_reconciliation(
+        &self,
+        _node_id: &str,
+        _remote_digest: &WorldStateDigest,
+    ) {
+        self.anti_entropy_triggers.fetch_add(1, Ordering::Relaxed);
+    }
+}

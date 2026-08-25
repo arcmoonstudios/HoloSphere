@@ -188,6 +188,50 @@ impl Default for MemoryKvStore {
     }
 }
 
+/// Dynamic KV-Cache page compression and retention with initial attention sinks.
+#[derive(Clone, Debug)]
+pub struct AttentionSinkKvCache {
+    pub sink_tokens: usize,
+    pub recent_tokens: usize,
+    pub cached_tokens: Vec<Vec<f32>>,
+}
+
+impl Default for AttentionSinkKvCache {
+    fn default() -> Self {
+        Self::new(4, 256)
+    }
+}
+
+impl AttentionSinkKvCache {
+    pub fn new(sink_tokens: usize, recent_tokens: usize) -> Self {
+        Self {
+            sink_tokens,
+            recent_tokens,
+            cached_tokens: Vec::new(),
+        }
+    }
+
+    /// Appends new token embeddings and preserves initial attention sinks plus recent tokens.
+    pub fn push_tokens(&mut self, new_tokens: &[Vec<f32>]) {
+        self.cached_tokens.extend_from_slice(new_tokens);
+        let max_capacity = self.sink_tokens + self.recent_tokens;
+        if self.cached_tokens.len() > max_capacity {
+            let mut pruned = Vec::with_capacity(max_capacity);
+            let sink_count = self.sink_tokens.min(self.cached_tokens.len());
+            pruned.extend_from_slice(&self.cached_tokens[..sink_count]);
+            let recent_start = self.cached_tokens.len().saturating_sub(self.recent_tokens);
+            if recent_start > sink_count {
+                pruned.extend_from_slice(&self.cached_tokens[recent_start..]);
+            }
+            self.cached_tokens = pruned;
+        }
+    }
+
+    pub fn token_count(&self) -> usize {
+        self.cached_tokens.len()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

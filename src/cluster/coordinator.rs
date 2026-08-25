@@ -39,6 +39,9 @@ pub struct DistributedCoordinator {
     active_migrations: RwLock<HashMap<u64, MigrationTask>>,
     epoch: AtomicU64,
     pub raft_cluster: Arc<RaftCluster>,
+    dr_coordinator:
+        RwLock<Option<Arc<crate::cluster::disaster_recovery::DisasterRecoveryCoordinator>>>,
+    federation_replicator: RwLock<Option<Arc<crate::cluster::federation::CrossRegionReplicator>>>,
 }
 
 impl DistributedCoordinator {
@@ -88,7 +91,23 @@ impl DistributedCoordinator {
             active_migrations: RwLock::new(HashMap::new()),
             epoch: AtomicU64::new(1),
             raft_cluster,
+            dr_coordinator: RwLock::new(None),
+            federation_replicator: RwLock::new(None),
         }
+    }
+
+    pub fn set_dr_coordinator(
+        &self,
+        dr: Arc<crate::cluster::disaster_recovery::DisasterRecoveryCoordinator>,
+    ) {
+        *self.dr_coordinator.write() = Some(dr);
+    }
+
+    pub fn set_federation_replicator(
+        &self,
+        rep: Arc<crate::cluster::federation::CrossRegionReplicator>,
+    ) {
+        *self.federation_replicator.write() = Some(rep);
     }
 
     /// Returns the shard ID responsible for the given key under the current topology.
@@ -156,6 +175,9 @@ impl DistributedCoordinator {
             })?;
 
         let receipt = receipt_res.map_err(HNSQRError::from)?;
+        if let Some(ref dr) = *self.dr_coordinator.read() {
+            dr.record_primary_mutation(receipt.applied_index);
+        }
         Ok(receipt)
     }
 

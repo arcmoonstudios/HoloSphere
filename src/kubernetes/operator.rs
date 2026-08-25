@@ -178,4 +178,49 @@ impl KubernetesOperator {
             vec!["Cluster matches desired state".to_string()],
         ))
     }
+
+    /// Plans automated TLS certificate rotation across cluster nodes without downtime.
+    pub fn plan_tls_cert_rotation(
+        spec: &HNSQRClusterSpec,
+    ) -> (OperatorLifecyclePhase, Vec<String>) {
+        (
+            OperatorLifecyclePhase::RotatingCertificates,
+            vec![
+                format!("Renew TLS secret: {:?}", spec.tls_cert_secret),
+                "Reload mTLS certificates across daemon instances".to_string(),
+                "Verify secure mutual TLS handshake on port 9090".to_string(),
+            ],
+        )
+    }
+
+    /// Plans degraded storage volume failover and PVC rebind.
+    pub fn plan_degraded_disk_replacement(
+        cluster_name: &str,
+        degraded_pod: &str,
+    ) -> (OperatorLifecyclePhase, Vec<String>) {
+        (
+            OperatorLifecyclePhase::ReplacingDegradedDisk,
+            vec![
+                format!("Cordon degraded pod {degraded_pod} on cluster {cluster_name}"),
+                "Attach fresh PersistentVolumeClaim".to_string(),
+                "Stream latest snapshot and replay WAL suffix".to_string(),
+                "Uncordon pod upon health verification".to_string(),
+            ],
+        )
+    }
+
+    /// Plans failed cluster node eviction and rebuild.
+    pub fn plan_failed_node_replacement(
+        cluster_name: &str,
+        failed_node: &str,
+    ) -> (OperatorLifecyclePhase, Vec<String>) {
+        (
+            OperatorLifecyclePhase::ReplacingFailedNode,
+            vec![
+                format!("Evict failed node {failed_node} from cluster {cluster_name}"),
+                "Provision replacement learner node".to_string(),
+                "Execute Joint Consensus Raft configuration change".to_string(),
+            ],
+        )
+    }
 }

@@ -30,6 +30,11 @@ pub enum RetrievalContract {
     HighRecall(f32),
     /// Peak throughput within a strict latency ceiling.
     Budget(Duration),
+    /// Multi-vector token late-interaction via MaxSim operator.
+    MultiVectorMaxSim {
+        token_dim: usize,
+        top_k_centroids: usize,
+    },
 }
 
 /// Query modality for multidimensional search.
@@ -140,6 +145,10 @@ impl UniversalPlanner {
         contract: RetrievalContract,
         is_mmap_cold: bool,
     ) -> ExecutionPlan {
+        if matches!(contract, RetrievalContract::MultiVectorMaxSim { .. }) {
+            return ExecutionPlan::MultiVectorMaxSim;
+        }
+
         let effective_n = filter_cardinality.unwrap_or(total_vectors);
         let crossover = Self::compute_crossover(complex_dim);
 
@@ -177,6 +186,7 @@ impl UniversalPlanner {
             RetrievalContract::Exact => (RiveroProfile::Strict, 1024),
             RetrievalContract::Certified => (RiveroProfile::Fast, 512),
             RetrievalContract::PacRelaxed { .. } => (RiveroProfile::Fast, 512),
+            RetrievalContract::MultiVectorMaxSim { .. } => (RiveroProfile::Fast, 512),
             RetrievalContract::HighRecall(r) if r >= 0.999 => (RiveroProfile::Strict, 1024),
             RetrievalContract::HighRecall(r) if r >= 0.99 => (RiveroProfile::Balanced, 768),
             RetrievalContract::HighRecall(_) => (RiveroProfile::Fast, 512),

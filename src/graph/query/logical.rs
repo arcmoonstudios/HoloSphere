@@ -66,6 +66,18 @@ pub enum LogicalPlan {
 }
 
 impl LogicalPlan {
+    /// Lowers a semantically analyzed query AST into the logical relational-algebra tree.
+    ///
+    /// This is the public AST-level planning entry point used by embedders and acceptance
+    /// tests. Text queries should normally use `QueryPlanner::compile` for the complete
+    /// parse, analyze, optimize, and physical-lowering pipeline.
+    pub fn from_ast(
+        ast: &crate::graph::query::ast::QueryAst,
+        symbols: &crate::graph::query::symbols::SymbolTable,
+    ) -> Self {
+        crate::graph::query::planner::QueryPlanner::build_logical_plan(ast, symbols)
+    }
+
     /// Returns the set of bindings produced by this plan node.
     pub fn output_bindings(&self) -> Vec<SymbolId> {
         match self {

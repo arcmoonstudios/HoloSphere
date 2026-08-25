@@ -14,4 +14,4 @@ pub mod transition;
 
 pub use decision::AdjudicationRecord;
 pub use policy::{AdjudicationDecisionCode, AdjudicationDisposition, AdjudicationPolicy};
-pub use transition::evaluate_adjudication;
+pub use transition::{evaluate_adjudication, evaluate_adjudication_with_causal};

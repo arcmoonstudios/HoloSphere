@@ -107,6 +107,22 @@ impl SemanticAnalyzer {
                         symbols.intern(ra);
                     }
                 }
+                GraphPattern::HyperMatch {
+                    antecedent_aliases,
+                    rel_alias,
+                    consequent_aliases,
+                    ..
+                } => {
+                    for ant in antecedent_aliases {
+                        symbols.intern(ant);
+                    }
+                    for cons in consequent_aliases {
+                        symbols.intern(cons);
+                    }
+                    if let Some(ra) = rel_alias {
+                        symbols.intern(ra);
+                    }
+                }
             }
         }
 

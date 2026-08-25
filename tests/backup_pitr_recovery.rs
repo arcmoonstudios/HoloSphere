@@ -72,6 +72,7 @@ fn test_full_and_incremental_backup_with_pitr() {
         None,
         None,
         None,
+        None,
     )
     .unwrap();
 

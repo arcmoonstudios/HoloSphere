@@ -265,6 +265,7 @@ fn test_phase_4_machine_readable_acceptance_oracle() {
             None,
             None,
             None,
+            None,
         )
         .unwrap();
         BackupManager::create_full_backup(&snap_dir, &backup_dir, "dr_full_1").unwrap();

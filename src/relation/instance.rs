@@ -69,4 +69,30 @@ impl DurableRelationInstance {
             fingerprint,
         }
     }
+
+    /// Zero-loss adapter constructing a canonical DurableRelationInstance from a 2-ary EdgeRecord.
+    pub fn from_graph_edge(
+        edge_id: u32,
+        edge: &crate::graph::storage::edge_delta::EdgeRecord,
+        provenance_id: ProvenanceId,
+    ) -> Self {
+        let bindings = vec![
+            DurableRoleBinding {
+                role_id: 1, // Source role
+                entity_id: edge.src_node as u64,
+            },
+            DurableRoleBinding {
+                role_id: 2, // Destination role
+                entity_id: edge.dst_node as u64,
+            },
+        ];
+        Self::new(
+            edge_id as u64,
+            edge.rel_type as u32,
+            1,
+            bindings,
+            provenance_id,
+            EpistemicStatus::Observed,
+        )
+    }
 }

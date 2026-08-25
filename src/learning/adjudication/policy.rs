@@ -44,3 +44,18 @@ pub struct AdjudicationPolicy {
     pub falsify_utility_q32: i64,
     pub rules: Vec<MetricEvaluationRule>,
 }
+
+impl Default for AdjudicationPolicy {
+    fn default() -> Self {
+        Self {
+            id: EvaluationPolicyId(1),
+            version: 1,
+            min_observations: 10,
+            min_support: 5,
+            max_contradictions: 0,
+            promote_utility_q32: 1 << 32,
+            falsify_utility_q32: 0,
+            rules: Vec::new(),
+        }
+    }
+}

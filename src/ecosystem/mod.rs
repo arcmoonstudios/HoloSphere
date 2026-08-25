@@ -53,6 +53,48 @@ pub trait HNSQRVectorStore: Send + Sync {
     ) -> HNSQRResult<Vec<FrameworkDocument>>;
 }
 
+impl HNSQRVectorStore for crate::HNSQRIndex {
+    fn add_documents(
+        &self,
+        docs: Vec<FrameworkDocument>,
+        vectors: Vec<VectorEmbedding>,
+    ) -> HNSQRResult<usize> {
+        let count = docs.len().min(vectors.len());
+        for (doc, vec) in docs.into_iter().zip(vectors).take(count) {
+            self.insert_with_metadata(doc.id, vec, doc.metadata)?;
+        }
+        Ok(count)
+    }
+
+    fn similarity_search(
+        &self,
+        query: &VectorEmbedding,
+        k: usize,
+        certified_exact: bool,
+    ) -> HNSQRResult<Vec<FrameworkDocument>> {
+        let contract = if certified_exact {
+            crate::planning::planner::RetrievalContract::Certified
+        } else {
+            crate::planning::planner::RetrievalContract::HighRecall(0.99)
+        };
+        let results = self.search_indices_with_contract(query, k, None, contract)?;
+        Ok(results
+            .into_iter()
+            .map(|(idx, score)| {
+                let node = self.get_node_by_index(idx).ok();
+                FrameworkDocument {
+                    id: node
+                        .as_ref()
+                        .map_or_else(|| idx.to_string(), |n| n.external_id.to_string()),
+                    text: String::new(),
+                    metadata: HashMap::new(),
+                    score: Some(score),
+                }
+            })
+            .collect())
+    }
+}
+
 /// LangChain integration adapter.
 pub struct LangChainAdapter<S: HNSQRVectorStore> {
     pub store: Arc<S>,

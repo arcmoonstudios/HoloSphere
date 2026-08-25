@@ -9,7 +9,7 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -154,7 +154,7 @@ pub struct EvidenceEnvelope<T> {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SearchToolRequest {
-    #[serde(default)]
+    #[serde(default, alias = "query")]
     pub query_text: Option<String>,
     #[serde(default)]
     pub query_vector: Option<Vec<f32>>,
@@ -702,6 +702,11 @@ impl ModelToolService {
         vector: Option<Vec<f32>>,
         descriptor: Option<EmbeddingDescriptor>,
     ) -> HNSQRResult<(Vec<f32>, EmbeddingDescriptor)> {
+        if vector.is_some() && descriptor.is_none() {
+            return Err(HNSQRError::InvalidRequest(
+                "an explicit embedding descriptor is required with query_vector/vector".to_string(),
+            ));
+        }
         let descriptor = descriptor.unwrap_or_default();
         descriptor.validate()?;
         let vector = match vector {
@@ -1040,7 +1045,7 @@ impl ModelToolService {
         Ok(EvidenceEnvelope {
             tenant_id: search.tenant_id,
             snapshot_lsn: search.snapshot_lsn,
-            retrieval_contract: "governed_resolution_candidates".to_string(),
+            retrieval_contract: "evidence_ranked_hypotheses".to_string(),
             certified: search.certified,
             proof_upper_bound: search.proof_upper_bound,
             content_is_untrusted: true,
@@ -1057,6 +1062,23 @@ impl ModelToolService {
         validate_identifier("idempotency_key", &request.idempotency_key)?;
         validate_identifier("attempt_id", &request.attempt_id)?;
         validate_provenance(&request.provenance)?;
+        if request.evidence_ids.is_empty() {
+            return Err(HNSQRError::InvalidRequest(
+                "at least one evidence_id is required for an empirical outcome".to_string(),
+            ));
+        }
+        let snapshot_lsn = self.store.current_lsn();
+        for evidence_id in &request.evidence_ids {
+            if self
+                .store
+                .record_at(&subject.tenant_id, evidence_id, snapshot_lsn)
+                .is_none()
+            {
+                return Err(HNSQRError::InvalidRequest(format!(
+                    "evidence_id '{evidence_id}' does not exist in this tenant snapshot"
+                )));
+            }
+        }
         if request.metrics.values().any(|value| !value.is_finite()) {
             return Err(HNSQRError::InvalidRequest(
                 "outcome metrics must be finite".to_string(),
@@ -1075,6 +1097,7 @@ impl ModelToolService {
         let (outcome, _) =
             self.store
                 .record_outcome(&subject.tenant_id, &request.idempotency_key, outcome)?;
+
         Ok(EvidenceEnvelope {
             tenant_id: subject.tenant_id.clone(),
             snapshot_lsn: outcome.commit_lsn,
@@ -1126,6 +1149,12 @@ fn validate_identifier(field: &str, value: &str) -> HNSQRResult<()> {
 }
 
 fn validate_provenance(provenance: &[ProvenanceReference]) -> HNSQRResult<()> {
+    if provenance.is_empty() {
+        return Err(HNSQRError::InvalidRequest(
+            "at least one provenance reference is required for durable knowledge or outcome writes"
+                .to_string(),
+        ));
+    }
     if provenance.len() > 1_000 {
         return Err(HNSQRError::InvalidRequest(
             "at most 1000 provenance references are allowed".to_string(),
@@ -1528,7 +1557,12 @@ mod tests {
                     successful: true,
                     evidence_ids: vec!["agreement".to_string()],
                     metrics: BTreeMap::new(),
-                    provenance: Vec::new(),
+                    provenance: vec![ProvenanceReference {
+                        source_id: "outcome-test".to_string(),
+                        uri: None,
+                        content_hash: "sha256:outcome-test".to_string(),
+                        observed_at_lsn: None,
+                    }],
                 },
             )
             .unwrap();

@@ -29,6 +29,7 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
+use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
 use crate::{NodeIndex, SimilarityScore};
@@ -47,7 +48,7 @@ pub const RIVERO_WITNESS_INLINE_DEGREE: usize = 16;
 pub const RIVERO_WITNESS_MAX_SEEDS: usize = 64;
 
 /// A candidate witness paired with its exact symmetric similarity to an owner.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct ScoredWitness {
     pub index: NodeIndex,
     pub similarity: SimilarityScore,

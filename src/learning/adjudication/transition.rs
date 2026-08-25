@@ -76,3 +76,24 @@ pub fn evaluate_adjudication(
         AdjudicationDisposition::Pending,
     )
 }
+
+/// Evaluates consolidated evidence with causal counterfactual invariance verification.
+pub fn evaluate_adjudication_with_causal(
+    summary: &EvidenceSummary,
+    current_status: EpistemicStatus,
+    policy: &AdjudicationPolicy,
+    counterfactual_invariant: bool,
+) -> (
+    EpistemicStatus,
+    AdjudicationDecisionCode,
+    AdjudicationDisposition,
+) {
+    if !counterfactual_invariant {
+        return (
+            current_status,
+            AdjudicationDecisionCode::ContextDependent,
+            AdjudicationDisposition::Pending,
+        );
+    }
+    evaluate_adjudication(summary, current_status, policy)
+}

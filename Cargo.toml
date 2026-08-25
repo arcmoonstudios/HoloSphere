@@ -187,6 +187,10 @@ name = "hnsqr_daemon"
 path = "src/bin/hnsqr_daemon.rs"
 
 [[bin]]
+name = "hnsqr_mcp_stdio"
+path = "src/bin/hnsqr_mcp_stdio.rs"
+
+[[bin]]
 name = "hnsqr_plan"
 path = "src/bin/hnsqr_plan.rs"
 

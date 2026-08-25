@@ -18,7 +18,7 @@ pub use arrow_flight::{
     ArrowFieldDescriptor, ArrowFieldType, ArrowFlightService, ArrowRecordBatchPayload,
     ArrowSchemaDescriptor,
 };
-pub use mcp::{MCP_PROTOCOL_VERSION, create_mcp_router};
+pub use mcp::{MCP_PROTOCOL_VERSION, create_mcp_router, process_mcp_payload};
 pub use model_gateway::{
     EmbeddingDescriptor, EvidenceEnvelope, KnowledgeRecord, ModelGatewayAuth, ModelKnowledgeStore,
     ModelOutcomeRecord, ModelToolService, RecordOutcomeToolRequest, RememberToolRequest,

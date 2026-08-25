@@ -1,33 +1,67 @@
 # HoloSphere — Hierarchical Navigable Semantic Query Resolver
 
-[![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 [![Rust: 2024](https://img.shields.io/badge/Rust-2024%20Edition-orange.svg)](https://www.rust-lang.org/)
-[![Tests](https://img.shields.io/badge/Tests-332%2F332%20Passing-brightgreen.svg)]()
+[![Verification](https://img.shields.io/badge/Verification-cargo%20holo--test-brightgreen.svg)](#verification--testing)
 [![Clippy](https://img.shields.io/badge/Clippy%20-D%20warnings-clean-brightgreen.svg)]()
 [![PGO: Optimized](https://img.shields.io/badge/PGO-LLVM%20Profile%20Guided-purple.svg)](docs/PROFILE_GUIDED_OPTIMIZATION.md)
 
-> **HoloSphere is a replicated universal state engine in which vector, graph, relational, temporal-memory, metadata, and multidimensional representations participate in one atomic logical history and one versioned query snapshot.**
-> It executes on bare-metal CPU/GPU hardware using AVX2/AVX-512 SIMD, complex isometric linear algebra,
-> lattice routing, admissible geometric bounds, quantized lookup tables, Raft consensus SMR,
-> durable segmented logs, and memory-mapped storage.
+> **HoloSphere is a Rust multi-model state engine with exact vector retrieval, a canonical
+> provenance-bearing knowledge hypergraph, empirical experience tracking, governed discovery,
+> and provider-neutral model access through MCP and REST.**
+
+Its storage and query engines cover vectors, metadata, property graphs, relational rows,
+agent memory, multidimensional tensors, full-text retrieval, and columnar analytics. Its
+knowledge layer gives entities, N-ary relations, evidence, outcomes, and learned operators
+durable identities and point-in-time semantics. Raft state-machine replication, segmented
+logs, memory-mapped snapshots, and pinned reads provide the shared consistency substrate.
 
 HoloSphere is designed around explicit contract-driven retrieval and unified all-or-nothing multi-model state machine replication:
 
-> **Production Retrieval Baseline**: Exhaustive contiguous AVX2/AVX-512 SIMD scan is the authoritative production retrieval implementation, providing guaranteed 100.000% Recall@10 with zero indexing artifacts.
-> **Empirical Admission Gates**: Non-brute-force indexing mechanisms (Rivero $E_8$ routing, Lutz Proof Tree traversal, and Graph ANN) are experimental research candidates evaluated strictly against the Exact SIMD baseline. Every algorithm must achieve $\ge 95\%$ (then $\ge 99\%$) Recall@10 while remaining materially faster than Exact SIMD.
-> **When a multi-model transaction is committed (`DataMutation::Batch`)**, all 5 paradigm representations (Vectors, Graphs, Relational SQL, Agent Memory, Hypercube Tensors) advance in a single atomic Raft LSN, visible under one pinned universal snapshot.
+> **Production retrieval baseline:** `RetrievalContract::Exact` is the default and executes
+> exhaustive contiguous SIMD scoring over the eligible pinned snapshot.
+>
+> **Empirical admission gates:** Rivero routing, Lutz proof-tree traversal, and graph ANN are
+> evaluated against Exact retrieval. A result is never called globally exact unless its proof
+> completes; deadline-aware APIs expose an incomplete proof explicitly.
+>
+> **Atomic operational state:** a committed `DataMutation::Batch` stages vector, property-graph,
+> relational, agent-memory, and hypercube mutations at one Raft LSN. Physical universal
+> snapshots also retain governed discovery state and evolved relation schemas at that LSN.
 
-The system unifies exact SIMD dense retrieval, continuous multi-lane coordinate folding,
-metadata filtering, segmented WAL-backed storage, Raft consensus state-machine replication,
-tenant isolation, and native Graph-RAG convergence.
+## Architecture at a Glance
+
+```text
+ Codex / Antigravity / Claude / applications
+                │  MCP STDIO • MCP HTTP • REST • QIR0 • RESP
+                ▼
+      authenticated model and service boundary
+                │
+                ├── search / traverse / resolve / remember / record_outcome
+                ▼
+ entity + N-ary relation + experience + evidence/provenance
+                │
+                ▼
+ adjudication + inference + synthesis + governed discovery
+                │
+                ▼
+ exact vectors + metadata + graph projection + SQL + memory + tensors
+                │
+                ▼
+      Raft LSNs • WAL • snapshots • audit chain
+```
+
+The layers are intentionally distinct. The property graph is a traversal projection; the
+canonical relation model is N-ary. The MCP server exposes governed knowledge operations;
+it does not replace the evidence, authorization, or admission rules underneath them.
 
 ---
 
 ## Evolutionary Knowledge Hypergraph Layer
 
 HoloSphere as a whole remains a multi-paradigm state engine. Within it, the
-`entity`, `relation`, and `learning` subsystems form an evolutionary knowledge
-hypergraph layer:
+`entity`, `relation`, `experience`, and `learning` subsystems form an evolutionary
+knowledge hypergraph layer:
 
 - Canonical relations are typed, provenance-bearing N-ary role bindings; binary
   relationships are the N=2 case and CSR/CSC graph edges are derived projections.
@@ -40,6 +74,13 @@ hypergraph layer:
   prevent N-ary fan-out and swarm echoes from multiplying confidence.
 - Retrieval marked `Certified` is resolved by a complete metric-consistent proof
   or exhaustive scan before its output can be treated as exact evidence.
+
+| Subsystem | Durable responsibility |
+| :--- | :--- |
+| [`entity`](src/entity/mod.rs) | Versioned entities, dense/sparse vectors, contexts, provenance, lifecycle and epistemic status, eligibility, and exact read snapshots |
+| [`relation`](src/relation/mod.rs) | Dynamic typed N-ary role bindings, schema versions, incidence indexes, temporal validity, and lineage-preserving binary projections |
+| [`experience`](src/experience/mod.rs) | Immutable problems, contexts, registered actions, attempts, metric schemas, raw outcomes, and point-in-time traces |
+| [`learning`](src/learning/mod.rs) | Evidence accumulation, deterministic adjudication, collective conflict-preserving consensus, inference, synthesis, integrity guards, and governed discovery |
 
 ### Governed Cross-Domain Discovery
 
@@ -94,84 +135,111 @@ validated operators into future reasoning.** It is not unrestricted self-modific
 the safety constitution and DSL primitives remain engineered, and result quality still
 depends on representative structured evidence and valid objectives.
 
+For the complete lifecycle, admission, experiment, recovery, and rollback contracts,
+see [Governed Open-Ended Discovery](docs/GOVERNED_OPEN_ENDED_DISCOVERY.md).
+
+### Inference, Resolution Synthesis, and Distillation
+
+The learning layer contains three related but separate capabilities:
+
+- The inference registry runs contract-checked inference paradigms against pinned entity
+  and relation snapshots. The `rune_evo` implementation provides analogy, causal,
+  barycentric, evolutionary, blade, closure, and composition operators with traceable
+  candidates.
+- The synthesis planner aligns a new problem with compatible historical precedents,
+  composes candidate resolutions under explicit constraints, and returns an auditable
+  plan. A candidate remains a hypothesis until its evidence and outcomes are adjudicated.
+- `AutonomousDistillationExporter` constructs chosen/rejected `DpoReasoningPair` values
+  and serializes them as JSONL for downstream DPO/RLVR tooling. It is an export boundary:
+  HoloSphere does not launch a trainer or silently update a model's weights.
+
+### Affect-Aware Retrieval Planning
+
+`AffectiveStateTensor8D` represents valence, arousal, dominance, certainty, trust,
+novelty, goal congruence, and reversibility as bounded numeric appraisal inputs. For
+eligible non-Exact indexed routes, `UniversalPlanner::plan_with_affect` applies two
+explicit policies: low reversibility forces `Certified`, while high novelty plus high
+reversibility may relax a requested `HighRecall` route to a bounded PAC plan. Exact
+retrieval remains Exact. The tensor can also be quantized to a nearest $E_8$ lattice
+point for deterministic routing; that quantization is not a claim of emotion or
+consciousness.
+
 The compact property-graph engine remains an acceleration and traversal paradigm;
 it is not the canonical ontology or provenance store.
 
 ---
 
-## Global Enterprise & Distributed Platform Architecture
+## Platform and Deployment Components
 
-```
-                                 HOLOSPHERE GLOBAL ENTERPRISE CORE
-                                                 │
- ┌──────────────────────┬────────────────────────┴─────┬────────────────────────┬──────────────────────┐
- ▼                      ▼                              ▼                        ▼                      ▼
-[SHARDED INGESTION]    [ACTIVE-ACTIVE FEDERATION]     [DBAAS CONTROL PLANE]    [ARROW FLIGHT SQL]     [OPENAPI & SWAGGER]
-ShardedConcurrentMap   FederatedRegionManager         UsageBillingMeter        ArrowFlightService     Swagger UI (/docs)
-64-Way Striped Locks   CRDT Last-Write-Wins (WAN)     VPC Peering & Metering   Arrow IPC Zero-Copy    OpenAPI 3.1 (/swagger)
-```
+### 1. 64-Way Striped Concurrent Ingestion (`src/storage/sharded_map.rs`)
 
-### 1. 64-Way Striped Lock-Free Concurrent Ingestion (`src/storage/sharded_map.rs`)
-* **`ShardedConcurrentMap<K, V>`**: 64-way bucketed striped `RwLock<HashMap>` eliminating coarse lock serialization on hot index lookups (`id_to_index`, `lutz_codes`) during high-concurrency batch write bursts.
+`ShardedConcurrentMap<K, V>` partitions keys across 64 `RwLock<HashMap>` shards,
+avoiding one global map lock without claiming a lock-free implementation.
 
-### 2. Multi-Region Active-Active Federation & Geo-Replication (`src/cluster/federation.rs`)
-* **`FederatedRegionManager` & `GeoRoutingTable`**: Proximity-aware latency router selecting nearest healthy regional cluster endpoint for 99.999% global SLA.
-* **`CrossRegionReplicator` & `VectorClockTimestamp`**: Asynchronous cross-region WAN gossip with vector Conflict-Free Replicated Data Types (CRDTs) using Last-Write-Wins (LWW) resolution.
+### 2. Multi-Region Federation Primitives (`src/cluster/federation.rs`)
 
-### 3. Managed DBaaS Cloud Control Plane & Usage Metering (`src/cluster/control_plane.rs`)
-* **`DBaaSControlPlane`**: Declarative state reconciliation matching observed regional clusters to desired replica targets.
-* **`UsageBillingMeter` & `TenantUsageReport`**: Consumption-based metering tracking query volume, storage GB-hours, and egress transfer ($0.05 / 1K queries + $0.25 / GB storage / mo).
+`FederatedRegionManager`, `GeoRoutingTable`, and `CrossRegionReplicator` provide
+regional health/latency selection, vector clocks, tombstones, and deterministic LWW
+conflict resolution. Availability targets remain a deployment responsibility.
 
-### 4. Apache Arrow Flight SQL & IPC Wire Streaming (`src/transport/arrow_flight.rs`)
-* **`ArrowFlightService`**: Zero-copy Apache Arrow IPC RecordBatch stream serialization (`ARROW1` magic framed stream) for lakehouse analytics (Databricks, Snowflake, DuckDB).
+### 3. Control Plane and Optional Usage Accounting (`src/cluster/control_plane.rs`)
 
-### 5. Interactive OpenAPI 3.1 & Swagger UI Documentation (`src/transport/swagger.rs`)
-* **`OpenApiSpecGenerator` & `SWAGGER_HTML`**: Full OpenAPI 3.1 JSON schema mounted at `/openapi.json` with embedded interactive dark-mode Swagger UI on `http://127.0.0.1:8080/docs` and `/swagger`.
+`DBaaSControlPlane` reconciles desired and observed replica state. `UsageBillingMeter`
+tracks query, storage, and egress counters for deployments that choose to use it; it is
+not involved in local model integration.
+
+### 4. Arrow-Shaped Batch Streaming (`src/transport/arrow_flight.rs`)
+
+`ArrowFlightService` defines Arrow-shaped schemas and an `ARROW1`-framed batch payload
+served by the daemon's port-50051 socket. It is currently a lightweight project
+protocol, not a claim of complete gRPC Arrow Flight SQL interoperability.
+
+### 5. OpenAPI and Swagger (`src/transport/swagger.rs`)
+
+`OpenApiSpecGenerator` and `SWAGGER_HTML` expose OpenAPI 3.1 output plus embedded
+`/docs` and `/swagger` pages.
 
 ---
 
-## The Universal 6-Paradigm Data Architecture
+## Additional Operational Engines
 
-```
-                           ┌──────────────────────────────────────────────────────────┐
-                           │          HOLOSPHERE UNIVERSAL MULTI-MODEL CORE           │
-                           │  100% Certified Proof • Native Graph • Bare-Metal Rust   │
-                           └────────────────────────────┬─────────────────────────────┘
-                                                        │
-         ┌───────────────────┬────────────────────┬─────┴──────────────┬───────────────────┬───────────────────┐
-         ▼                   ▼                    ▼                    ▼                   ▼                   ▼
-    [PARADIGM 1]        [PARADIGM 2]         [PARADIGM 3]         [PARADIGM 4]        [PARADIGM 5]        [PARADIGM 6]
-   Relational SQL       N-D Hypercubes       Linguistic Fuzzy     Columnar OLAP       Agent Memory        RESP Protocol
-   Multi-Table ACID     Volumetric Grids     Levenshtein & Stem   Vectorized Aggr     Fact Consolidation  Pub/Sub & Streams
-   (Postgres Rival)     (TileDB Rival)       (Elastic Rival)      (LanceDB Rival)     (Mem0/Zep Rival)    (Redis Wire Rival)
-```
+These are complementary query and storage engines, not six mutually exclusive
+knowledge paradigms. Vector and property-graph engines are described separately in
+the retrieval and graph sections below.
 
-### 1. Relational SQL & Multi-Table ACID Engine (`src/storage/relational_acid.rs`)
-* **Relational Tabular Engine**: Query interpreter supporting `SELECT`, `FROM`, `WHERE`, `JOIN` (inner/left outer), and `ORDER BY`.
-* **Multi-Table ACID Transactions**: Two-Phase Locking (`2PL`), MVCC snapshot isolation handles, `BEGIN`, `COMMIT`, and `ROLLBACK`.
-* **Integrity & Security**: Foreign Key referential constraints, Primary Keys, and Row-Level Security (`RLS`) tenant isolation policies.
+### Relational SQL and Multi-Table Transactions (`src/storage/relational_acid.rs`)
 
-### 2. $N$-Dimensional Hypercube & Volumetric Tensor Slicing (`src/vector/hypercube.rs`)
-* **$N$-Dimensional Coordinate Geometry ($N \ge 3$)**: Natively represents volumetric medical scans (3D MRI/CT), spatio-temporal climate grids ($T \times L \times X \times Y$), and multi-dimensional genomic expression matrices.
-* **Volumetric Subvolume Slicing**: Arbitrary `HypercubeBoundingBox` slicing, dense/sparse voxel cell coordinates, and range extractions.
+The relational interpreter supports `SELECT`, `FROM`, `WHERE`, inner/left joins, and
+`ORDER BY`, with primary/foreign keys, row-level policies, two-phase locking, and MVCC
+snapshot handles.
 
-### 3. Linguistic Full-Text Search & Fuzzy Automata (`src/retrieval/linguistic.rs`)
-* **Fuzzy Levenshtein Automata**: DFA edit-distance transducer for fast $\le k$ typo tolerance and approximate token matching.
-* **Morphological Stemmer**: Algorithmic Porter stemming across English, German, and Romance languages with stopword pruning and CJK n-gram segmentation.
-* **Phonetic Matcher**: American Soundex encoding for phonetic sound-alike search.
+### N-Dimensional Hypercubes (`src/vector/hypercube.rs`)
 
-### 4. Columnar OLAP & Embedded Raw Media Storage (`src/storage/columnar_olap.rs`)
-* **Arrow-Compatible Columnar Tables**: SIMD vectorized aggregations (`SUM`, `AVG`, `MIN`, `MAX`, `COUNT`, `VARIANCE`) filtered over vector similarity thresholds in a single vectorized pass.
-* **Embedded Raw Binary Media**: Zero-copy segmented storage for large raw media blobs (video MP4, audio WAV, PNG images) alongside vector representations with byte-range streaming.
+`HypercubeTensorSpace` stores dense or sparse cells and supports arbitrary
+`HypercubeBoundingBox` subvolume slicing and point-in-time snapshots.
 
-### 5. Autonomous Long-Term Agentic Memory Engine (`src/ecosystem/agent_memory.rs`)
-* **Autonomous Fact Consolidation Loop**: Background task that ingests multi-turn dialogue transcripts, extracts episodic facts, and reconciles contradictory beliefs automatically.
-* **Ebbinghaus Memory Decay Curve**: Evaluates memory retention ($R = e^{-\frac{t}{S}}$) weighted by recall frequency, recency, and emotional salience.
+### Linguistic, Sparse, and Hybrid Retrieval (`src/retrieval/`)
 
-### 6. Native RESP Wire Protocol, Pub/Sub & Redis Streams (`src/transport/resp.rs`)
-* **RESP2/RESP3 Wire Compatibility**: Native Redis wire protocol server listening on port 6379, allowing standard Redis clients (`redis-py`, `ioredis`, `redis-cli`) to connect directly to HoloSphere.
-* **Real-Time Pub/Sub Broker**: Channel broadcasting (`PUBLISH`, `SUBSCRIBE`, `UNSUBSCRIBE`).
-* **Redis Streams**: Stream ingestion (`XADD`, `XREAD`) with Consumer Group offset management.
+The retrieval layer includes BM25/Block-Max WAND, reciprocal-rank fusion, fuzzy
+Levenshtein matching, stemming, Soundex, stop-word pruning, and CJK n-grams.
+
+### Columnar Analytics and Embedded Media (`src/storage/columnar_olap.rs`)
+
+Typed columnar tables support similarity-threshold filtering and `SUM`, `AVG`, `MIN`,
+`MAX`, `COUNT`, and `VARIANCE`. Media records support byte-range access alongside
+their vector projections.
+
+### Long-Term Agent Memory (`src/ecosystem/agent_memory.rs`)
+
+The memory subsystem stores episodic facts, consolidates compatible facts, preserves
+contradictions for reconciliation, snapshots state, and scores retention from recency,
+recall frequency, and salience.
+
+### RESP, Pub/Sub, and Streams (`src/transport/resp.rs`)
+
+The daemon exposes RESP2/RESP3 framing on port 6379 for implemented key/value,
+Pub/Sub, and stream commands. Compatibility is command-specific; see the wire-protocol
+list below for the supported surface.
 
 ---
 
@@ -187,7 +255,7 @@ HoloSphere anchors all vector retrieval to an exhaustive, cache-aligned AVX2/AVX
     [EXACT CONTIGUOUS SIMD SCAN]       [EXPERIMENTAL INDEXING CANDIDATES]
     • Production Default Standard      • Rivero E8 Territorial Routing
     • 100.000% Recall@10 Guaranteed    • Lutz Proof Tree Bounding
-    • ~40ms on 1,000,000 Vectors       • HNSW Graph Traversal
+    • Measured by repository benches   • HNSW Graph Traversal
     • Zero Indexing Memory Overhead    • Must pass strict admission gates
                  │                                 │
                  ▼                                 ▼
@@ -196,7 +264,9 @@ HoloSphere anchors all vector retrieval to an exhaustive, cache-aligned AVX2/AVX
 
 ### 1. The Production Standard: Contiguous Exact SIMD Scan
 - **100.000% Exact Recall**: Zero false negatives, zero metric approximation artifacts, and zero indexing drift.
-- **Hardware-Saturating Performance**: Highly optimized vector streaming with cacheline prefetching and SIMD dot products (${\sim}40\text{ms}$ exhaustive evaluation on $1\text{M}$ vectors).
+- **Hardware-oriented execution**: cache-aligned vector streaming, prefetching, and
+  SIMD dot products. Latency is hardware-, dimension-, filter-, and corpus-dependent;
+  use the repository benchmarks for the target machine.
 - **Universal Default**: Automatically selected under `RetrievalContract::Exact` (system default) and when effective corpus size $N < N_{\text{cross}}(D)$.
 
 ### 2. Experimental Research Admission Gates
@@ -257,14 +327,20 @@ When effective corpus cardinality $N < N_{\text{cross}}$, HoloSphere automatical
 
 ---
 
-## Universal Embedding Model Support & Automatic 100% Recall
+## Embedding Model Compatibility and Exactness
 
-HoloSphere is architected to ingest and query embeddings from **any neural model of any dimensionality** ($64\text{D}$ to $16,384\text{D}+$, even or odd):
+HoloSphere stores even- or odd-dimensional real embeddings without tying a collection
+to a particular model provider:
 
-* **Dimension Agnostic & Lossless Ingestion**: [`ComplexWeaver`](src/vector/folding.rs) losslessly projects coordinates $\mathbb{R}^{D} \to \mathbb{C}^{\lceil D/2 \rceil}$ (padding odd vector tails with $0.0i$), preserving Euclidean norm and inner products with zero precision loss.
-* **Automatic 100.000% Recall Guarantee**: Under the default `Certified` (or `Exact`) retrieval contract, the system delivers 100% exact ground truth recall automatically without manual tuning:
-  * **$N < N_{\text{cross}}(D)$**: Automatically executes an exact AVX2/AVX-512 SIMD linear scan (100% recall, zero indexing overhead).
-  * **$N \ge N_{\text{cross}}(D)$**: Automatically widens candidate caps dynamically by a dimensional factor ($1.5\times$ to $2.5\times$) to overcome high-dimensional metric concentration, traversing the `SemanticProofTree` and proving all unresolved threats score below the Top-K threshold ($\tau$).
+- **Lossless coordinate folding:** [`ComplexWeaver`](src/vector/folding.rs) maps
+  $\mathbb{R}^{D}$ to $\mathbb{C}^{\lceil D/2 \rceil}$ and pads an odd tail with
+  `0.0i`, preserving the represented real coordinates, norms, and inner products.
+- **Embedding-space isolation:** model-facing collections pin provider, model, version,
+  dimension, normalization, and distance metric. Incompatible writes are rejected.
+- **Exact by default:** `Exact` exhaustively scores every eligible vector. `Certified`
+  may use dimensional candidate widening and the `SemanticProofTree`, but an exact claim
+  requires `DenseExactProof::globally_exact == true`; deadline-aborted proof searches are
+  explicitly non-exact.
 
 ---
 
@@ -289,11 +365,16 @@ Single-pass graph traversal checks vector similarity bounds without secondary ta
 
 | Contract | Default | Guarantees |
 | :--- | :---: | :--- |
-| `Certified` | **YES (Default)** | Mathematically proven Top-K for the pinned read snapshot via admissible spherical-cap bounds and exact resolution of all unresolved threats. |
-| `Exact` | No | Exhaustive ground-truth scan across all eligible candidates. |
+| `Exact` | **YES (Default)** | Exhaustive ground-truth scan across all eligible candidates in the pinned snapshot. |
+| `Certified` | No | Proof-tree retrieval that is exact only when all unresolved threats are resolved and the returned proof is globally exact. |
 | `PacRelaxed { epsilon, delta }` | No | $(\epsilon, \delta)$-PAC bounded relaxation under isotropic noise: $(1 - \epsilon)\text{UB}_{\text{cap}} < \tau$. |
 | `HighRecall(recall)` | No | Statistical target recall guarantee (e.g., $0.995$) with adaptive candidate expansion. |
 | `Budget(Duration)` | No | Peak throughput execution bounded by a strict timeout deadline. |
+| `MultiVectorMaxSim { .. }` | No | Token-level late interaction routed to the MaxSim execution path. |
+
+`SearchService::search_with_proof` carries `is_certified` and an optional remaining
+upper bound across service and QIR0 boundaries. Implementations without a proof retain
+the conservative default: useful results, but `is_certified == false`.
 
 ---
 
@@ -308,8 +389,24 @@ Client ACK ◄── CommitReceipt ◄── ShardStateMachine Apply ◄── Q
 ```
 
 - **Durability Invariant**: `ACK ⟹ Quorum Committed ∧ State Machine Applied`.
-- **Raft Throughput**: 32,972 writes/sec with 512 concurrent writers across a 7-node cluster ($p_{99} = 6.98\text{ms}$).
-- **Security & Multi-Tenancy Overhead**: Auth/RBAC validation in $0.108\mu\text{s}$, tamper-evident SHA-256 audit logging in $2.61\mu\text{s}$, and per-tenant quota accounting in $0.029\mu\text{s}$.
+- CRC-framed logs, mutation IDs, retry semantics, read-index barriers, and applied-index
+  receipts make durability and visibility explicit. Run the benchmark suite on the
+  intended topology for deployment-specific throughput and latency.
+
+### Snapshots, Recovery, and Semantic Conformance
+
+- `UniversalSnapshot` pins vector, property-graph, relational, agent-memory, and
+  hypercube state while retaining discovery operators, governed discovery state, and
+  evolved N-ary relation schemas at the same committed LSN.
+- `WorldStateDigest` deterministically hashes entity, relation, experience, learning,
+  and schema state while excluding rebuildable acceleration structures.
+- The semantic-kernel v1 conformance layer provides versioned canonical export/import,
+  typed errors, a golden fixture, and fail-closed version checks.
+- Snapshot attachment supports `Lazy`, `Eager`, and default `Adaptive` prefault modes.
+  Adaptive warming preserves a memory reserve, reads cgroup v1/v2 limits when present,
+  and skips cold dense-page warming when headroom is insufficient.
+- The phase 10 integrity and phase 11 conformance suites exercise recovery, world-state
+  equivalence, auditability, and compatibility boundaries.
 
 ---
 
@@ -318,8 +415,8 @@ Client ACK ◄── CommitReceipt ◄── ShardStateMachine Apply ◄── Q
 * **QIR0 Binary TCP Protocol (`:9090`)**: High-throughput async protocol supporting `OpCode::Ping`, `Insert`, `Search`, `BatchSearch`, `Stats`, and `OpCode::GraphQuery`.
 * **Model Context Protocol (`POST :8080/mcp`)**: Stateless MCP `2025-06-18` Streamable HTTP server for OpenAI, Gemini, Claude, and compatible agents. The `holosphere` server exposes tenant-isolated `search`, `traverse`, `resolve`, `remember`, and `record_outcome` tools with role checks and closed JSON schemas.
 * **Redis RESP Protocol (`:6379`)**: Native RESP2/RESP3 server with `PING`, `SET`, `GET`, `INCR`, `DEL`, `PUBLISH`, `SUBSCRIBE`, `XADD`, and `XREAD`.
-* **Apache Arrow Flight SQL (`:50051`)**: Native Arrow IPC streaming protocol for zero-copy lakehouse analytics.
-* **HTTP REST Gateway (`:8080`)**: Axum-based JSON REST API for vector collections plus `/v1/knowledge/search`, `/traverse`, `/resolve`, `/remember`, and `/outcomes`. Model responses carry a pinned LSN, proof status, and an explicit untrusted-content marker.
+* **Arrow-shaped batch socket (`:50051`)**: Project-local `ARROW1`-framed schema and batch payload; full gRPC Arrow Flight SQL compatibility is not yet claimed.
+* **HTTP REST Gateway (`:8080`)**: Axum-based JSON REST API for vector collections plus `/v1/knowledge/search`, `/traverse`, `/resolve`, `/remember`, and `/outcomes`. Human-readable metadata accepts natural JSON string, integer, float, and Boolean scalars. Model responses carry a pinned LSN, proof status, and an explicit untrusted-content marker.
 * **Embedded Web Console (`/dashboard` & `/ui`)**: Zero-dependency interactive single-page dashboard for visual graph exploration, live cluster metrics, and interactive query building.
 * **Interactive OpenAPI 3.1 & Swagger UI (`/docs` & `/swagger`)**: In-browser API exploration and testing at `http://127.0.0.1:8080/docs`.
 * **Multi-Language Client Libraries**:
@@ -344,8 +441,9 @@ in the calling application.
 See [OpenAI, Gemini, and Claude Integration](docs/MODEL_API_INTEGRATION.md) for setup,
 MCP initialization, provider configuration, authorization, and embedding-space rules.
 
-For local autonomous agent use, build the native STDIO transport and register it once
-with Codex, Google Antigravity (Gemini), and Claude Code:
+For local autonomous tool use, no public deployment is required. Build the native
+STDIO transport and register it once with Codex, Google Antigravity (Gemini), and
+Claude Code:
 
 ```powershell
 cargo build --release --bin hnsqr_mcp_stdio
@@ -354,13 +452,21 @@ cargo build --release --bin hnsqr_mcp_stdio
 
 All three clients then launch the same binary, use tenant `local-agents`, and share the
 durable journal at `%LOCALAPPDATA%\HoloSphere\model-agent\model-knowledge.jsonl`. MCP
-server instructions tell each model to search for relevant prior knowledge and patterns,
+registration uses an immutable content-hashed snapshot under `target\agent-integrations`,
+so a running client cannot lock Cargo's normal `target\release` output during upgrades.
+MCP initialization instructions tell each model to search for relevant prior knowledge and patterns,
 traverse relations, request evidence-backed resolutions, remember conclusions verified
 by tests or explicit confirmation, and record measured outcomes. Antigravity receives
 the narrow `mcp(holosphere/*)` allow rule; Claude pre-approves only
 `mcp__holosphere__*`. Neither client receives a global permission bypass. Codex,
 Antigravity, and Claude sessions that were already running must reload MCP servers or
 start a new session before the new tools appear.
+
+This registration makes the five HoloSphere tools available for autonomous selection by
+each model client within its approval policy. HoloSphere does not bypass the client or
+secretly inject itself into every prompt: the model decides when a tool is relevant, and
+the server independently enforces tenant, role, provenance, snapshot, and idempotency
+rules. Remote API applications can use the same operations through HTTPS MCP or REST.
 
 The configuration follows the official [Google Antigravity MCP](https://antigravity.google/docs/mcp/)
 and [CLI permission](https://antigravity.google/docs/cli/permissions) formats. If
@@ -371,11 +477,15 @@ provider but never copies the key into a file.
 
 ## Operational Binaries
 
-HoloSphere includes standalone production CLI binaries:
+HoloSphere includes the following standalone binaries:
 
-* **`hnsqr_daemon`**: High-performance multi-threaded search daemon (REST + QIR0 TCP + RESP + Web Dashboard + Swagger UI).
-* **`hnsqr_doctor`**: Enterprise diagnostic tool auditing host SIMD acceleration, 3-node Raft consensus health, TLS/mTLS certificate validity, frame DoS guards, WAL durability integrity, 64-way sharded ingestion maps, geo-federation CRDTs, Arrow Flight schemas, and PITR disaster-recovery readiness.
-* **`hnsqr_plan`**: Cloud capacity and infrastructure sizing tool estimating RAM, NVMe bandwidth, shard count, and expected p99 latency. *(Analytical resource projection model extending empirical micro-benchmarks to target deployments)*.
+| Binary | Purpose |
+| :--- | :--- |
+| `hnsqr_daemon` | Multi-transport service host for REST/MCP HTTP, QIR0 TCP, RESP, the port-50051 batch socket, web console, and API docs |
+| `hnsqr_mcp_stdio` | Newline-delimited JSON-RPC MCP server used directly by local Codex, Antigravity, Claude Code, and other STDIO MCP clients |
+| `hnsqr_doctor` | Host, SIMD, consensus, TLS/mTLS, frame guard, WAL, storage, federation, schema, and recovery diagnostics |
+| `hnsqr_plan` | Analytical capacity projection for memory, storage bandwidth, shard count, and expected latency |
+| `hnsqr_build_bench_db` | Utility for building reusable benchmark database artifacts |
 
 ```bash
 # Run system & cluster integrity audit
@@ -406,21 +516,28 @@ See [docs/PROFILE_GUIDED_OPTIMIZATION.md](docs/PROFILE_GUIDED_OPTIMIZATION.md) f
 ## Verification & Testing
 
 ```bash
-# Run the complete test suite across all targets
+# Read-only format, compile, lint, test, and benchmark-build gates
+cargo holo-fmt-check
+cargo holo-check
+cargo holo-clippy
 cargo holo-test
+cargo holo-bench
 
 # Run doc-tests
 cargo test --doc
 
-# Run public dataset benchmark suite
-cargo bench --bench public_dataset_benchmark
+# Focused acceptance surfaces added with the knowledge/MCP architecture
+cargo test --test evolutionary_hypergraph_and_hpc_acceptance
+cargo test --test model_api_integration
+cargo test --test mcp_stdio_integration
 
-# Strict lint verification
-cargo clippy --all-targets --all-features -- -D warnings
+# Run the public dataset benchmark suite when its dataset assets are available
+cargo bench --bench public_dataset_benchmark
 ```
 
-Test counts are intentionally not hard-coded here; the Cargo test output is the
-authoritative count as the suite evolves.
+The aliases live in [`.cargo/config.toml`](.cargo/config.toml). Test counts and
+benchmark timings are intentionally not hard-coded; current command output is the
+authority as the suite and target hardware evolve.
 
 ---
 
@@ -440,8 +557,8 @@ fn main() -> hnsqr::HNSQRResult<()> {
     let vector = VectorEmbedding::from_reals(&vec![0.042_f32; dim]).into_normalized();
     index.insert("doc-001", vector.clone())?;
 
-    // 100.000% Exact Recall Guaranteed Automatically across any dimension
-    let results = index.search_with_contract(&vector, 10, None, RetrievalContract::Certified)?;
+    // Exhaustively score every eligible vector in the current snapshot.
+    let results = index.search_with_contract(&vector, 10, None, RetrievalContract::Exact)?;
     for (id, score) in results {
         println!("Match: {id} with similarity {score}");
     }
@@ -454,8 +571,9 @@ fn main() -> hnsqr::HNSQRResult<()> {
 ## License
 
 Licensed under either of:
-* Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
-* MIT License ([LICENSE-MIT](LICENSE-MIT))
+
+- [Apache License 2.0](https://spdx.org/licenses/Apache-2.0.html)
+- [MIT License](https://spdx.org/licenses/MIT.html)
 
 at your option.
 

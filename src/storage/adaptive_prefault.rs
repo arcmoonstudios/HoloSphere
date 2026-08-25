@@ -87,7 +87,6 @@ impl AdaptivePrefaultEngine {
         self.total_warmed_bytes
             .fetch_add(slice.len(), Ordering::Relaxed);
         Ok(touched)
-
     }
 }
 

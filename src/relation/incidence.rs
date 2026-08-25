@@ -301,7 +301,6 @@ impl<'a> IncidenceTraverser<'a> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -442,6 +442,19 @@ mod tests {
         let definitions = tool_definitions();
         let tools = definitions["tools"].as_array().unwrap();
         assert_eq!(tools.len(), 5);
+        assert_eq!(
+            tools
+                .iter()
+                .map(|tool| tool["name"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            [
+                "search",
+                "traverse",
+                "resolve",
+                "remember",
+                "record_outcome"
+            ]
+        );
         assert!(tools.iter().all(|tool| {
             tool["inputSchema"]["additionalProperties"] == serde_json::Value::Bool(false)
         }));

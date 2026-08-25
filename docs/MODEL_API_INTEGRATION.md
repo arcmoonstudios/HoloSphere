@@ -39,7 +39,9 @@ cargo build --release --bin hnsqr_mcp_stdio
 ```
 
 The installer uses each client's supported user-scoped MCP configuration and points all
-three at `target\release\hnsqr_mcp_stdio.exe`. They share:
+three at the same immutable content-hashed executable snapshot under
+`target\agent-integrations`. This prevents running clients from locking Cargo's normal
+release output during an upgrade. They share:
 
 - `HNSQR_DATA_DIR=%LOCALAPPDATA%\HoloSphere\model-agent`;
 - `HNSQR_MCP_TENANT=local-agents`;

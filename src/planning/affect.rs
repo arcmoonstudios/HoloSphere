@@ -153,97 +153,76 @@ impl AffectiveStateTensor8D {
         ]
     }
 
-    /// Losslessly projects the 8D affective coordinates into the nearest point on the $E_8$ root lattice $\Lambda_8$.
+    /// Losslessly projects the 8D affective coordinates into the nearest point on the $E_8$ root lattice $\Lambda_8$
+    /// via Conway-Sloane fast quantizing.
     ///
     /// The $E_8$ lattice consists of points in $\mathbb{R}^8$ whose coordinates are either:
-    /// 1. All integers with an even sum $\sum x_i \equiv 0 \pmod 2$, or
-    /// 2. All half-integers ($k + 0.5$) with an even sum.
+    /// 1. All integers with an even sum $\sum x_i \equiv 0 \pmod 2$ ($D_8$), or
+    /// 2. All half-integers ($k + 0.5$) with an even sum ($D_8 + \tfrac{1}{2}\mathbf{1}$).
     #[must_use]
     pub fn project_to_e8(&self) -> [f32; 8] {
-        let raw = self.as_array();
-        let scale = 2.0_f32;
-        let scaled: [f32; 8] = [
-            raw[0] * scale,
-            raw[1] * scale,
-            raw[2] * scale,
-            raw[3] * scale,
-            raw[4] * scale,
-            raw[5] * scale,
-            raw[6] * scale,
-            raw[7] * scale,
-        ];
+        let x = self.as_array();
 
-        // Candidate 1: Nearest all-integer lattice point with even sum
-        let mut int_pt = [0i32; 8];
-        let mut int_diff = [0.0f32; 8];
-        let mut sum_int = 0i32;
+        // Candidate 1: Nearest point in D8 (all-integer coordinates with even sum)
+        let mut f_pt = [0.0f32; 8];
+        let mut sum_f = 0i32;
+        let mut max_err_f = -1.0f32;
+        let mut worst_idx_f = 0;
+
         for i in 0..8 {
-            int_pt[i] = scaled[i].round() as i32;
-            int_diff[i] = (scaled[i] - int_pt[i] as f32).abs();
-            sum_int += int_pt[i];
-        }
-        if (sum_int % 2).abs() != 0 {
-            // Find component with max rounding residual and flip it by 1
-            let mut worst_idx = 0;
-            let mut max_residual = -1.0f32;
-            for (i, &diff) in int_diff.iter().enumerate() {
-                if diff > max_residual {
-                    max_residual = diff;
-                    worst_idx = i;
-                }
+            let r = x[i].round();
+            let err = (x[i] - r).abs();
+            f_pt[i] = r;
+            sum_f += r as i32;
+            if err > max_err_f {
+                max_err_f = err;
+                worst_idx_f = i;
             }
-            if scaled[worst_idx] > int_pt[worst_idx] as f32 {
-                int_pt[worst_idx] += 1;
+        }
+        if (sum_f % 2).abs() != 0 {
+            if x[worst_idx_f] >= f_pt[worst_idx_f] {
+                f_pt[worst_idx_f] += 1.0;
             } else {
-                int_pt[worst_idx] -= 1;
+                f_pt[worst_idx_f] -= 1.0;
             }
         }
 
-        // Candidate 2: Nearest all-half-integer lattice point with even sum
-        let mut half_pt = [0.0f32; 8];
-        let mut half_diff = [0.0f32; 8];
-        let mut sum_half_int = 0i32;
+        // Candidate 2: Nearest point in D8 + 1/2 (all half-integer coordinates with even sum)
+        let mut g_pt = [0.0f32; 8];
+        let mut sum_g_base = 0i32;
+        let mut max_err_g = -1.0f32;
+        let mut worst_idx_g = 0;
+
         for i in 0..8 {
-            let base_half = (scaled[i] - 0.5).round();
-            half_pt[i] = base_half + 0.5;
-            half_diff[i] = (scaled[i] - half_pt[i]).abs();
-            sum_half_int += (base_half * 2.0) as i32 + 1;
-        }
-        if ((sum_half_int / 2) % 2).abs() != 0 {
-            let mut worst_idx = 0;
-            let mut max_residual = -1.0f32;
-            for (i, &diff) in half_diff.iter().enumerate() {
-                if diff > max_residual {
-                    max_residual = diff;
-                    worst_idx = i;
-                }
+            let shifted = x[i] - 0.5;
+            let r = shifted.round();
+            let err = (shifted - r).abs();
+            g_pt[i] = r + 0.5;
+            sum_g_base += r as i32;
+            if err > max_err_g {
+                max_err_g = err;
+                worst_idx_g = i;
             }
-            if scaled[worst_idx] > half_pt[worst_idx] {
-                half_pt[worst_idx] += 1.0;
+        }
+        if (sum_g_base % 2).abs() != 0 {
+            let shifted = x[worst_idx_g] - 0.5;
+            let base_val = g_pt[worst_idx_g] - 0.5;
+            if shifted >= base_val {
+                g_pt[worst_idx_g] += 1.0;
             } else {
-                half_pt[worst_idx] -= 1.0;
+                g_pt[worst_idx_g] -= 1.0;
             }
         }
 
         // Measure Euclidean distances to choose closest D8 coset
-        let mut dist_int = 0.0f32;
-        let mut dist_half = 0.0f32;
+        let mut dist_f = 0.0f32;
+        let mut dist_g = 0.0f32;
         for i in 0..8 {
-            dist_int += (scaled[i] - int_pt[i] as f32).powi(2);
-            dist_half += (scaled[i] - half_pt[i]).powi(2);
+            dist_f += (x[i] - f_pt[i]).powi(2);
+            dist_g += (x[i] - g_pt[i]).powi(2);
         }
 
-        let mut result = [0.0f32; 8];
-        if dist_int <= dist_half {
-            for i in 0..8 {
-                result[i] = int_pt[i] as f32 / scale;
-            }
-        } else {
-            for i in 0..8 {
-                result[i] = half_pt[i] / scale;
-            }
-        }
-        result
+        if dist_f <= dist_g { f_pt } else { g_pt }
     }
 }
 
@@ -279,6 +258,13 @@ mod tests {
         // Verify scaled coordinates satisfy even-sum integral or half-integral condition
         let scaled: Vec<f32> = e8_pt.iter().map(|&x| x * 2.0).collect();
         let is_all_int = scaled.iter().all(|&x| (x.round() - x).abs() < 1e-4);
-        assert!(is_all_int, "Projected point must align with D8 or D8+half coset");
+        assert!(
+            is_all_int,
+            "Projected point must align with D8 or D8+half coset"
+        );
+
+        let sum: f32 = e8_pt.iter().sum();
+        let sum_int = sum.round() as i32;
+        assert_eq!(sum_int % 2, 0, "Sum of coordinates in E8 must be even");
     }
 }

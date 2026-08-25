@@ -193,7 +193,6 @@ impl UniversalPlanner {
             AffectiveRegime::Equilibrium => contract,
         };
 
-
         // Dimensional scaling factor for metric concentration in high dimensions (e.g. 1536D, 4096D)
         let dim_multiplier = if complex_dim >= 768 {
             2.5f32 // 1536D+ real

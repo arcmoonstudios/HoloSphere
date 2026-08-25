@@ -37,7 +37,7 @@ use std::fmt;
 use crate::NodeIndex;
 
 /// Strongly-typed metadata value for inverted indexing.
-#[derive(Clone, Debug, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, PartialOrd, Serialize)]
 pub enum MetadataValue {
     /// Textual string attribute (e.g. category, author, tenant).
     String(String),
@@ -47,6 +47,84 @@ pub enum MetadataValue {
     Float(f64),
     /// Boolean flag.
     Boolean(bool),
+}
+
+impl<'de> serde::Deserialize<'de> for MetadataValue {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            struct MetadataValueVisitor;
+
+            impl<'de> serde::de::Visitor<'de> for MetadataValueVisitor {
+                type Value = MetadataValue;
+
+                fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                    formatter.write_str("a string, integer, float, or boolean metadata value")
+                }
+
+                fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E>
+                where
+                    E: serde::de::Error,
+                {
+                    Ok(MetadataValue::Boolean(v))
+                }
+
+                fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+                where
+                    E: serde::de::Error,
+                {
+                    Ok(MetadataValue::Integer(v))
+                }
+
+                fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+                where
+                    E: serde::de::Error,
+                {
+                    Ok(MetadataValue::Integer(v as i64))
+                }
+
+                fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E>
+                where
+                    E: serde::de::Error,
+                {
+                    Ok(MetadataValue::Float(v))
+                }
+
+                fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+                where
+                    E: serde::de::Error,
+                {
+                    Ok(MetadataValue::String(v.to_string()))
+                }
+
+                fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
+                where
+                    E: serde::de::Error,
+                {
+                    Ok(MetadataValue::String(v))
+                }
+            }
+
+            deserializer.deserialize_any(MetadataValueVisitor)
+        } else {
+            #[derive(Deserialize)]
+            enum TaggedMetadataValue {
+                String(String),
+                Integer(i64),
+                Float(f64),
+                Boolean(bool),
+            }
+
+            TaggedMetadataValue::deserialize(deserializer).map(|v| match v {
+                TaggedMetadataValue::String(s) => MetadataValue::String(s),
+                TaggedMetadataValue::Integer(i) => MetadataValue::Integer(i),
+                TaggedMetadataValue::Float(f) => MetadataValue::Float(f),
+                TaggedMetadataValue::Boolean(b) => MetadataValue::Boolean(b),
+            })
+        }
+    }
 }
 
 impl From<&str> for MetadataValue {

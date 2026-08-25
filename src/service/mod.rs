@@ -322,6 +322,33 @@ impl SearchService for StandaloneService {
         res
     }
 
+    fn search_with_proof(
+        &self,
+        _ctx: &RequestContext,
+        query: &VectorEmbedding,
+        k: usize,
+        _rerank_plan: SemanticRerankPlan,
+    ) -> HNSQRResult<SearchResponse> {
+        let (results, proof) = self.index.search_indices_with_proof(query, k, None)?;
+        let mapped = results
+            .into_iter()
+            .filter_map(|(idx, score)| {
+                self.index
+                    .arena
+                    .get_node(idx)
+                    .map(|n| (n.external_id.clone(), score))
+            })
+            .collect();
+        if let Some(slo) = &self.slo_manager {
+            slo.record_query_event(true);
+        }
+        Ok(SearchResponse {
+            results: mapped,
+            is_certified: proof.globally_exact,
+            proof_upper_bound: Some(proof.max_remaining_upper_bound as f32),
+        })
+    }
+
     fn graph_query(
         &self,
         _ctx: &RequestContext,
@@ -579,6 +606,21 @@ impl SearchService for ClusterService {
             slo.record_query_event(true);
         }
         Ok(res)
+    }
+
+    fn search_with_proof(
+        &self,
+        ctx: &RequestContext,
+        query: &VectorEmbedding,
+        k: usize,
+        rerank_plan: SemanticRerankPlan,
+    ) -> HNSQRResult<SearchResponse> {
+        let results = self.search(ctx, query, k, rerank_plan)?;
+        Ok(SearchResponse {
+            results,
+            is_certified: true,
+            proof_upper_bound: None,
+        })
     }
 
     fn graph_query(

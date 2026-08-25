@@ -1392,6 +1392,8 @@ pub struct SearchIntent {
     pub filter_mask: Option<Arc<roaring::RoaringBitmap>>,
     /// Exact match key-value attributes compiled to a RoaringBitmap mask before search.
     pub exact_matches: HashMap<String, String>,
+    /// Optional XyCo 8D Affective State Tensor for somatic and blast-radius gated planning.
+    pub affect: Option<crate::planning::affect::AffectiveStateTensor8D>,
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -3421,12 +3423,14 @@ impl HNSQRIndex {
         }
 
         let n = self.arena.live_len();
-        let plan = crate::planning::planner::UniversalPlanner::plan(
+        let default_affect = crate::planning::affect::AffectiveStateTensor8D::default();
+        let plan = crate::planning::planner::UniversalPlanner::plan_with_affect(
             n,
             self.dimension,
             filter_mask.map(|m| m.len() as usize),
             contract,
             self.mmap_arena.is_some(),
+            &default_affect,
         );
 
         match plan {

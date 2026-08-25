@@ -182,12 +182,8 @@ impl ColumnarOlapEngine {
         let q_comp = query.complex_data();
 
         for v in vecs.iter() {
-            let v_comp = v.complex_data();
-            let min_len = q_comp.len().min(v_comp.len());
-            let mut dot = 0.0f32;
-            for i in 0..min_len {
-                dot += q_comp[i].re * v_comp[i].re + q_comp[i].im * v_comp[i].im;
-            }
+            let ip = crate::dot_product_complex_simd(q_comp, v.complex_data());
+            let dot = ip.re;
             mask.push(dot >= similarity_threshold);
         }
 

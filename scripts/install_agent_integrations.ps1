@@ -10,7 +10,17 @@ param(
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 
-$binary = (Resolve-Path -LiteralPath $BinaryPath).Path
+$sourceBinary = (Resolve-Path -LiteralPath $BinaryPath).Path
+$binaryDigest = (Get-FileHash -LiteralPath $sourceBinary -Algorithm SHA256).Hash.ToLowerInvariant()
+$snapshotDirectory = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\target')).Path
+$snapshotDirectory = Join-Path $snapshotDirectory 'agent-integrations'
+[IO.Directory]::CreateDirectory($snapshotDirectory) | Out-Null
+$binary = Join-Path $snapshotDirectory "hnsqr_mcp_stdio-$($binaryDigest.Substring(0, 16)).exe"
+if (-not (Test-Path -LiteralPath $binary)) {
+    Copy-Item -LiteralPath $sourceBinary -Destination $binary
+} elseif ((Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash.ToLowerInvariant() -ne $binaryDigest) {
+    throw "Existing agent integration snapshot failed its content-hash check: $binary"
+}
 $environment = @(
     "HNSQR_DATA_DIR=$DataDirectory",
     "HNSQR_MCP_TENANT=$Tenant",

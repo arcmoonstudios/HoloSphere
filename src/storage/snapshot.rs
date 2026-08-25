@@ -197,15 +197,7 @@ pub enum VerificationMode {
     FullChecksums,
 }
 
-/// Prefault mode when attaching memory-mapped snapshot.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum PrefaultMode {
-    /// Rely on on-demand kernel paging (default, lowest latency attach).
-    #[default]
-    None,
-    /// Intentionally fault in memory pages during open.
-    Eager,
-}
+pub use crate::storage::adaptive_prefault::PrefaultMode;
 
 /// Options configuring snapshot restoration.
 #[derive(Clone, Copy, Debug, Default)]
@@ -642,7 +634,7 @@ impl HNSQRIndex {
             })?
         };
 
-        if options.prefault == PrefaultMode::Eager {
+        if options.prefault != PrefaultMode::Lazy {
             let prefault_engine =
                 crate::storage::adaptive_prefault::AdaptivePrefaultEngine::default();
             let _ = prefault_engine.warm_slice(&mmap[..HEADER_SIZE_V2 as usize], true);

@@ -5,7 +5,7 @@
 //!
 //! Provides native RESP2/RESP3 wire protocol parsing and serialization, enabling standard
 //! Redis clients (`redis-py`, `ioredis`, `redis-cli`) to interact directly with HoloSphere,
-//! alongside real-time Pub/Sub topic broadcasting and Redis Streams with Consumer Groups.
+//! alongside real-time Pub/Sub topic broadcasting and Redis Streams.
 /*▫~•◦------------------------------------------------------------------------------------‣
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
@@ -127,18 +127,15 @@ pub struct StreamEntry {
     pub fields: HashMap<String, String>,
 }
 
-/// Redis Streams Engine with Consumer Groups.
-#[allow(dead_code)]
+/// Redis Streams append/read engine.
 pub struct RedisStreamEngine {
     streams: RwLock<HashMap<String, VecDeque<StreamEntry>>>,
-    consumer_offsets: RwLock<HashMap<String, HashMap<String, usize>>>, // (Stream:Group) -> (Consumer -> Offset)
 }
 
 impl RedisStreamEngine {
     pub fn new() -> Self {
         Self {
             streams: RwLock::new(HashMap::new()),
-            consumer_offsets: RwLock::new(HashMap::new()),
         }
     }
 

@@ -1,4 +1,4 @@
-mod common;
+use hnsqr::bench_support as common;
 
 use std::fs;
 

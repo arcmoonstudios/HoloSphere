@@ -41,7 +41,6 @@ pub struct StreamIngestStats {
 const NUM_INGEST_SHARDS: usize = 16;
 
 /// Decoupled Streaming Ingestor with Striped Concurrent Shards.
-#[allow(dead_code)]
 pub struct AsyncLogStreamIngestor {
     shards: Vec<Mutex<VecDeque<QueuedMutation>>>,
     queue_len: AtomicUsize,

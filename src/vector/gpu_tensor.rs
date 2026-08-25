@@ -5,16 +5,15 @@
 //!
 //! Provides batched complex matrix multiplication across millions of embeddings
 //! targeting NVIDIA Tensor Cores (`cublasGemmEx` / complex FP16/FP8 representations)
-//! with pinned host memory management (`CudaPinnedMemory`) and automatic transparent
-//! fallback to AVX2/AVX-512 SIMD when GPU execution is unavailable or unconfigured.
+//! with automatic transparent fallback to AVX2/AVX-512 SIMD when GPU execution is
+//! unavailable or unconfigured.
 /*▫~•◦------------------------------------------------------------------------------------‣
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
 use num_complex::Complex32;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::VectorEmbedding;
 
@@ -49,8 +48,6 @@ pub struct GpuDeviceConfig {
     pub device_id: u32,
     /// Precision mode for complex matrix GEMM operations.
     pub precision: GpuPrecision,
-    /// Pinned host memory staging buffer size in megabytes.
-    pub pinned_memory_pool_mb: usize,
     /// Batch threshold for dispatching to GPU (below this, CPU SIMD is faster due to PCIe latency).
     pub gpu_batch_threshold: usize,
     /// Enable asynchronous stream overlap for host-to-device transfers.
@@ -62,53 +59,16 @@ impl Default for GpuDeviceConfig {
         Self {
             device_id: 0,
             precision: GpuPrecision::Fp16,
-            pinned_memory_pool_mb: 256,
             gpu_batch_threshold: 1024,
             async_stream_overlap: true,
         }
     }
 }
 
-/// Pinned host memory allocator wrapper ensuring zero-copy DMA transfers.
-#[allow(dead_code)]
-pub struct CudaPinnedMemory {
-    capacity_bytes: usize,
-    allocated_bytes: AtomicU64,
-    is_active: AtomicBool,
-}
-
-impl CudaPinnedMemory {
-    pub fn new(capacity_mb: usize) -> Self {
-        Self {
-            capacity_bytes: capacity_mb * 1024 * 1024,
-            allocated_bytes: AtomicU64::new(0),
-            is_active: AtomicBool::new(true),
-        }
-    }
-
-    pub fn allocate_complex_buffer(&self, count: usize) -> Option<Vec<Complex32>> {
-        let size = count * std::mem::size_of::<Complex32>();
-        let current = self.allocated_bytes.load(Ordering::Relaxed);
-        if current + size as u64 <= self.capacity_bytes as u64 {
-            self.allocated_bytes
-                .fetch_add(size as u64, Ordering::Relaxed);
-            Some(Vec::with_capacity(count))
-        } else {
-            None
-        }
-    }
-
-    pub fn capacity_bytes(&self) -> usize {
-        self.capacity_bytes
-    }
-}
-
 /// GPU Tensor Core Accelerator providing batched complex matrix multiplication.
-#[allow(dead_code)]
 pub struct GpuTensorAccelerator {
     config: GpuDeviceConfig,
     active_device: GpuExecutionDevice,
-    pinned_memory: Arc<CudaPinnedMemory>,
     total_gemm_ops: AtomicU64,
     total_vectors_evaluated: AtomicU64,
 }
@@ -116,8 +76,6 @@ pub struct GpuTensorAccelerator {
 impl GpuTensorAccelerator {
     /// Initializes the accelerator, detecting available GPU hardware.
     pub fn new(config: GpuDeviceConfig) -> Self {
-        let pinned_memory = Arc::new(CudaPinnedMemory::new(config.pinned_memory_pool_mb));
-
         // Check for CUDA environment availability; transparently default to CPU SIMD when absent
         let active_device = if std::env::var("HNSQR_ENABLE_CUDA").is_ok() {
             GpuExecutionDevice::Cuda {
@@ -133,7 +91,6 @@ impl GpuTensorAccelerator {
         Self {
             config,
             active_device,
-            pinned_memory,
             total_gemm_ops: AtomicU64::new(0),
             total_vectors_evaluated: AtomicU64::new(0),
         }

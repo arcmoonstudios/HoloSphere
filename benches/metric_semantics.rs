@@ -1,4 +1,4 @@
-mod common;
+use hnsqr::bench_support as common;
 
 use common::generate_realistic_text_corpus;
 use hnsqr::VectorEmbedding;

@@ -26,11 +26,8 @@ use crate::{HNSQRError, HNSQRResult, NodeIndex};
 /// Owns the mutable graph generation and catalogs; applies committed mutations.
 pub struct GraphMutationApplier {
     generation: Arc<RwLock<GraphGeneration>>,
-    /// Retained for catalog snapshot serialisation and future label-resolution
-    /// queries from GDS / query layers; suppresses `dead_code` lint.
-    #[allow(dead_code)]
+    /// Retained for catalog snapshot serialisation and label-resolution queries.
     label_catalog: Arc<LabelCatalog>,
-    #[allow(dead_code)]
     rel_catalog: Arc<RelTypeCatalog>,
     /// External ID → internal `NodeIndex` lookup.
     node_id_map: RwLock<HashMap<String, NodeIndex>>,

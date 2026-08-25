@@ -1,14 +1,17 @@
-#![allow(dead_code)]
+//! Shared data, fixtures, and snapshot loaders for HoloSphere benchmark targets.
+//!
+//! Kept in a module directory to preserve the crate's root-layout invariant.
 
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use hnsqr::metadata::index::MetadataValue;
-use hnsqr::rivero::RiveroProfile;
-use hnsqr::vector::folding::ComplexWeaver;
-use hnsqr::{HNSQRIndex, NodeIndex, VectorEmbedding};
+use crate::metadata::index::MetadataValue;
+use crate::rivero::RiveroProfile;
+use crate::storage::snapshot::SnapshotOpenOptions;
+use crate::vector::folding::ComplexWeaver;
+use crate::{HNSQRIndex, NodeIndex, VectorEmbedding};
 use num_complex::Complex32;
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
@@ -397,16 +400,13 @@ pub fn open_prebuilt_index(
         corpus.len()
     ));
     require_prebuilt_snapshot(&snap_path);
-    let index = HNSQRIndex::open_snapshot_v2(
-        &snap_path,
-        hnsqr::storage::snapshot::SnapshotOpenOptions::default(),
-    )
-    .unwrap_or_else(|error| {
-        panic!(
-            "invalid prebuilt benchmark database {}: {error}",
-            snap_path.display()
-        )
-    });
+    let index = HNSQRIndex::open_snapshot_v2(&snap_path, SnapshotOpenOptions::default())
+        .unwrap_or_else(|error| {
+            panic!(
+                "invalid prebuilt benchmark database {}: {error}",
+                snap_path.display()
+            )
+        });
     index.freeze_rivero_routing();
     index
 }

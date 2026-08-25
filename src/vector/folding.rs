@@ -433,9 +433,6 @@ struct SearchRequest {
     filter: Option<FilterExpr>,
     #[serde(default = "default_certified")]
     certified_exact: bool,
-    #[serde(default)]
-    #[allow(dead_code)]
-    consistency: Option<crate::consensus::read_index::ReadConsistency>,
 }
 
 fn default_k() -> usize {

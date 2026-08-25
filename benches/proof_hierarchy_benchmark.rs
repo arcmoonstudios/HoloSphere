@@ -10,7 +10,7 @@
 //!   - Memory traffic (L0/L1 bytes vs Full-Vector bytes touched)
 //!   - Latency distribution (p50 / p95 / p99) and speedup vs brute-force exact.
 
-mod common;
+use hnsqr::bench_support as common;
 
 use std::time::Instant;
 
@@ -28,28 +28,18 @@ struct HierarchyExperiment {
     k: usize,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct HierarchyResult {
     d_real: usize,
     n_corpus: usize,
     exact_recall: f64,
-    leaf_avg_theta_deg: f32,
-
     region_pruned_pct: f64,
     l0_pruned_pct: f64,
     l1_pruned_pct: f64,
     exact_simd_pct: f64,
 
-    l0_slack_median: f32,
-    l0_slack_p95: f32,
-    l1_slack_median: f32,
-    l1_slack_p95: f32,
-
     full_vector_bytes_touched: usize,
     p50_us: f64,
-    p95_us: f64,
-    p99_us: f64,
     speedup_vs_bf: f64,
 }
 
@@ -348,19 +338,12 @@ fn run_hierarchy_experiment(exp: &HierarchyExperiment) -> HierarchyResult {
         d_real: exp.d_real,
         n_corpus: exp.n_corpus,
         exact_recall,
-        leaf_avg_theta_deg,
         region_pruned_pct,
         l0_pruned_pct,
         l1_pruned_pct,
         exact_simd_pct,
-        l0_slack_median,
-        l0_slack_p95,
-        l1_slack_median,
-        l1_slack_p95,
         full_vector_bytes_touched: avg_exact_bytes,
         p50_us,
-        p95_us,
-        p99_us,
         speedup_vs_bf: speedup,
     }
 }

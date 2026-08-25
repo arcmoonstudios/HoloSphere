@@ -1,4 +1,4 @@
-mod common;
+use hnsqr::bench_support as common;
 
 use std::time::Instant;
 
@@ -15,17 +15,14 @@ fn percentile(mut latencies: Vec<f64>, p: f64) -> f64 {
     latencies[idx]
 }
 
-#[allow(dead_code)]
 struct PipelineResult {
     real_dim: usize,
     complex_dim: usize,
     base_p50_us: f64,
     base_p95_us: f64,
-    base_p99_us: f64,
     base_qps: f64,
     pipe_p50_us: f64,
     pipe_p95_us: f64,
-    pipe_p99_us: f64,
     pipe_qps: f64,
     speedup: f64,
     l0_time_us: f64,
@@ -33,14 +30,11 @@ struct PipelineResult {
     exact_time_us: f64,
     evals_p50: usize,
     evals_p95: usize,
-    evals_worst: usize,
     raw_bytes: usize,
     l0_bytes: usize,
     l1_bytes: usize,
     exact_bytes: usize,
-    total_lutz_bytes: usize,
     bw_reduction: f64,
-    top10_match: bool,
 }
 
 fn run_pipeline_benchmark(
@@ -138,16 +132,13 @@ fn run_pipeline_benchmark(
     sorted_evals.sort_unstable();
     let p50_evals = sorted_evals[((sorted_evals.len() as f64 - 1.0) * 0.50).round() as usize];
     let p95_evals = sorted_evals[((sorted_evals.len() as f64 - 1.0) * 0.95).round() as usize];
-    let worst_evals = sorted_evals[sorted_evals.len() - 1];
 
     let base_p50 = percentile(base_latencies.clone(), 50.0);
     let base_p95 = percentile(base_latencies.clone(), 95.0);
-    let base_p99 = percentile(base_latencies.clone(), 99.0);
     let base_qps = 1_000_000.0 / base_p50.max(0.1);
 
     let pipe_p50 = percentile(pipe_latencies.clone(), 50.0);
     let pipe_p95 = percentile(pipe_latencies.clone(), 95.0);
-    let pipe_p99 = percentile(pipe_latencies.clone(), 99.0);
     let pipe_qps = 1_000_000.0 / pipe_p50.max(0.1);
 
     let speedup = base_p50 / pipe_p50.max(0.1);
@@ -167,16 +158,16 @@ fn run_pipeline_benchmark(
     let total_lutz_bytes = l0_bytes + l1_bytes + exact_bytes;
     let bw_reduction = raw_total_bytes as f64 / total_lutz_bytes.max(1) as f64;
 
+    assert!(all_match, "LUTz certification diverged from exact Top-10");
+
     PipelineResult {
         real_dim,
         complex_dim,
         base_p50_us: base_p50,
         base_p95_us: base_p95,
-        base_p99_us: base_p99,
         base_qps,
         pipe_p50_us: pipe_p50,
         pipe_p95_us: pipe_p95,
-        pipe_p99_us: pipe_p99,
         pipe_qps,
         speedup,
         l0_time_us: percentile(l0_times, 50.0),
@@ -184,14 +175,11 @@ fn run_pipeline_benchmark(
         exact_time_us: percentile(exact_times, 50.0),
         evals_p50: p50_evals,
         evals_p95: p95_evals,
-        evals_worst: worst_evals,
         raw_bytes: raw_total_bytes,
         l0_bytes,
         l1_bytes,
         exact_bytes,
-        total_lutz_bytes,
         bw_reduction,
-        top10_match: all_match,
     }
 }
 

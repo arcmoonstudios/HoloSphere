@@ -8,7 +8,7 @@
 //!   - |GT ∩ (raw - vote)|: GT neighbors dropped by cap truncation
 //!   - |GT ∩ (witness - raw)|: GT neighbors discovered outside raw territory by witnesses
 
-mod common;
+use hnsqr::bench_support as common;
 
 use std::collections::HashSet;
 use std::time::Instant;
@@ -43,7 +43,6 @@ impl RunConfig {
 }
 
 #[derive(Debug, Clone, Default)]
-#[allow(dead_code)]
 struct MetricSummary {
     c_addr: f64,
     raw_recall_10: f64,
@@ -52,13 +51,8 @@ struct MetricSummary {
     gt_dropped_by_cap: f64,
     gt_escaped_via_witness: f64,
     raw_unique_cands: f64,
-    vote_selected_cands: f64,
-    post_witness_cands: f64,
     gt_raw_mean_rank: f64,
-    gt_raw_p95_rank: f64,
-    resident_scans: f64,
     total_lat_p50_us: f64,
-    total_lat_p95_us: f64,
 }
 
 #[inline]
@@ -132,11 +126,7 @@ fn evaluate_geometry(
     let mut gt_escaped_via_witness_vec = Vec::with_capacity(num_queries);
 
     let mut raw_cands_counts = Vec::with_capacity(num_queries);
-    let mut vote_cands_counts = Vec::with_capacity(num_queries);
-    let mut post_witness_cands_counts = Vec::with_capacity(num_queries);
     let mut gt_voted_ranks = Vec::new();
-
-    let mut total_resident_scans = 0usize;
     let mut total_times = Vec::with_capacity(num_queries);
 
     for (q_idx, query) in queries.iter().enumerate() {
@@ -152,9 +142,8 @@ fn evaluate_geometry(
         let mut vote_selected_set: HashSet<NodeIndex> = HashSet::new();
         let mut selected_candidates: Vec<NodeIndex> = Vec::new();
         let mut voted_slots_ranked: Vec<NodeIndex> = Vec::new();
-        let mut route_diag = None;
 
-        territory.with_voted_candidates_config(&addr, &rivero_cfg, |cands, voted, diag| {
+        territory.with_voted_candidates_config(&addr, &rivero_cfg, |cands, voted, _diag| {
             for v in voted {
                 raw_set.insert(v.slot);
                 voted_slots_ranked.push(v.slot);
@@ -163,11 +152,7 @@ fn evaluate_geometry(
                 vote_selected_set.insert(c);
             }
             selected_candidates.extend_from_slice(cands);
-            route_diag = Some(diag);
         });
-
-        let diag = route_diag.unwrap();
-        total_resident_scans += diag.resident_scans;
 
         // Verify Set Consistency & Hard Assertions
         let raw_hits = gt.iter().filter(|id| raw_set.contains(id)).count();
@@ -232,8 +217,6 @@ fn evaluate_geometry(
 
         // Record Candidate Universe Counts
         raw_cands_counts.push(raw_set.len());
-        vote_cands_counts.push(vote_selected_set.len());
-        post_witness_cands_counts.push(post_witness_set.len());
 
         // Stage 4: Exact Rerank over post_witness_set
         let mut final_ranked: Vec<(NodeIndex, f32)> = post_witness_set
@@ -269,8 +252,6 @@ fn evaluate_geometry(
         0.0
     };
 
-    let gt_p95_rank = percentile(&mut gt_voted_ranks, 95.0);
-
     let mut total_times_copy = total_times.clone();
     MetricSummary {
         c_addr: cfg.c_addr(),
@@ -280,14 +261,8 @@ fn evaluate_geometry(
         gt_dropped_by_cap: dropped_by_cap_avg * 100.0,
         gt_escaped_via_witness: escaped_via_witness_avg * 100.0,
         raw_unique_cands: raw_cands_counts.iter().sum::<usize>() as f64 / num_queries as f64,
-        vote_selected_cands: vote_cands_counts.iter().sum::<usize>() as f64 / num_queries as f64,
-        post_witness_cands: post_witness_cands_counts.iter().sum::<usize>() as f64
-            / num_queries as f64,
         gt_raw_mean_rank: gt_mean_rank,
-        gt_raw_p95_rank: gt_p95_rank,
-        resident_scans: total_resident_scans as f64 / num_queries as f64,
         total_lat_p50_us: percentile(&mut total_times_copy, 50.0),
-        total_lat_p95_us: percentile(&mut total_times_copy, 95.0),
     }
 }
 

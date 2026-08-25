@@ -1,4 +1,4 @@
-mod common;
+use hnsqr::bench_support as common;
 
 use common::{BenchScale, DEFAULT_BENCH_SEED, open_prebuilt_snapshot_v2};
 use hnsqr::rivero::{AdaptivePolicy, RiveroProfile};

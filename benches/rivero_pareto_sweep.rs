@@ -44,29 +44,16 @@ struct Workload {
     ground_truth: Vec<Vec<(NodeIndex, SimilarityScore)>>,
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Debug)]
 struct SweepResult {
-    config: RiveroConfig,
-    workload_name: String,
     recall_at_1: f64,
     recall_at_10: f64,
-    recall_at_100: f64,
-    mrr: f64,
     ndcg_at_10: f64,
     avg_scans: f64,
-    max_scans: usize,
-    scan_ceiling: usize,
-    scan_saturation_pct: f64,
-    avg_admissions: f64,
-    avg_candidates: f64,
-    latency_mean_us: f64,
     latency_p50_us: f64,
-    latency_p95_us: f64,
-    latency_p99_us: f64,
 }
 
-mod common;
+use hnsqr::bench_support as common;
 
 fn load_real_workload(name: &str, count: usize, dim: usize, query_count: usize) -> Workload {
     let (base_path, query_path, _) = common::find_best_matching_dataset(dim);
@@ -198,13 +185,8 @@ fn evaluate_configuration(
     let mut latencies_us: Vec<f64> = Vec::with_capacity(workload.queries.len());
     let mut top1_matches = 0;
     let mut recall_at_10_sum = 0.0;
-    let mut recall_at_100_sum = 0.0;
-    let mut mrr_sum = 0.0;
     let mut ndcg_sum = 0.0;
     let mut scan_count_sum = 0usize;
-    let mut max_scans = 0usize;
-    let mut admission_count_sum = 0usize;
-    let mut candidate_count_sum = 0usize;
 
     for (q_idx, query) in workload.queries.iter().enumerate() {
         let gt = &workload.ground_truth[q_idx];
@@ -217,22 +199,12 @@ fn evaluate_configuration(
         latencies_us.push(elapsed_us);
 
         scan_count_sum += diag.resident_scans;
-        max_scans = max_scans.max(diag.resident_scans);
-        admission_count_sum += diag.resident_reads;
-        candidate_count_sum += diag.unique_candidates;
 
         // Recall@1
         if let (Some(top_ret), Some(top_gt)) = (results.first(), gt.first())
             && top_ret.0 == top_gt.0
         {
             top1_matches += 1;
-        }
-
-        // MRR of top GT
-        if let Some(top_gt) = gt.first()
-            && let Some(pos) = results.iter().position(|r| r.0 == top_gt.0)
-        {
-            mrr_sum += 1.0 / ((pos + 1) as f64);
         }
 
         // Recall@10
@@ -244,38 +216,20 @@ fn evaluate_configuration(
             .count();
         recall_at_10_sum += (ret_10_hits as f64) / (gt_10_set.len().max(1) as f64);
 
-        // Recall@100 (in candidate set)
-        let gt_100_set: HashSet<NodeIndex> = gt.iter().take(100).map(|g| g.0).collect();
-        let ret_100_hits = results.iter().filter(|r| gt_100_set.contains(&r.0)).count();
-        recall_at_100_sum += (ret_100_hits as f64) / (gt_100_set.len().max(1) as f64);
-
         // NDCG@10
         ndcg_sum += calculate_ndcg(&results, gt, K_BENCH);
     }
 
     latencies_us.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let q_count = workload.queries.len() as f64;
-    let scan_ceiling = rivero_cfg.resident_scan_bound();
     let avg_scans = (scan_count_sum as f64) / q_count;
 
     SweepResult {
-        config: *rivero_cfg,
-        workload_name: workload.name.clone(),
         recall_at_1: (top1_matches as f64) / q_count,
         recall_at_10: recall_at_10_sum / q_count,
-        recall_at_100: recall_at_100_sum / q_count,
-        mrr: mrr_sum / q_count,
         ndcg_at_10: ndcg_sum / q_count,
         avg_scans,
-        max_scans,
-        scan_ceiling,
-        scan_saturation_pct: (avg_scans / (scan_ceiling.max(1) as f64)) * 100.0,
-        avg_admissions: (admission_count_sum as f64) / q_count,
-        avg_candidates: (candidate_count_sum as f64) / q_count,
-        latency_mean_us: latencies_us.iter().sum::<f64>() / q_count,
         latency_p50_us: latencies_us[(latencies_us.len() * 50) / 100],
-        latency_p95_us: latencies_us[(latencies_us.len() * 95) / 100],
-        latency_p99_us: latencies_us[(latencies_us.len() * 99) / 100],
     }
 }
 

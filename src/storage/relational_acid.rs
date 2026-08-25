@@ -88,7 +88,6 @@ pub enum TransactionState {
 }
 
 /// Transaction record tracking modified rows and locked resources.
-#[allow(dead_code)]
 pub struct AcidTransaction {
     pub transaction_id: u64,
     pub state: TransactionState,

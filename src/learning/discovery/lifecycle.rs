@@ -1257,13 +1257,3 @@ fn audit_hash(
 const fn q32(numerator: usize, denominator: usize) -> i64 {
     ((numerator as i128 * (1i128 << 32)) / denominator as i128) as i64
 }
-
-#[allow(dead_code)]
-fn _roots_are_explicit(roots: &BTreeSet<EmpiricalRootId>) -> bool {
-    !roots.is_empty()
-}
-
-#[allow(dead_code)]
-fn _contexts_are_explicit(contexts: &BTreeSet<FeatureId>) -> bool {
-    !contexts.is_empty()
-}

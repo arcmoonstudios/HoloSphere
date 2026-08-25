@@ -7,7 +7,7 @@
 //!   4. Exact SIMD escalation rate (% corpus evaluated exactly)
 //!   5. End-to-End Latency vs Brute Force Exact Scan across D_real in [384, 1536, 4096]
 
-mod common;
+use hnsqr::bench_support as common;
 
 use std::time::Instant;
 
@@ -25,16 +25,13 @@ struct ExperimentConfig {
 }
 
 #[derive(Debug, Clone, Default)]
-#[allow(dead_code)]
 struct BenchmarkResult {
     d_real: usize,
     n_corpus: usize,
     exact_recall: f64,
-    regions_pruned_pct: f64,
     vectors_pruned_by_region_pct: f64,
     lutz_l0_pruned_pct: f64,
     exact_simd_evals_pct: f64,
-    brute_force_lat_us: f64,
     proof_lat_us: f64,
     speedup: f64,
 }
@@ -255,11 +252,9 @@ fn run_experiment(exp: &ExperimentConfig) -> BenchmarkResult {
         d_real: exp.d_real,
         n_corpus: exp.n_corpus,
         exact_recall,
-        regions_pruned_pct,
         vectors_pruned_by_region_pct,
         lutz_l0_pruned_pct,
         exact_simd_evals_pct,
-        brute_force_lat_us: bf_lat_p50,
         proof_lat_us: proof_lat_p50,
         speedup,
     }

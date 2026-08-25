@@ -3,7 +3,6 @@ use std::time::Instant;
 
 use hnsqr::rivero::{RiveroBulkBuilder, RiveroProfile};
 use hnsqr::{HNSQRConfig, HNSQRIndex, RiveroAddress, VectorEmbedding};
-use num_complex::Complex32;
 use rayon::prelude::*;
 
 const SEED: u64 = 0x5249_5645_524f_2026;
@@ -61,12 +60,7 @@ struct AuditRow {
     empty_routes: usize,
 }
 
-#[allow(dead_code)]
-fn normalized(values: Vec<Complex32>) -> VectorEmbedding {
-    VectorEmbedding::from_complex(values).normalize()
-}
-
-mod common;
+use hnsqr::bench_support as common;
 
 fn generate_master(
     count: usize,

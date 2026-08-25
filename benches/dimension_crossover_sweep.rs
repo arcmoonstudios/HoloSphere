@@ -1,4 +1,4 @@
-mod common;
+use hnsqr::bench_support as common;
 
 use std::time::Instant;
 
@@ -18,10 +18,6 @@ struct DimCrossoverResult {
     real_dim: usize,
     complex_dim: usize,
     measured_crossover: usize,
-    #[allow(dead_code)]
-    exact_latency_at_cross: f64,
-    #[allow(dead_code)]
-    rivero_latency_at_cross: f64,
 }
 
 fn measure_point(n: usize, complex_dim: usize, num_queries: usize) -> (f64, f64) {
@@ -193,8 +189,6 @@ fn main() {
             real_dim: real_d,
             complex_dim: complex_d,
             measured_crossover: n_cross,
-            exact_latency_at_cross: e_lat,
-            rivero_latency_at_cross: r_lat,
         });
 
         println!(

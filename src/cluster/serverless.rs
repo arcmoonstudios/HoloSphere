@@ -43,10 +43,8 @@ pub struct EphemeralWorker {
 }
 
 /// Serverless Query Router and Ephemeral Worker Pool coordinator.
-#[allow(dead_code)]
 pub struct ServerlessQueryRouter {
     workers: RwLock<HashMap<String, EphemeralWorker>>,
-    min_idle_workers_per_tenant: usize,
     worker_lease_duration: Duration,
     total_routed_queries: AtomicU64,
     total_scale_events: AtomicU64,
@@ -54,11 +52,10 @@ pub struct ServerlessQueryRouter {
 }
 
 impl ServerlessQueryRouter {
-    /// Instantiates the serverless router with lease and pooling policies.
-    pub fn new(min_idle_workers: usize, lease_duration: Duration) -> Self {
+    /// Instantiates the serverless router with its worker lease policy.
+    pub fn new(lease_duration: Duration) -> Self {
         Self {
             workers: RwLock::new(HashMap::new()),
-            min_idle_workers_per_tenant: min_idle_workers,
             worker_lease_duration: lease_duration,
             total_routed_queries: AtomicU64::new(0),
             total_scale_events: AtomicU64::new(0),
@@ -156,7 +153,7 @@ mod tests {
 
     #[test]
     fn test_serverless_query_router_lifecycle() {
-        let router = ServerlessQueryRouter::new(1, Duration::from_secs(300));
+        let router = ServerlessQueryRouter::new(Duration::from_secs(300));
         let worker1 = router.acquire_worker_for_query("tenant-alpha", 42).unwrap();
         assert_eq!(router.active_worker_count(), 1);
 

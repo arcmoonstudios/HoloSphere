@@ -25,7 +25,7 @@
     clippy::field_reassign_with_default
 )]
 
-mod common;
+use hnsqr::bench_support as common;
 
 use std::collections::HashSet;
 use std::sync::Arc;

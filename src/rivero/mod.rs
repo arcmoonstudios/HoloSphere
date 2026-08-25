@@ -41,9 +41,6 @@ pub use witness::{
 /// Number of roots in the canonical E8 root system.
 pub const E8_ROOT_COUNT: usize = 240;
 
-#[allow(dead_code)]
-const E8_ROOT_LAST_ID: u8 = 239;
-
 /// Top-root count used at insert time. Each node is registered in C(7,3) = 35 cells.
 pub const INSERT_TOP_ROOTS: usize = 7;
 
@@ -1182,18 +1179,6 @@ pub(crate) struct CellSlots {
 }
 
 impl CellSlots {
-    #[allow(dead_code)]
-    #[inline]
-    pub(crate) fn insert(&mut self, key: u64, fine_code: u32, slot: NodeIndex) -> bool {
-        self.insert_with_limits(
-            key,
-            fine_code,
-            slot,
-            RIVERO_CELL_CAPACITY,
-            RIVERO_CELL_AFFINITY_ELITES,
-        )
-    }
-
     #[inline]
     pub(crate) fn insert_with_limits(
         &mut self,
@@ -2734,11 +2719,23 @@ mod tests {
 
         let mut forward = CellSlots::default();
         for &(slot, code) in &residents {
-            forward.insert(KEY, code, slot);
+            forward.insert_with_limits(
+                KEY,
+                code,
+                slot,
+                RIVERO_CELL_CAPACITY,
+                RIVERO_CELL_AFFINITY_ELITES,
+            );
         }
         let mut reverse = CellSlots::default();
         for &(slot, code) in residents.iter().rev() {
-            reverse.insert(KEY, code, slot);
+            reverse.insert_with_limits(
+                KEY,
+                code,
+                slot,
+                RIVERO_CELL_CAPACITY,
+                RIVERO_CELL_AFFINITY_ELITES,
+            );
         }
 
         assert_eq!(std::mem::size_of::<CellResident>(), 8);

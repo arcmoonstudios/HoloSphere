@@ -58,6 +58,8 @@ use thiserror::Error;
 use tracing::{info, instrument, trace, warn};
 
 /// Capacity Planning & Infrastructure Sizing.
+#[doc(hidden)]
+pub mod bench_support;
 pub mod capacity;
 /// Distributed Cluster Control Plane & Partition Sharding.
 pub mod cluster;
@@ -911,7 +913,7 @@ unsafe fn dot_product_complex_avx2_dual(a: &[Complex32], b: &[Complex32]) -> Com
 }
 
 #[inline]
-#[allow(dead_code)]
+#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
 fn dot_product_complex_scalar_unrolled(a: &[Complex32], b: &[Complex32]) -> Complex32 {
     let len = a.len().min(b.len());
     let a_slice = &a[..len];

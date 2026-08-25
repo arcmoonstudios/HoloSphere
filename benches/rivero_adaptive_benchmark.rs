@@ -44,7 +44,7 @@ struct Workload {
     ground_truth: Vec<Vec<(NodeIndex, SimilarityScore)>>,
 }
 
-mod common;
+use hnsqr::bench_support as common;
 
 fn load_real_workload(name: &str, n: usize, d: usize, q_count: usize) -> Workload {
     let (base_path, query_path, _) = common::find_best_matching_dataset(d);
@@ -147,7 +147,6 @@ fn calculate_ndcg(
     if idcg > 0.0 { dcg / idcg } else { 0.0 }
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Debug, Default)]
 struct BenchmarkResult {
     recall_at_1: f64,
@@ -155,9 +154,7 @@ struct BenchmarkResult {
     ndcg_at_10: f64,
     latency_p50_us: f64,
     latency_p95_us: f64,
-    latency_p99_us: f64,
     avg_scans: f64,
-    avg_exact_scores: f64,
     pct_fast: f64,
     pct_balanced: f64,
     pct_strict: f64,
@@ -171,7 +168,6 @@ fn evaluate_adaptive_bounded(index: &HNSQRIndex, workload: &Workload) -> Benchma
     let mut recall_at_10_sum = 0.0;
     let mut ndcg_sum = 0.0;
     let mut scan_count_sum = 0usize;
-    let mut exact_eval_sum = 0usize;
 
     let mut count_fast = 0usize;
     let mut count_balanced = 0usize;
@@ -191,7 +187,6 @@ fn evaluate_adaptive_bounded(index: &HNSQRIndex, workload: &Workload) -> Benchma
         latencies_us.push(elapsed);
 
         scan_count_sum += diag.cumulative_resident_scans;
-        exact_eval_sum += diag.cumulative_exact_scores;
 
         match diag.final_profile {
             RiveroProfile::Fast => count_fast += 1,
@@ -238,9 +233,7 @@ fn evaluate_adaptive_bounded(index: &HNSQRIndex, workload: &Workload) -> Benchma
         ndcg_at_10: ndcg_sum / n,
         latency_p50_us: latencies_us[(latencies_us.len() as f64 * 0.50) as usize],
         latency_p95_us: latencies_us[(latencies_us.len() as f64 * 0.95) as usize],
-        latency_p99_us: latencies_us[(latencies_us.len() as f64 * 0.99) as usize],
         avg_scans: (scan_count_sum as f64) / n,
-        avg_exact_scores: (exact_eval_sum as f64) / n,
         pct_fast: ((count_fast as f64) / n) * 100.0,
         pct_balanced: ((count_balanced as f64) / n) * 100.0,
         pct_strict: ((count_strict as f64) / n) * 100.0,
@@ -259,7 +252,6 @@ fn evaluate_adaptive_hybrid(index: &HNSQRIndex, workload: &Workload) -> Benchmar
     let mut recall_at_10_sum = 0.0;
     let mut ndcg_sum = 0.0;
     let mut scan_count_sum = 0usize;
-    let mut exact_eval_sum = 0usize;
 
     let mut count_fast = 0usize;
     let mut count_balanced = 0usize;
@@ -279,7 +271,6 @@ fn evaluate_adaptive_hybrid(index: &HNSQRIndex, workload: &Workload) -> Benchmar
         latencies_us.push(elapsed);
 
         scan_count_sum += diag.cumulative_resident_scans;
-        exact_eval_sum += diag.cumulative_exact_scores;
 
         match diag.final_profile {
             RiveroProfile::Fast => count_fast += 1,
@@ -323,9 +314,7 @@ fn evaluate_adaptive_hybrid(index: &HNSQRIndex, workload: &Workload) -> Benchmar
         ndcg_at_10: ndcg_sum / n,
         latency_p50_us: latencies_us[(latencies_us.len() as f64 * 0.50) as usize],
         latency_p95_us: latencies_us[(latencies_us.len() as f64 * 0.95) as usize],
-        latency_p99_us: latencies_us[(latencies_us.len() as f64 * 0.99) as usize],
         avg_scans: (scan_count_sum as f64) / n,
-        avg_exact_scores: (exact_eval_sum as f64) / n,
         pct_fast: ((count_fast as f64) / n) * 100.0,
         pct_balanced: ((count_balanced as f64) / n) * 100.0,
         pct_strict: ((count_strict as f64) / n) * 100.0,
@@ -344,7 +333,6 @@ fn evaluate_strict_reference(index: &HNSQRIndex, workload: &Workload) -> Benchma
     let mut recall_at_10_sum = 0.0;
     let mut ndcg_sum = 0.0;
     let mut scan_count_sum = 0usize;
-    let mut exact_eval_sum = 0usize;
 
     for (q_idx, query) in workload.queries.iter().enumerate() {
         let gt = &workload.ground_truth[q_idx];
@@ -357,7 +345,6 @@ fn evaluate_strict_reference(index: &HNSQRIndex, workload: &Workload) -> Benchma
         latencies_us.push(elapsed);
 
         scan_count_sum += diag.resident_scans;
-        exact_eval_sum += diag.exact_score_evaluations;
 
         if let (Some(top_ret), Some(top_gt)) = (results.first(), gt.first())
             && top_ret.0 == top_gt.0
@@ -383,9 +370,7 @@ fn evaluate_strict_reference(index: &HNSQRIndex, workload: &Workload) -> Benchma
         ndcg_at_10: ndcg_sum / n,
         latency_p50_us: latencies_us[(latencies_us.len() as f64 * 0.50) as usize],
         latency_p95_us: latencies_us[(latencies_us.len() as f64 * 0.95) as usize],
-        latency_p99_us: latencies_us[(latencies_us.len() as f64 * 0.99) as usize],
         avg_scans: (scan_count_sum as f64) / n,
-        avg_exact_scores: (exact_eval_sum as f64) / n,
         pct_fast: 0.0,
         pct_balanced: 0.0,
         pct_strict: 100.0,
@@ -434,9 +419,7 @@ fn evaluate_graph_only(index: &HNSQRIndex, workload: &Workload) -> BenchmarkResu
         ndcg_at_10: ndcg_sum / n,
         latency_p50_us: latencies_us[(latencies_us.len() as f64 * 0.50) as usize],
         latency_p95_us: latencies_us[(latencies_us.len() as f64 * 0.95) as usize],
-        latency_p99_us: latencies_us[(latencies_us.len() as f64 * 0.99) as usize],
         avg_scans: 0.0,
-        avg_exact_scores: 0.0,
         pct_fast: 0.0,
         pct_balanced: 0.0,
         pct_strict: 0.0,

@@ -76,8 +76,6 @@ fn compute_brute_force_ground_truth_parallel(
 
 struct QuerySample {
     recall_pct: f64,
-    #[allow(dead_code)]
-    top1_delta: f32,
     latency: Duration,
     passed: bool,
 }
@@ -196,7 +194,6 @@ fn evaluate_corpus_full(
 
         samples.push(QuerySample {
             recall_pct,
-            top1_delta,
             latency: elapsed,
             passed,
         });

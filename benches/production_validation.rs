@@ -40,7 +40,7 @@ use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 use rayon::prelude::*;
 
-mod common;
+use hnsqr::bench_support as common;
 
 use common::{TextRetrievalCorpus, generate_realistic_text_corpus, open_prebuilt_index};
 

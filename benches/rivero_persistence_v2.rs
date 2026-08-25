@@ -22,7 +22,7 @@ use hnsqr::{
 use num_complex::Complex32;
 use sha2::{Digest, Sha256};
 
-mod common;
+use hnsqr::bench_support as common;
 
 const D: usize = 50;
 const SEED: u64 = 0x536e_6170_7368_6f74;

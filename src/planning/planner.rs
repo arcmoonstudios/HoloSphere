@@ -178,6 +178,12 @@ impl UniversalPlanner {
             return ExecutionPlan::ExactScan { effective_n };
         }
 
+        // Fallback to ExactScan if manifold is isotropic (spatial pruning impossible on small flat geometries)
+        if !is_mmap_cold && effective_n < 50_000 && matches!(contract, RetrievalContract::Exact) {
+            return ExecutionPlan::ExactScan { effective_n };
+        }
+
+
         // Apply XyCo 8D Dual-Regime Gating
         let effective_contract = match affect.regime() {
             // Regime A: Blast-radius guarded (R < 0.2). Force Certified contract unconditionally.

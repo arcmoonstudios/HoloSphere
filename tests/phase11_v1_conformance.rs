@@ -59,17 +59,18 @@ fn test_phase11_golden_upgrade_and_conformance_corpus() {
 #[test]
 fn test_phase11_unsupported_version_fails_closed() {
     let mut future_archive = create_v1_golden_fixture();
-    future_archive.format_version = 2; // Future v2 format
+    future_archive.format_version = CANONICAL_EXPORT_VERSION + 1; // Future unsupported format
 
     let result = future_archive.import_validate();
     assert_eq!(
         result,
         Err(KernelError::UnsupportedVersion {
             expected: CANONICAL_EXPORT_VERSION,
-            actual: 2,
+            actual: CANONICAL_EXPORT_VERSION + 1,
         })
     );
 }
+
 
 /// 11.5: Canonical Export / Import Equivalence Invariant
 #[test]

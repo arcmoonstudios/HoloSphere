@@ -61,7 +61,8 @@ fn test_kms_envelope_encryption_roundtrip() {
         .generate_data_key("arn:aws:kms:us-east-1:123456789012:key/backup-key")
         .unwrap();
     assert_eq!(plain_dek.len(), 32);
-    assert_eq!(enc_dek.len(), 32);
+    assert_eq!(enc_dek.len(), 60); // 12-byte nonce + 32-byte ciphertext + 16-byte GCM tag
+
 
     let decrypted = kms
         .decrypt_data_key(

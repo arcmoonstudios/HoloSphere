@@ -3866,7 +3866,27 @@ impl HNSQRIndex {
                     all_scored.push((cand, score));
                 }
 
+                // Filter-Aware Adaptive Expansion: If high-selectivity filter starved candidates, expand probe budget
+                if filter_mask.is_some() && all_scored.len() < k && current_profile != RiveroProfile::Strict {
+                    let expanded_budget = target_config.cell_budget * 2;
+                    let mut expanded_config = target_config;
+                    expanded_config.cell_budget = expanded_budget;
+                    expanded_config.simhash_query_probes = (expanded_config.simhash_query_probes * 2).min(64);
+                    route_state.expand_to_config(&self.rivero_index, &address, expanded_config);
+                    for extra in route_state.current_voted.iter().skip(selected_cap).take(selected_cap) {
+                        let cand = extra.slot;
+                        if !visited.is_visited(cand, epoch) && self.arena.is_live(cand) && filter_mask.unwrap().contains(cand) {
+                            visited.mark_visited(cand, epoch);
+                            let v = self.arena.get_vector_slice(cand);
+                            let norm_sq = self.arena.get_norm_squared(cand);
+                            let score = self.similarity_score_slices_with_metric(query_data, v, query_norm_sq, norm_sq, dist_fn);
+                            all_scored.push((cand, score));
+                        }
+                    }
+                }
+
                 // Witness expansion dynamically scaled to stage profile
+
                 let (stage_seeds, stage_second_seeds, stage_degree) = match current_profile {
                     RiveroProfile::Fast => (
                         witness_seed_limit.min(12),

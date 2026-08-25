@@ -168,17 +168,20 @@ export class HNSQRClient {
     return h;
   }
 
+export interface SearchOptions {
+  k?: number;
+  filter?: Record<string, unknown>;
+  retrievalContract?: "exact" | "certified" | "high_recall" | "auto" | "rivero" | "hnsw" | string;
+  certifiedExact?: boolean;
+}
+
   public async search(
     collection: string,
     vector: number[],
-    options: {
-      k?: number;
-      filter?: Record<string, unknown>;
-      certifiedExact?: boolean;
-    } = {}
+    options: SearchOptions = {}
   ): Promise<SearchResult[]> {
     const k = options.k ?? 10;
-    const certifiedExact = options.certifiedExact ?? true;
+    const retrievalContract = options.retrievalContract ?? (options.certifiedExact ? "certified" : "exact");
     let lastError: Error | undefined;
 
     for (let attempt = 0; attempt < this.maxRetries; attempt++) {
@@ -187,16 +190,21 @@ export class HNSQRClient {
       const url = `${endpoint}/v1/collections/${collection}/search`;
 
       try {
+        const bodyPayload: Record<string, unknown> = {
+          vector,
+          k,
+          filter: options.filter,
+          retrieval_contract: retrievalContract,
+          consistency: this.readConsistency,
+        };
+        if (options.certifiedExact !== undefined) {
+          bodyPayload.certified_exact = options.certifiedExact;
+        }
+
         const res = await fetch(url, {
           method: "POST",
           headers: this.headers(),
-          body: JSON.stringify({
-            vector,
-            k,
-            filter: options.filter,
-            certified_exact: certifiedExact,
-            consistency: this.readConsistency,
-          }),
+          body: JSON.stringify(bodyPayload),
           signal: AbortSignal.timeout(this.timeoutMs),
         });
 
@@ -231,18 +239,24 @@ export class HNSQRClient {
     collection: string,
     queryText: string,
     k = 10,
-    certifiedExact = true
+    retrievalContract = "exact",
+    certifiedExact?: boolean
   ): Promise<SearchResult[]> {
     const endpoint = this.selectEndpoint(false);
     const url = `${endpoint}/v1/collections/${collection}/search`;
+    const bodyPayload: Record<string, unknown> = {
+      query_text: queryText,
+      k,
+      retrieval_contract: certifiedExact ? "certified" : retrievalContract,
+    };
+    if (certifiedExact !== undefined) {
+      bodyPayload.certified_exact = certifiedExact;
+    }
+
     const res = await fetch(url, {
       method: "POST",
       headers: this.headers(),
-      body: JSON.stringify({
-        query_text: queryText,
-        k,
-        certified_exact: certifiedExact,
-      }),
+      body: JSON.stringify(bodyPayload),
       signal: AbortSignal.timeout(this.timeoutMs),
     });
     if (!res.ok) {

@@ -353,7 +353,9 @@ pub use retrieval::hybrid::{
 };
 pub use retrieval::multivector::{MultiVectorEmbedding, MultiVectorIndex};
 pub use retrieval::performance_trial::{
-    AdmissionGateStatus, BenchmarkRecord, RetrievalTrial, evaluate_admission_gates,
+    AdmissionGateStatus, BenchmarkRecord, BenchmarkRunIdentity, CertifiedEvidence,
+    HnswBuildDescriptor, HnswSearchDescriptor, RetrievalTrial, TrialValidationError,
+    evaluate_admission_gates,
 };
 pub use retrieval::sparse::{InvertedPostingList, SparseInvertedIndex, SparseVector};
 pub use rivero::{
@@ -1186,15 +1188,31 @@ impl VectorEmbedding {
 /// High-level query execution plan and automatic small-corpus crossover strategy.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SearchPlan {
-    /// Automatically choose between Exact scan and Rivero candidate routing based on live corpus size.
+    /// Force exact scan across all live nodes (production authoritative default).
     #[default]
-    Auto,
-    /// Force exact scan across all live nodes (optimal for small corpora).
     Exact,
+    /// Automatically choose between Exact scan and candidate routing based on live corpus size (explicit experimental).
+    Auto,
     /// Force Rivero candidate routing (Fast/Balanced/Strict).
     Rivero,
-    /// Classical HNSW graph traversal.
+    /// Classical HNSW graph traversal (conventional candidate/visited heaps, no superposition).
+    HnswClassical,
+    /// HoloGraph Superposition graph traversal.
+    GraphSuperposition,
+    /// Legacy alias for GraphSuperposition / HnswClassical.
+    #[serde(alias = "GraphOnly")]
     GraphOnly,
+}
+
+/// Detailed execution work diagnostics for graph search and traversal telemetry.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GraphSearchDiagnostics {
+    pub visited_nodes: u64,
+    pub distance_evaluations: u64,
+    pub edges_examined: u64,
+    pub candidate_pushes: u64,
+    pub candidate_pops: u64,
+    pub exact_reranks: u64,
 }
 
 /// Distance metric used for vector similarity comparison in the HNSQR graph.
@@ -1295,6 +1313,8 @@ pub struct HNSQRConfig {
     /// Setting this is the recommended mitigation for P99 tail-latency expansion on
     /// high-entropy isotropic query distributions.
     pub certified_query_timeout_ms: Option<u64>,
+    /// Optional deterministic construction seed for reproducible graph level generation.
+    pub construction_seed: Option<u64>,
 }
 
 impl Default for HNSQRConfig {
@@ -1308,7 +1328,7 @@ impl Default for HNSQRConfig {
             level_multiplier: 1.0 / (m as f32).ln().max(1.0),
             max_elements: 100_000,
             distance_function: DistanceFunction::Cosine,
-            search_plan: SearchPlan::Auto,
+            search_plan: SearchPlan::Exact,
             exact_scan_threshold: 0,
             superposition_beam_width: 8,
             attention_temperature: 0.15,
@@ -1333,6 +1353,7 @@ impl Default for HNSQRConfig {
             rivero_address_config: RiveroAddressConfig::default(),
             rivero_fallback_on_underfill: true,
             certified_query_timeout_ms: None,
+            construction_seed: None,
         }
     }
 }
@@ -2145,9 +2166,18 @@ impl HNSQRIndex {
         self.similarity_score_slices_with_metric(q, v, q_norm_sq, v_norm_sq, dist_fn)
     }
 
-    fn generate_random_level(&self, config: &HNSQRConfig) -> usize {
-        let mut rng = thread_rng();
-        let r: f32 = rng.random::<f32>().max(1e-9);
+    fn generate_random_level(&self, config: &HNSQRConfig, seed_entropy: u64) -> usize {
+        let r: f32 = if let Some(seed) = config.construction_seed {
+            use std::hash::{Hash, Hasher};
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            seed.hash(&mut hasher);
+            seed_entropy.hash(&mut hasher);
+            let h = hasher.finish();
+            ((h as f64) / (u64::MAX as f64)).max(1e-9) as f32
+        } else {
+            let mut rng = thread_rng();
+            rng.random::<f32>().max(1e-9)
+        };
         let ml = if config.level_multiplier > 0.0 && config.level_multiplier < 10.0 {
             config.level_multiplier
         } else {
@@ -2545,7 +2575,8 @@ impl HNSQRIndex {
             let new_node_level = if cfg.rivero_enabled && !rivero_graph_fallback {
                 0
             } else {
-                self.generate_random_level(&cfg)
+                let slot_entropy = self.arena.live_len() as u64;
+                self.generate_random_level(&cfg, slot_entropy)
             };
             (
                 new_node_level,
@@ -2632,11 +2663,11 @@ impl HNSQRIndex {
                 node_index,
             );
         }
-        let lutz_code = crate::proof::lutz::LutzCode::encode(
-            &VectorEmbedding::from_complex(data.to_vec()),
-            true,
-        );
-        {
+        if rivero_enabled {
+            let lutz_code = crate::proof::lutz::LutzCode::encode(
+                &VectorEmbedding::from_complex(data.to_vec()),
+                true,
+            );
             let mut lutz_guard = self.lutz_codes.write();
             if lutz_guard.len() <= node_index as usize {
                 lutz_guard.resize(node_index as usize + 1, None);
@@ -2699,6 +2730,7 @@ impl HNSQRIndex {
                 l,
                 1,
                 None,
+                None,
             );
             if let Some(best) = candidates.first() {
                 current_ep = best.index;
@@ -2718,6 +2750,7 @@ impl HNSQRIndex {
                 current_ep_sim,
                 l,
                 ef_construction,
+                None,
                 None,
             );
 
@@ -2908,6 +2941,7 @@ impl HNSQRIndex {
         level: usize,
         ef: usize,
         filter_mask: Option<&roaring::RoaringBitmap>,
+        mut diagnostics: Option<&mut GraphSearchDiagnostics>,
     ) -> Vec<Candidate> {
         let total_nodes = self.arena.len();
         if ef == 0 || total_nodes == 0 {
@@ -2940,6 +2974,9 @@ impl HNSQRIndex {
                 index: entry_point,
                 similarity: entry_sim,
             });
+            if let Some(d) = diagnostics.as_deref_mut() {
+                d.candidate_pushes += 1;
+            }
 
             results_heap.push(WorstResultCandidate(Candidate {
                 index: entry_point,
@@ -2952,6 +2989,9 @@ impl HNSQRIndex {
                 let mut pool = pool_cell.borrow_mut();
                 let epoch = pool.next_epoch(total_nodes);
                 pool.mark_visited(entry_point, epoch);
+                if let Some(d) = diagnostics.as_deref_mut() {
+                    d.visited_nodes += 1;
+                }
 
                 while !candidate_queue.is_empty() {
                     if results_heap.len() >= ef {
@@ -2967,6 +3007,9 @@ impl HNSQRIndex {
                     current_batch.clear();
                     for _ in 0..base_beam_width {
                         if let Some(cand) = candidate_queue.pop() {
+                            if let Some(d) = diagnostics.as_deref_mut() {
+                                d.candidate_pops += 1;
+                            }
                             current_batch.push(cand);
                         } else {
                             break;
@@ -2996,6 +3039,9 @@ impl HNSQRIndex {
                             temp_conns.clear();
                             cand_node.connections_at(level, temp_conns);
                             for &neighbor_idx in temp_conns.iter() {
+                                if let Some(d) = diagnostics.as_deref_mut() {
+                                    d.edges_examined += 1;
+                                }
                                 if !pool.is_visited(neighbor_idx, epoch) {
                                     if let Some(mask) = filter_mask {
                                         if !mask.contains(neighbor_idx) {
@@ -3003,6 +3049,9 @@ impl HNSQRIndex {
                                         }
                                     }
                                     pool.mark_visited(neighbor_idx, epoch);
+                                    if let Some(d) = diagnostics.as_deref_mut() {
+                                        d.visited_nodes += 1;
+                                    }
                                     let n_slice = self.arena.get_vector_slice(neighbor_idx);
                                     prefetch_vector(n_slice);
                                     neighbor_candidates.push((neighbor_idx, neighbor_idx as usize));
@@ -3029,6 +3078,9 @@ impl HNSQRIndex {
                             query_norm_sq,
                             n_norm_sq,
                         );
+                        if let Some(d) = diagnostics.as_deref_mut() {
+                            d.distance_evaluations += 1;
+                        }
 
                         let total_score = if use_superposition {
                             let ip_beam = dot_product_complex_simd(psi_beam_data, n_slice);
@@ -3079,6 +3131,9 @@ impl HNSQRIndex {
                                 similarity: fidelity,
                             };
                             candidate_queue.push(cand);
+                            if let Some(d) = diagnostics.as_deref_mut() {
+                                d.candidate_pushes += 1;
+                            }
                             results_heap.push(WorstResultCandidate(cand));
                             if results_heap.len() > ef {
                                 results_heap.pop();
@@ -3099,8 +3154,138 @@ impl HNSQRIndex {
             let mut final_results: Vec<Candidate> = results_heap.drain().map(|w| w.0).collect();
             final_results.sort_by(|a, b| {
                 b.similarity
-                    .partial_cmp(&a.similarity)
-                    .unwrap_or(Ordering::Equal)
+                    .total_cmp(&a.similarity)
+                    .then_with(|| a.index.cmp(&b.index))
+            });
+            final_results
+        })
+    }
+
+    /// Zero-allocation classical HNSW graph traversal without phase superposition or attention beams.
+    fn hnsw_classical_search_layer_raw(
+        &self,
+        query_data: &[Complex32],
+        query_norm_sq: f32,
+        entry_point: NodeIndex,
+        entry_sim: SimilarityScore,
+        level: usize,
+        ef: usize,
+        filter_mask: Option<&roaring::RoaringBitmap>,
+        mut diagnostics: Option<&mut GraphSearchDiagnostics>,
+    ) -> Vec<Candidate> {
+        let total_nodes = self.arena.len();
+        if ef == 0 || total_nodes == 0 {
+            return Vec::new();
+        }
+
+        THREAD_SEARCH_SCRATCHPAD.with(|pad_cell| {
+            let mut pad_guard = pad_cell.borrow_mut();
+            let pad: &mut SearchScratchpad = &mut pad_guard;
+            pad.reset(self.dimension);
+            let SearchScratchpad {
+                candidate_queue,
+                results_heap,
+                temp_conns,
+                ..
+            } = pad;
+
+            let entry_cand = Candidate {
+                index: entry_point,
+                similarity: entry_sim,
+            };
+            candidate_queue.push(entry_cand);
+            if let Some(d) = diagnostics.as_deref_mut() {
+                d.candidate_pushes += 1;
+            }
+            results_heap.push(WorstResultCandidate(entry_cand));
+
+            THREAD_VISITED_POOL.with(|pool_cell| {
+                let mut pool = pool_cell.borrow_mut();
+                let epoch = pool.next_epoch(total_nodes);
+                pool.mark_visited(entry_point, epoch);
+                if let Some(d) = diagnostics.as_deref_mut() {
+                    d.visited_nodes += 1;
+                }
+
+                while let Some(current_candidate) = candidate_queue.pop() {
+                    if let Some(d) = diagnostics.as_deref_mut() {
+                        d.candidate_pops += 1;
+                    }
+
+                    let worst_sim = if results_heap.len() >= ef {
+                        results_heap.peek().map(|w| w.0.similarity).unwrap_or(f32::NEG_INFINITY)
+                    } else {
+                        f32::NEG_INFINITY
+                    };
+
+                    if results_heap.len() >= ef && current_candidate.similarity < worst_sim {
+                        break;
+                    }
+
+                    if let Some(cand_node) = self.arena.get_node(current_candidate.index) {
+                        temp_conns.clear();
+                        cand_node.connections_at(level, temp_conns);
+
+                        for &neighbor_idx in temp_conns.iter() {
+                            if let Some(d) = diagnostics.as_deref_mut() {
+                                d.edges_examined += 1;
+                            }
+                            if !pool.is_visited(neighbor_idx, epoch) {
+                                pool.mark_visited(neighbor_idx, epoch);
+                                if let Some(d) = diagnostics.as_deref_mut() {
+                                    d.visited_nodes += 1;
+                                }
+
+                                if let Some(mask) = filter_mask {
+                                    if !mask.contains(neighbor_idx) {
+                                        continue;
+                                    }
+                                }
+
+                                let n_slice = self.arena.get_vector_slice(neighbor_idx);
+                                let n_norm_sq = self.arena.get_norm_squared(neighbor_idx);
+                                prefetch_vector(n_slice);
+
+                                let sim = self.similarity_score_slices(
+                                    query_data,
+                                    n_slice,
+                                    query_norm_sq,
+                                    n_norm_sq,
+                                );
+                                if let Some(d) = diagnostics.as_deref_mut() {
+                                    d.distance_evaluations += 1;
+                                }
+
+                                let current_worst = results_heap
+                                    .peek()
+                                    .map(|w| w.0.similarity)
+                                    .unwrap_or(f32::NEG_INFINITY);
+
+                                if results_heap.len() < ef || sim > current_worst {
+                                    let cand = Candidate {
+                                        index: neighbor_idx,
+                                        similarity: sim,
+                                    };
+                                    candidate_queue.push(cand);
+                                    if let Some(d) = diagnostics.as_deref_mut() {
+                                        d.candidate_pushes += 1;
+                                    }
+                                    results_heap.push(WorstResultCandidate(cand));
+                                    if results_heap.len() > ef {
+                                        results_heap.pop();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            let mut final_results: Vec<Candidate> = results_heap.drain().map(|w| w.0).collect();
+            final_results.sort_by(|a, b| {
+                b.similarity
+                    .total_cmp(&a.similarity)
+                    .then_with(|| a.index.cmp(&b.index))
             });
             final_results
         })
@@ -3182,7 +3367,11 @@ impl HNSQRIndex {
             return self.search_indices_exact(query, k, filter_mask);
         }
 
-        if search_plan != SearchPlan::GraphOnly && rivero_enabled {
+        if search_plan == SearchPlan::HnswClassical {
+            return self.search_indices_hnsw_classical(query, k, filter_mask);
+        }
+
+        if search_plan != SearchPlan::GraphOnly && search_plan != SearchPlan::GraphSuperposition && rivero_enabled {
             match rivero_mode {
                 RiveroSearchMode::Strict => {
                     return self
@@ -3515,15 +3704,28 @@ impl HNSQRIndex {
     }
 
     /// Internal helper executing classical multi-root superposition graph traversal.
+    /// Internal helper executing classical multi-root superposition graph traversal.
     fn search_indices_graph_internal(
         &self,
         query: &VectorEmbedding,
         k: usize,
         filter_mask: Option<&roaring::RoaringBitmap>,
     ) -> HNSQRResult<Vec<(NodeIndex, SimilarityScore)>> {
+        let (results, _) = self.search_indices_superposition_internal(query, k, filter_mask)?;
+        Ok(results)
+    }
+
+    /// Internal helper executing superposition graph traversal with work diagnostics telemetry.
+    fn search_indices_superposition_internal(
+        &self,
+        query: &VectorEmbedding,
+        k: usize,
+        filter_mask: Option<&roaring::RoaringBitmap>,
+    ) -> HNSQRResult<(Vec<(NodeIndex, SimilarityScore)>, GraphSearchDiagnostics)> {
+        let mut diagnostics = GraphSearchDiagnostics::default();
         let eps = self.entry_points.read().clone();
         if eps.is_empty() {
-            return Ok(Vec::new());
+            return Ok((Vec::new(), diagnostics));
         }
 
         let ef_search = {
@@ -3541,11 +3743,15 @@ impl HNSQRIndex {
         let ep_norm_sq = self.arena.get_norm_squared(current_ep);
         let mut current_ep_sim =
             self.similarity_score_slices(query_data, ep_slice, query_norm_sq, ep_norm_sq);
+        diagnostics.distance_evaluations += 1;
+        diagnostics.visited_nodes += 1;
 
         for &ep_idx in &eps[1..] {
             let slice = self.arena.get_vector_slice(ep_idx);
             let norm_sq = self.arena.get_norm_squared(ep_idx);
             let sim = self.similarity_score_slices(query_data, slice, query_norm_sq, norm_sq);
+            diagnostics.distance_evaluations += 1;
+            diagnostics.visited_nodes += 1;
             if sim > current_ep_sim {
                 current_ep = ep_idx;
                 current_ep_sim = sim;
@@ -3564,6 +3770,7 @@ impl HNSQRIndex {
                 l,
                 1,
                 None,
+                Some(&mut diagnostics),
             );
             if let Some(best) = candidates.first() {
                 current_ep = best.index;
@@ -3580,6 +3787,7 @@ impl HNSQRIndex {
             0,
             ef_search,
             filter_mask,
+            Some(&mut diagnostics),
         );
 
         let rescored: Vec<(NodeIndex, SimilarityScore)> = candidate_pool
@@ -3588,8 +3796,95 @@ impl HNSQRIndex {
             .take(k)
             .map(|c| (c.index, c.similarity))
             .collect();
+        diagnostics.exact_reranks = rescored.len() as u64;
 
-        Ok(rescored)
+        Ok((rescored, diagnostics))
+    }
+
+    /// Internal helper executing conventional HNSW traversal without superposition interference or attention beams.
+    fn search_indices_hnsw_classical_internal(
+        &self,
+        query: &VectorEmbedding,
+        k: usize,
+        filter_mask: Option<&roaring::RoaringBitmap>,
+    ) -> HNSQRResult<(Vec<(NodeIndex, SimilarityScore)>, GraphSearchDiagnostics)> {
+        let mut diagnostics = GraphSearchDiagnostics::default();
+        let eps = self.entry_points.read().clone();
+        if eps.is_empty() {
+            return Ok((Vec::new(), diagnostics));
+        }
+
+        let ef_search = {
+            let cfg = self.config.read();
+            let oversample_k = ((k as f32) * cfg.oversample_factor).ceil() as usize;
+            cfg.ef_search.max(oversample_k)
+        };
+
+        let query_data = query.complex_data();
+        let query_norm_sq = query.norm_squared();
+
+        // 1. Classical Entry Point Selection
+        let mut current_ep = eps[0];
+        let ep_slice = self.arena.get_vector_slice(current_ep);
+        let ep_norm_sq = self.arena.get_norm_squared(current_ep);
+        let mut current_ep_sim =
+            self.similarity_score_slices(query_data, ep_slice, query_norm_sq, ep_norm_sq);
+        diagnostics.distance_evaluations += 1;
+        diagnostics.visited_nodes += 1;
+
+        for &ep_idx in &eps[1..] {
+            let slice = self.arena.get_vector_slice(ep_idx);
+            let norm_sq = self.arena.get_norm_squared(ep_idx);
+            let sim = self.similarity_score_slices(query_data, slice, query_norm_sq, norm_sq);
+            diagnostics.distance_evaluations += 1;
+            diagnostics.visited_nodes += 1;
+            if sim > current_ep_sim {
+                current_ep = ep_idx;
+                current_ep_sim = sim;
+            }
+        }
+
+        let max_level = self.max_level.load(AtomicOrdering::Acquire);
+
+        // 2. Greedy search through upper layers (ef = 1)
+        for l in (1..=max_level).rev() {
+            let candidates = self.hnsw_classical_search_layer_raw(
+                query_data,
+                query_norm_sq,
+                current_ep,
+                current_ep_sim,
+                l,
+                1,
+                None,
+                Some(&mut diagnostics),
+            );
+            if let Some(best) = candidates.first() {
+                current_ep = best.index;
+                current_ep_sim = best.similarity;
+            }
+        }
+
+        // 3. Base layer search with ef_search
+        let candidate_pool = self.hnsw_classical_search_layer_raw(
+            query_data,
+            query_norm_sq,
+            current_ep,
+            current_ep_sim,
+            0,
+            ef_search,
+            filter_mask,
+            Some(&mut diagnostics),
+        );
+
+        let rescored: Vec<(NodeIndex, SimilarityScore)> = candidate_pool
+            .into_iter()
+            .filter(|candidate| self.arena.is_live(candidate.index))
+            .take(k)
+            .map(|c| (c.index, c.similarity))
+            .collect();
+        diagnostics.exact_reranks = rescored.len() as u64;
+
+        Ok((rescored, diagnostics))
     }
 
     /// Executes multimodal hybrid search combining dense vector similarity with sparse lexical terms,
@@ -3740,6 +4035,75 @@ impl HNSQRIndex {
         defer! { self.active_searches.fetch_sub(1, AtomicOrdering::Relaxed); }
 
         let result = self.search_indices_graph_internal(query, k, filter_mask);
+        self.record_search_latency(start_time);
+        result
+    }
+
+    /// Searches using classical HNSW graph traversal without superposition or attention beams.
+    pub fn search_indices_hnsw_classical(
+        &self,
+        query: &VectorEmbedding,
+        k: usize,
+        filter_mask: Option<&roaring::RoaringBitmap>,
+    ) -> HNSQRResult<Vec<(NodeIndex, SimilarityScore)>> {
+        let (results, _) = self.search_indices_hnsw_classical_diagnostics(query, k, filter_mask)?;
+        Ok(results)
+    }
+
+    /// Searches using classical HNSW graph traversal and returns detailed execution work diagnostics.
+    pub fn search_indices_hnsw_classical_diagnostics(
+        &self,
+        query: &VectorEmbedding,
+        k: usize,
+        filter_mask: Option<&roaring::RoaringBitmap>,
+    ) -> HNSQRResult<(Vec<(NodeIndex, SimilarityScore)>, GraphSearchDiagnostics)> {
+        let _lifecycle = self.lifecycle.read();
+        if query.dimension() != self.dimension {
+            return Err(HNSQRError::DimensionMismatch {
+                expected: self.dimension,
+                actual: query.dimension(),
+            });
+        }
+        if k == 0 || self.is_empty() {
+            return Ok((Vec::new(), GraphSearchDiagnostics::default()));
+        }
+
+        let start_time = Instant::now();
+        let active = self.active_searches.fetch_add(1, AtomicOrdering::Relaxed) + 1;
+        self.peak_active_searches
+            .fetch_max(active, AtomicOrdering::Relaxed);
+        defer! { self.active_searches.fetch_sub(1, AtomicOrdering::Relaxed); }
+
+        let result = self.search_indices_hnsw_classical_internal(query, k, filter_mask);
+        self.record_search_latency(start_time);
+        result
+    }
+
+    /// Searches using HoloSphere superposition graph traversal and returns detailed execution work diagnostics.
+    pub fn search_indices_superposition_diagnostics(
+        &self,
+        query: &VectorEmbedding,
+        k: usize,
+        filter_mask: Option<&roaring::RoaringBitmap>,
+    ) -> HNSQRResult<(Vec<(NodeIndex, SimilarityScore)>, GraphSearchDiagnostics)> {
+        let _lifecycle = self.lifecycle.read();
+        if query.dimension() != self.dimension {
+            return Err(HNSQRError::DimensionMismatch {
+                expected: self.dimension,
+                actual: query.dimension(),
+            });
+        }
+        if k == 0 || self.is_empty() {
+            return Ok((Vec::new(), GraphSearchDiagnostics::default()));
+        }
+
+        let start_time = Instant::now();
+        let active = self.active_searches.fetch_add(1, AtomicOrdering::Relaxed) + 1;
+        self.peak_active_searches
+            .fetch_max(active, AtomicOrdering::Relaxed);
+        defer! { self.active_searches.fetch_sub(1, AtomicOrdering::Relaxed); }
+
+        let result = self.search_indices_superposition_internal(query, k, filter_mask);
         self.record_search_latency(start_time);
         result
     }

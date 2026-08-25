@@ -155,15 +155,18 @@ class AsyncHNSQRClient:
         vector: List[float],
         k: int = 10,
         filter_expr: Optional[Dict[str, Any]] = None,
-        certified_exact: bool = True,
+        retrieval_contract: str = "exact",
+        certified_exact: Optional[bool] = None,
     ) -> List[SearchResult]:
-        payload = {
+        payload: Dict[str, Any] = {
             "vector": vector,
             "k": k,
             "filter": filter_expr,
-            "certified_exact": certified_exact,
+            "retrieval_contract": retrieval_contract,
             "consistency": self.read_consistency.value if isinstance(self.read_consistency, ReadConsistency) else self.read_consistency,
         }
+        if certified_exact is not None:
+            payload["certified_exact"] = certified_exact
         
         for attempt in range(self.max_retries):
             endpoint = self._select_endpoint(is_write=False)
@@ -178,7 +181,7 @@ class AsyncHNSQRClient:
                         SearchResult(
                             id=item["id"],
                             score=item["score"],
-                            is_certified=item.get("is_certified", certified_exact),
+                            is_certified=item.get("is_certified", False),
                             proof_upper_bound=item.get("proof_upper_bound"),
                             metadata=item.get("metadata"),
                         )
@@ -203,14 +206,17 @@ class AsyncHNSQRClient:
         collection: str,
         query_text: str,
         k: int = 10,
-        certified_exact: bool = True,
+        retrieval_contract: str = "exact",
+        certified_exact: Optional[bool] = None,
     ) -> List[SearchResult]:
         """Direct text search utilizing in-database neural inference."""
-        payload = {
+        payload: Dict[str, Any] = {
             "query_text": query_text,
             "k": k,
-            "certified_exact": certified_exact,
+            "retrieval_contract": retrieval_contract,
         }
+        if certified_exact is not None:
+            payload["certified_exact"] = certified_exact
         endpoint = self._select_endpoint(is_write=False)
         url = f"{endpoint}/v1/collections/{collection}/search"
         resp = await self._client.post(url, json=payload, headers=self._headers())
@@ -219,7 +225,7 @@ class AsyncHNSQRClient:
             SearchResult(
                 id=item["id"],
                 score=item["score"],
-                is_certified=item.get("is_certified", certified_exact),
+                is_certified=item.get("is_certified", False),
                 metadata=item.get("metadata"),
             )
             for item in resp.json().get("results", [])
@@ -423,15 +429,18 @@ class HNSQRClient:
         vector: List[float],
         k: int = 10,
         filter_expr: Optional[Dict[str, Any]] = None,
-        certified_exact: bool = True,
+        retrieval_contract: str = "exact",
+        certified_exact: Optional[bool] = None,
     ) -> List[SearchResult]:
-        payload = {
+        payload: Dict[str, Any] = {
             "vector": vector,
             "k": k,
             "filter": filter_expr,
-            "certified_exact": certified_exact,
+            "retrieval_contract": retrieval_contract,
             "consistency": self.read_consistency.value if isinstance(self.read_consistency, ReadConsistency) else self.read_consistency,
         }
+        if certified_exact is not None:
+            payload["certified_exact"] = certified_exact
         
         for attempt in range(self.max_retries):
             endpoint = self._select_endpoint(is_write=False)
@@ -446,7 +455,7 @@ class HNSQRClient:
                         SearchResult(
                             id=item["id"],
                             score=item["score"],
-                            is_certified=item.get("is_certified", certified_exact),
+                            is_certified=item.get("is_certified", False),
                             proof_upper_bound=item.get("proof_upper_bound"),
                             metadata=item.get("metadata"),
                         )
@@ -470,13 +479,16 @@ class HNSQRClient:
         collection: str,
         query_text: str,
         k: int = 10,
-        certified_exact: bool = True,
+        retrieval_contract: str = "exact",
+        certified_exact: Optional[bool] = None,
     ) -> List[SearchResult]:
-        payload = {
+        payload: Dict[str, Any] = {
             "query_text": query_text,
             "k": k,
-            "certified_exact": certified_exact,
+            "retrieval_contract": retrieval_contract,
         }
+        if certified_exact is not None:
+            payload["certified_exact"] = certified_exact
         endpoint = self._select_endpoint(is_write=False)
         url = f"{endpoint}/v1/collections/{collection}/search"
         resp = self._client.post(url, json=payload, headers=self._headers())
@@ -485,7 +497,7 @@ class HNSQRClient:
             SearchResult(
                 id=item["id"],
                 score=item["score"],
-                is_certified=item.get("is_certified", certified_exact),
+                is_certified=item.get("is_certified", False),
                 metadata=item.get("metadata"),
             )
             for item in resp.json().get("results", [])

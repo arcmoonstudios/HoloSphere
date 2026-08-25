@@ -1,0 +1,10 @@
+{
+  "semantic_kernel_version": 1,
+  "benchmark_baseline_version": 1,
+  "frozen_at_utc": "2026-08-25T14:50:00Z",
+  "description": "Frozen Exact SIMD Oracle baseline across SIFT1M (128D) and GloVe-100 (100D) under Cosine metric with deterministic 20% tuning / 80% held-out admission query splits.",
+  "datasets": [
+    "SIFT1M",
+    "GloVe-100"
+  ]
+}

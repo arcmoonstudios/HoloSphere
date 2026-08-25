@@ -108,7 +108,30 @@ pub struct ExactScanCrossoverModel {
 }
 
 impl ExactScanCrossoverModel {
-    /// Calibration produced by `dimension_crossover_sweep` after the metric/profile repairs.
+    /// Empirically measured crossover points from the benchmark sweep.
+    /// Valid only on the hardware/corpus config that produced this table —
+    /// re-derive before trusting on different hardware.
+    pub const MEASURED: &'static [(usize, usize)] = &[
+        (32, 60_293),
+        (64, 40_000),
+        (128, 24_000),
+        // 192 intentionally absent: the sweep itself flags this measurement
+        // as anomalous. Do not lookup, do not fall through uncorrected.
+        (256, 13_000),
+        (384, 7_996),
+        (512, 6_674),
+        (768, 5_500),
+        (1024, 4_500),
+        (1536, 3_050),
+        (2048, 2_800),
+    ];
+
+    /// Mean correction closing the underestimation bias against MEASURED,
+    /// excluding the D=192 anomaly. Reduces but does not eliminate error
+    /// for unlisted dimensions (~-14%/+11% residual band on fitted points).
+    pub const BIAS_CORRECTION: f64 = 1.576;
+
+    /// Baseline power-law parameterization fit across the benchmark sweep.
     pub const CALIBRATED: Self = Self {
         scale: 577_169.2,
         exponent: 0.770,
@@ -120,11 +143,27 @@ impl ExactScanCrossoverModel {
     #[inline(always)]
     #[must_use]
     pub fn threshold(self, complex_dim: usize) -> usize {
+        if complex_dim == 192 {
+            // Known-anomalous dimension. Neither the naked fit nor the
+            // corrected fallback is validated here — surface it rather
+            // than guess.
+            tracing::warn!(
+                complex_dim,
+                "crossover model has no validated prediction at this \
+                 dimension; falling back to Certified proof-tree routing \
+                 instead of an unverified Exact/indexed split"
+            );
+            return 0; // forces Certified / indexed path unconditionally until re-benchmarked
+        }
+        if let Some(&(_, measured)) = Self::MEASURED.iter().find(|&&(d, _)| d == complex_dim) {
+            return measured;
+        }
         let d = complex_dim.max(1) as f64;
-        let n_cross = self.scale / d.powf(self.exponent);
+        let n_cross = (self.scale / d.powf(self.exponent)) * Self::BIAS_CORRECTION;
         (n_cross.round() as usize).clamp(self.min_threshold, self.max_threshold)
     }
 }
+
 
 /// Universal Cost-Based Query Planner.
 pub struct UniversalPlanner;
@@ -335,9 +374,19 @@ mod tests {
 
     #[test]
     fn calibrated_crossover_model_matches_reported_fit() {
-        assert_eq!(UniversalPlanner::compute_crossover(32), 40_026);
-        assert_eq!(UniversalPlanner::compute_crossover(384), 5_907);
-        assert_eq!(UniversalPlanner::compute_crossover(768), 3_464);
-        assert_eq!(UniversalPlanner::compute_crossover(2_048), 1_628);
+        // Direct MEASURED lookups
+        assert_eq!(UniversalPlanner::compute_crossover(32), 60_293);
+        assert_eq!(UniversalPlanner::compute_crossover(384), 7_996);
+        assert_eq!(UniversalPlanner::compute_crossover(768), 5_500);
+        assert_eq!(UniversalPlanner::compute_crossover(2_048), 2_800);
+
+        // D=192 quarantine (forces Certified routing safely)
+        assert_eq!(UniversalPlanner::compute_crossover(192), 0);
+
+        // Unlisted dimension uses BIAS_CORRECTION (1.576x)
+        // For D=50: (577,169.2 / 50^0.770) * 1.576 = 28,683.4 * 1.576 = 45,205
+        let d50_threshold = UniversalPlanner::compute_crossover(50);
+        assert!(d50_threshold > 40_000 && d50_threshold < 50_000);
     }
 }
+

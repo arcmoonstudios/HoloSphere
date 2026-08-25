@@ -129,7 +129,8 @@ impl OpenApiSpecGenerator {
                                             "vector": { "type": "array", "items": { "type": "number" } },
                                             "query_text": { "type": "string" },
                                             "k": { "type": "integer", "default": 10 },
-                                            "certified_exact": { "type": "boolean", "default": true }
+                                            "retrieval_contract": { "type": "string", "enum": ["exact", "certified", "high_recall", "auto", "rivero", "hnsw"], "default": "exact" },
+                                            "certified_exact": { "type": "boolean", "description": "Deprecated compatibility bridge for certified retrieval." }
                                         }
                                     }
                                 }

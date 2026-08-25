@@ -33,10 +33,10 @@ enum ArtifactKind {
 
 fn usage() -> ! {
     eprintln!(
-        "Usage: hnsqr_build_bench_db [--kind snapshot|index] [--tag NAME] [--vectors N] [--queries N] [--source-dim D] [--index-dim D] [--profile fast|balanced|strict] [--output DIR]"
+        "Usage: hnsqr_build_bench_db [--kind snapshot|index] [--algorithm rivero|hnsw] [--tag NAME] [--vectors N] [--queries N] [--source-dim D] [--index-dim D] [--profile fast|balanced|strict] [--m M] [--m0 M0] [--ef-construction EFC] [--output DIR]"
     );
     eprintln!(
-        "\nExamples:\n  cargo run --release --bin hnsqr_build_bench_db -- --vectors 5000 --queries 64 --source-dim 128 --profile balanced\n  cargo run --release --bin hnsqr_build_bench_db -- --kind index --tag crossover_sweep_n5000 --vectors 5000 --source-dim 128 --index-dim 64 --profile balanced"
+        "\nExamples:\n  cargo run --release --bin hnsqr_build_bench_db -- --vectors 5000 --queries 64 --source-dim 128 --profile balanced\n  cargo run --release --bin hnsqr_build_bench_db -- --kind index --algorithm hnsw --tag hnsw_sweep --vectors 5000 --source-dim 128 --m 16 --m0 32 --ef-construction 200"
     );
     std::process::exit(2);
 }
@@ -100,11 +100,15 @@ fn dataset_path(dim: usize) -> PathBuf {
 
 fn main() {
     let mut kind = ArtifactKind::Snapshot;
+    let mut algorithm = "rivero".to_string();
     let mut tag = None;
     let mut vectors = 5_000usize;
     let mut source_dim = 128usize;
     let mut index_dim = None;
     let mut profile = RiveroProfile::Balanced;
+    let mut m = 16usize;
+    let mut m0 = 32usize;
+    let mut ef_construction = 128usize;
     let mut output = std::env::var_os("HNSQR_BENCH_DATABASE_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("benchmark_databases"));
@@ -121,11 +125,17 @@ fn main() {
                     _ => usage(),
                 }
             }
+            "--algorithm" => algorithm = value.to_ascii_lowercase(),
             "--tag" => tag = Some(value.clone()),
             "--vectors" => vectors = value.parse().unwrap_or_else(|_| usage()),
             "--queries" => {} // Queries are read by the benchmark; retained for scriptable invocations.
             "--source-dim" => source_dim = value.parse().unwrap_or_else(|_| usage()),
             "--index-dim" => index_dim = Some(value.parse().unwrap_or_else(|_| usage())),
+            "--m" => m = value.parse().unwrap_or_else(|_| usage()),
+            "--m0" => m0 = value.parse().unwrap_or_else(|_| usage()),
+            "--ef-construction" | "--efc" => {
+                ef_construction = value.parse().unwrap_or_else(|_| usage())
+            }
             "--profile" => {
                 profile = match value.to_ascii_lowercase().as_str() {
                     "fast" => RiveroProfile::Fast,
@@ -141,37 +151,55 @@ fn main() {
     }
 
     let source = dataset_path(source_dim);
-    let (mut corpus, loaded_dim) = read_fvecs(&source, vectors).expect("failed to read dataset");
+    let (corpus, loaded_dim) = read_fvecs(&source, vectors).expect("failed to read dataset");
     assert!(
         !corpus.is_empty(),
         "dataset {} contained no vectors",
         source.display()
     );
-    // Match the benchmark corpus loader: cycle only real source records when a
-    // requested tier exceeds a public dataset's available cardinality.
-    let source_len = corpus.len();
-    while corpus.len() < vectors {
-        let take = (vectors - corpus.len()).min(source_len);
-        let repeated = corpus[..take].to_vec();
-        corpus.extend(repeated);
+
+    // Hard stop on corpus fabrication: requested cardinality must not exceed source records.
+    if corpus.len() < vectors {
+        panic!(
+            "BenchmarkDatasetTooSmall: requested {} vectors, but dataset {} only provides {}",
+            vectors,
+            source.display(),
+            corpus.len()
+        );
     }
+
     fs::create_dir_all(&output).expect("failed to create benchmark database directory");
-    let (filename, dimension, rivero_enabled) = match kind {
-        ArtifactKind::Snapshot => (
-            format!("snapshot-v{CACHE_VERSION}-n{vectors}-p{profile:?}-d{loaded_dim}.hnsqr"),
-            // `VectorEmbedding` is folded from D real components to ceil(D/2)
-            // complex components; HNSQRIndex validates that physical dimension.
-            loaded_dim.div_ceil(2),
-            true,
-        ),
+    let is_hnsw = algorithm == "hnsw";
+    let rivero_enabled = !is_hnsw && matches!(kind, ArtifactKind::Snapshot);
+
+    let (filename, dimension) = match kind {
+        ArtifactKind::Snapshot => {
+            if is_hnsw {
+                (
+                    format!("hnsw-v{CACHE_VERSION}-n{vectors}-m{m}-efc{ef_construction}-d{loaded_dim}.snapshot"),
+                    loaded_dim.div_ceil(2),
+                )
+            } else {
+                (
+                    format!("snapshot-v{CACHE_VERSION}-n{vectors}-p{profile:?}-d{loaded_dim}.hnsqr"),
+                    loaded_dim.div_ceil(2),
+                )
+            }
+        }
         ArtifactKind::Index => {
             let tag = tag.unwrap_or_else(|| usage());
             let dim = index_dim.unwrap_or_else(|| loaded_dim.div_ceil(2));
-            (
-                format!("{tag}_v{CACHE_VERSION}_p{profile:?}_d{dim}_n{vectors}.snapshot"),
-                dim,
-                false,
-            )
+            if is_hnsw {
+                (
+                    format!("{tag}_v{CACHE_VERSION}_m{m}_efc{ef_construction}_d{dim}_n{vectors}.snapshot"),
+                    dim,
+                )
+            } else {
+                (
+                    format!("{tag}_v{CACHE_VERSION}_p{profile:?}_d{dim}_n{vectors}.snapshot"),
+                    dim,
+                )
+            }
         }
     };
     let destination = output.join(filename);
@@ -182,30 +210,39 @@ fn main() {
         );
     }
 
-    let mut config = HNSQRConfig::strict_rivero_for_dim(dimension);
+    let mut config = if rivero_enabled {
+        HNSQRConfig::strict_rivero_for_dim(dimension)
+    } else {
+        HNSQRConfig::default()
+    };
     config.distance_function = DistanceFunction::Cosine;
     config.max_elements = vectors + 10_000;
     config.rivero_enabled = rivero_enabled;
     config.rivero_fallback_on_underfill = false;
     config.rivero_witness_degree = 32;
-    config.ef_construction = 8;
-    config.m = 8;
-    config.m0 = 8;
+    config.ef_construction = ef_construction;
+    config.m = m;
+    config.m0 = m0;
     config.rivero_address_config.geometry = VectorGeometry::Real;
+
     let index = HNSQRIndex::new(config, dimension);
     for (slot, vector) in corpus.iter().enumerate() {
         index
             .insert(format!("doc_{slot}"), vector.clone())
             .expect("index insertion failed");
     }
-    let builder = RiveroBulkBuilder::with_profile(profile)
-        .with_address_config(index.config().rivero_address_config)
-        .with_distance_function(index.config().distance_function)
-        .with_witness_params(32, 16, 8);
-    index
-        .install_rivero_state(builder.build(&corpus).expect("Rivero build failed"))
-        .expect("Rivero installation failed");
-    index.freeze_rivero_routing();
+
+    if rivero_enabled {
+        let builder = RiveroBulkBuilder::with_profile(profile)
+            .with_address_config(index.config().rivero_address_config)
+            .with_distance_function(index.config().distance_function)
+            .with_witness_params(32, 16, 8);
+        index
+            .install_rivero_state(builder.build(&corpus).expect("Rivero build failed"))
+            .expect("Rivero installation failed");
+        index.freeze_rivero_routing();
+    }
+
     index
         .save_snapshot_v2(&destination)
         .expect("snapshot write failed");

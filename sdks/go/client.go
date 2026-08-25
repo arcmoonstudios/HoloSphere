@@ -200,11 +200,16 @@ func (c *Client) headers(req *http.Request, idempotencyKey string) {
 }
 
 func (c *Client) Search(ctx context.Context, collection string, vector []float32, k int, certifiedExact bool) ([]SearchResult, error) {
+	contract := "exact"
+	if certifiedExact {
+		contract = "certified"
+	}
 	payload := map[string]interface{}{
-		"vector":          vector,
-		"k":               k,
-		"certified_exact": certifiedExact,
-		"consistency":     c.config.ReadConsistency,
+		"vector":             vector,
+		"k":                  k,
+		"retrieval_contract": contract,
+		"certified_exact":    certifiedExact,
+		"consistency":        c.config.ReadConsistency,
 	}
 	data, _ := json.Marshal(payload)
 
@@ -263,10 +268,15 @@ func (c *Client) EmbedAndSearch(ctx context.Context, collection string, queryTex
 	if err != nil {
 		return nil, err
 	}
+	contract := "exact"
+	if certifiedExact {
+		contract = "certified"
+	}
 	payload := map[string]interface{}{
-		"query_text":      queryText,
-		"k":               k,
-		"certified_exact": certifiedExact,
+		"query_text":         queryText,
+		"k":                  k,
+		"retrieval_contract": contract,
+		"certified_exact":    certifiedExact,
 	}
 	data, _ := json.Marshal(payload)
 	url := fmt.Sprintf("%s/v1/collections/%s/search", endpoint, collection)

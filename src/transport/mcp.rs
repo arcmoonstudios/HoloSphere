@@ -99,7 +99,8 @@ fn tool_definitions() -> serde_json::Value {
                         "embedding": {"$ref": "#/$defs/embedding"},
                         "collection": {"type": "string", "default": "knowledge"},
                         "k": {"type": "integer", "minimum": 1, "maximum": 100, "default": 10},
-                        "certified_exact": {"type": "boolean", "default": true},
+                        "retrieval_contract": {"type": "string", "enum": ["exact", "certified", "high_recall", "auto", "rivero", "hnsw"], "default": "exact"},
+                        "certified_exact": {"type": "boolean", "description": "Deprecated compatibility bridge for certified retrieval."},
                         "snapshot_lsn": {"type": "integer", "minimum": 0}
                     },
                     "additionalProperties": false,

@@ -6,12 +6,17 @@
 //! Sweeps M in [8, 16, 32, 48], ef_construction in [100, 200, 400],
 //! and ef_search in [16, 32, 64, 128, 256, 512] on real million-scale corpora.
 //!
+//! Protocol:
+//!   1. Stage 1: Full matrix sweep on 20% Tuning queries (100 queries) to extract Pareto frontier.
+//!   2. Stage 2: Rerun Pareto frontier on 80% Held-out Admission queries (400 queries).
+//!   3. Stage 3: Rebuild production finalists under multiple deterministic construction seeds.
+//!
 //! Gates:
 //!   1. Survival: Recall@10 >= 95%
 //!   2. Production Candidate: Recall@10 >= 99% AND Speedup >= 2.0x vs P0 Exact p50.
 
 use std::fs::File;
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -23,16 +28,22 @@ use hnsqr::{DistanceFunction, HNSQRConfig, HNSQRIndex, SearchPlan, VectorEmbeddi
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
-const QUERIES_COUNT: usize = 500;
+const TOTAL_QUERIES_COUNT: usize = 500;
+const TUNING_QUERIES_COUNT: usize = 100;
+const ADMISSION_QUERIES_COUNT: usize = 400;
 const K_NEIGHBORS: usize = 10;
+const DEFAULT_CONSTRUCTION_SEED: u64 = 42;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HnswMatrixRow {
+pub struct HnswEvaluationRow {
     pub corpus: String,
+    pub stage: String, // "tuning" or "held_out_admission"
+    pub construction_seed: u64,
     pub m: usize,
     pub m0: usize,
     pub ef_construction: usize,
     pub ef_search: usize,
+    pub queries_count: usize,
     pub mean_recall_10: f64,
     pub min_recall_10: f64,
     pub p05_recall_10: f64,
@@ -43,7 +54,8 @@ pub struct HnswMatrixRow {
     pub hnsw_p99_ms: f64,
     pub speedup: f64,
     pub qps: f64,
-    pub avg_visits: usize,
+    pub avg_visited_nodes: usize,
+    pub avg_distance_evaluations: usize,
     pub is_survival_pass: bool,
     pub is_production_candidate: bool,
 }
@@ -96,11 +108,12 @@ fn get_or_build_hnsw_index(
     m: usize,
     m0: usize,
     ef_construction: usize,
+    seed: u64,
 ) -> HNSQRIndex {
     let base_dir = PathBuf::from("benchmark_databases");
     let _ = std::fs::create_dir_all(&base_dir);
     let snap_path = base_dir.join(format!(
-        "hnsw_p1_{tag}_m{m}_efc{ef_construction}_n{}.snapshot",
+        "hnsw_p1_{tag}_s{seed}_m{m}_efc{ef_construction}_n{}.snapshot",
         corpus_vecs.len()
     ));
 
@@ -117,47 +130,39 @@ fn get_or_build_hnsw_index(
     }
 
     println!(
-        "    ⚙️ Building fresh HNSW index (M={m}, M0={m0}, efC={ef_construction}, N={})...",
+        "    ⚙️ Building fresh HNSW index (Seed={seed}, M={m}, M0={m0}, efC={ef_construction}, N={})...",
         corpus_vecs.len()
     );
     let t_build = Instant::now();
 
     let mut config = HNSQRConfig::default();
     config.distance_function = DistanceFunction::Cosine;
-    config.search_plan = SearchPlan::GraphOnly;
+    config.search_plan = SearchPlan::HnswClassical;
     config.rivero_enabled = false;
+    config.construction_seed = Some(seed);
     config.max_elements = corpus_vecs.len() + 10_000;
     config.m = m;
     config.m0 = m0;
     config.ef_construction = ef_construction;
     config.ef_search = 128;
 
-    let index = Arc::new(HNSQRIndex::new(config, dim));
-    let chunk_size = 10_000;
-    let completed = AtomicUsize::new(0);
+    let index = HNSQRIndex::new(config, dim);
     let total = corpus_vecs.len();
 
-    // Insert batches in parallel across Rayon workers
-    corpus_vecs
-        .par_chunks(chunk_size)
-        .enumerate()
-        .for_each(|(chunk_idx, chunk)| {
-            for (i, v) in chunk.iter().enumerate() {
-                let global_idx = chunk_idx * chunk_size + i;
-                index
-                    .insert(format!("doc_{global_idx}"), v.clone())
-                    .expect("insert");
-            }
-            let done = completed.fetch_add(chunk.len(), Ordering::Relaxed) + chunk.len();
-            if done % 100_000 == 0 || done == total {
-                print!(
-                    "\r      -> Inserted {} / {} vectors ({:.1}%)...",
-                    done,
-                    total,
-                    (done as f64 / total as f64) * 100.0
-                );
-            }
-        });
+    for (i, v) in corpus_vecs.iter().enumerate() {
+        index
+            .insert(format!("doc_{i}"), v.clone())
+            .expect("insert");
+        if (i + 1) % 100_000 == 0 || i + 1 == total {
+            print!(
+                "\r      -> Inserted {} / {} vectors ({:.1}%)...",
+                i + 1,
+                total,
+                ((i + 1) as f64 / total as f64) * 100.0
+            );
+            let _ = std::io::stdout().flush();
+        }
+    }
     println!();
     println!("    ✓ Built HNSW index in {:.2?}", t_build.elapsed());
 
@@ -174,280 +179,355 @@ fn get_or_build_hnsw_index(
     HNSQRIndex::open_snapshot_v2(&snap_path, SnapshotOpenOptions::default()).expect("open snapshot")
 }
 
-fn evaluate_hnsw_corpus(
-    tag: &str,
-    corpus_path: &Path,
-    query_path: &Path,
-    oracle_snapshot_path: &Path,
-    dim: usize,
+fn evaluate_hnsw_subset(
+    corpus_tag: &str,
+    stage_tag: &str,
+    index: &HNSQRIndex,
+    queries: &[VectorEmbedding],
+    ground_truth: &[Vec<usize>],
+    m: usize,
+    m0: usize,
+    ef_c: usize,
+    ef_s: usize,
+    seed: u64,
     exact_p50_ms: f64,
-    m_values: &[usize],
-    ef_construction_values: &[usize],
-    ef_search_values: &[usize],
-) -> Vec<HnswMatrixRow> {
-    println!("\n═══════════════════════════════════════════════════════════════════════════════");
-    println!("  P1 HNSW MATRIX EVALUATION: {tag} (Dim={dim}, Exact p50={exact_p50_ms:.2} ms)");
-    println!("═══════════════════════════════════════════════════════════════════════════════");
+) -> HnswEvaluationRow {
+    index.set_ef_search(ef_s).expect("set ef_search");
 
-    println!("  Loading corpus vectors from {}...", corpus_path.display());
-    let t0 = Instant::now();
-    let corpus = read_fvecs(corpus_path, None).expect("load corpus");
-    println!(
-        "  Loaded {} corpus vectors in {:.2?}",
-        corpus.len(),
-        t0.elapsed()
-    );
+    let mut recalls_10 = Vec::with_capacity(queries.len());
+    let mut recalls_1 = Vec::with_capacity(queries.len());
+    let mut latencies_ms = Vec::with_capacity(queries.len());
+    let mut total_visits = 0usize;
+    let mut total_dists = 0usize;
 
-    println!("  Loading query vectors from {}...", query_path.display());
-    let queries = read_fvecs(query_path, Some(QUERIES_COUNT)).expect("load queries");
-    println!(
-        "  Loaded {} query vectors in {:.2?}",
-        queries.len(),
-        t0.elapsed()
-    );
+    let t_start_sweep = Instant::now();
+    for (qi, q) in queries.iter().enumerate() {
+        let gt = &ground_truth[qi];
+        let gt_top1 = gt[0];
+        let gt_set: std::collections::HashSet<usize> = gt.iter().copied().collect();
 
-    // Compute exact ground truth top-10 for all queries using attached oracle snapshot
-    println!(
-        "  Precomputing 100% exact SIMD ground truth for {} queries from oracle...",
-        queries.len()
-    );
-    let oracle = HNSQRIndex::open_snapshot_v2(oracle_snapshot_path, SnapshotOpenOptions::default())
-        .expect("open oracle snapshot");
+        let t_q = Instant::now();
+        let (results, diagnostics) = index
+            .search_indices_hnsw_classical_diagnostics(q, K_NEIGHBORS, None)
+            .unwrap_or_default();
+        let dur_ms = t_q.elapsed().as_secs_f64() * 1000.0;
+        latencies_ms.push(dur_ms);
+        total_visits += diagnostics.visited_nodes as usize;
+        total_dists += diagnostics.distance_evaluations as usize;
 
-    let ground_truth: Vec<Vec<usize>> = queries
-        .iter()
-        .map(|q| {
-            let res = oracle.search_indices_exact(q, K_NEIGHBORS, None).unwrap();
-            res.into_iter().map(|(idx, _)| idx as usize).collect()
-        })
-        .collect();
-    println!(
-        "  ✓ Ground truth computed for {} queries.",
-        ground_truth.len()
-    );
+        let hit_top1 = results.first().map_or(0.0, |(idx, _)| {
+            if *idx as usize == gt_top1 { 100.0 } else { 0.0 }
+        });
+        let matched_10 = results
+            .iter()
+            .filter(|(idx, _)| gt_set.contains(&(*idx as usize)))
+            .count();
+        let rec_10 = (matched_10 as f64 / K_NEIGHBORS as f64) * 100.0;
 
-    let mut matrix_results = Vec::new();
-
-    for &m in m_values {
-        let m0 = 2 * m; // Explicitly frozen conventional construction relationship M0 = 2*M
-        for &ef_c in ef_construction_values {
-            let index = get_or_build_hnsw_index(tag, &corpus, dim.div_ceil(2), m, m0, ef_c);
-
-            for &ef_s in ef_search_values {
-                index.set_ef_search(ef_s).expect("set ef_search");
-
-                let mut recalls_10 = Vec::with_capacity(queries.len());
-                let mut recalls_1 = Vec::with_capacity(queries.len());
-                let mut latencies_ms = Vec::with_capacity(queries.len());
-
-                let t_start_sweep = Instant::now();
-                for (qi, q) in queries.iter().enumerate() {
-                    let gt = &ground_truth[qi];
-                    let gt_top1 = gt[0];
-                    let gt_set: std::collections::HashSet<usize> = gt.iter().copied().collect();
-
-                    let t_q = Instant::now();
-                    let results = index
-                        .search_indices_graph(q, K_NEIGHBORS, None)
-                        .unwrap_or_default();
-                    let dur_ms = t_q.elapsed().as_secs_f64() * 1000.0;
-                    latencies_ms.push(dur_ms);
-
-                    let hit_top1 = results.first().map_or(0.0, |(idx, _)| {
-                        if *idx as usize == gt_top1 { 100.0 } else { 0.0 }
-                    });
-                    let matched_10 = results
-                        .iter()
-                        .filter(|(idx, _)| gt_set.contains(&(*idx as usize)))
-                        .count();
-                    let rec_10 = (matched_10 as f64 / K_NEIGHBORS as f64) * 100.0;
-
-                    recalls_1.push(hit_top1);
-                    recalls_10.push(rec_10);
-                }
-                let sweep_dur = t_start_sweep.elapsed();
-
-                let mean_r10 = recalls_10.iter().sum::<f64>() / recalls_10.len() as f64;
-                let min_r10 = recalls_10.iter().copied().fold(f64::MAX, f64::min);
-                let p05_r10 = percentile_f64(recalls_10.clone(), 0.05);
-                let mean_r1 = recalls_1.iter().sum::<f64>() / recalls_1.len() as f64;
-
-                let hnsw_p50 = percentile_f64(latencies_ms.clone(), 0.50);
-                let hnsw_p95 = percentile_f64(latencies_ms.clone(), 0.95);
-                let hnsw_p99 = percentile_f64(latencies_ms.clone(), 0.99);
-                let speedup = exact_p50_ms / hnsw_p50.max(1e-4);
-                let qps = queries.len() as f64 / sweep_dur.as_secs_f64();
-
-                let is_survival = mean_r10 >= 95.0;
-                let is_production = mean_r10 >= 99.0 && speedup >= 2.0;
-
-                println!(
-                    "    M={:>2} efC={:>3} efS={:>3} │ R@10={:>5.1}% (min={:>4.0}%, p05={:>4.0}%) │ p50={:>6.2} ms (p99={:>6.2} ms) │ Speedup={:>5.2}x │ {}",
-                    m,
-                    ef_c,
-                    ef_s,
-                    mean_r10,
-                    min_r10,
-                    p05_r10,
-                    hnsw_p50,
-                    hnsw_p99,
-                    speedup,
-                    if is_production {
-                        "🌟 PRODUCTION CANDIDATE"
-                    } else if is_survival {
-                        "✓ Survival"
-                    } else {
-                        "✗ Rejected (<95%)"
-                    }
-                );
-
-                matrix_results.push(HnswMatrixRow {
-                    corpus: tag.to_string(),
-                    m,
-                    m0,
-                    ef_construction: ef_c,
-                    ef_search: ef_s,
-                    mean_recall_10: mean_r10,
-                    min_recall_10: min_r10,
-                    p05_recall_10: p05_r10,
-                    mean_recall_1: mean_r1,
-                    exact_p50_ms,
-                    hnsw_p50_ms: hnsw_p50,
-                    hnsw_p95_ms: hnsw_p95,
-                    hnsw_p99_ms: hnsw_p99,
-                    speedup,
-                    qps,
-                    avg_visits: ef_s * m,
-                    is_survival_pass: is_survival,
-                    is_production_candidate: is_production,
-                });
-            }
-        }
+        recalls_1.push(hit_top1);
+        recalls_10.push(rec_10);
     }
+    let sweep_dur = t_start_sweep.elapsed();
 
-    matrix_results
+    let mean_r10 = recalls_10.iter().sum::<f64>() / recalls_10.len() as f64;
+    let min_r10 = recalls_10.iter().copied().fold(f64::MAX, f64::min);
+    let p05_r10 = percentile_f64(recalls_10.clone(), 0.05);
+    let mean_r1 = recalls_1.iter().sum::<f64>() / recalls_1.len() as f64;
+
+    let hnsw_p50 = percentile_f64(latencies_ms.clone(), 0.50);
+    let hnsw_p95 = percentile_f64(latencies_ms.clone(), 0.95);
+    let hnsw_p99 = percentile_f64(latencies_ms.clone(), 0.99);
+    let speedup = exact_p50_ms / hnsw_p50.max(1e-4);
+    let qps = queries.len() as f64 / sweep_dur.as_secs_f64();
+    let avg_visits = total_visits / queries.len().max(1);
+    let avg_dists = total_dists / queries.len().max(1);
+
+    let is_survival = mean_r10 >= 95.0;
+    let is_production = mean_r10 >= 99.0 && speedup >= 2.0;
+
+    HnswEvaluationRow {
+        corpus: corpus_tag.to_string(),
+        stage: stage_tag.to_string(),
+        construction_seed: seed,
+        m,
+        m0,
+        ef_construction: ef_c,
+        ef_search: ef_s,
+        queries_count: queries.len(),
+        mean_recall_10: mean_r10,
+        min_recall_10: min_r10,
+        p05_recall_10: p05_r10,
+        mean_recall_1: mean_r1,
+        exact_p50_ms,
+        hnsw_p50_ms: hnsw_p50,
+        hnsw_p95_ms: hnsw_p95,
+        hnsw_p99_ms: hnsw_p99,
+        speedup,
+        qps,
+        avg_visited_nodes: avg_visits,
+        avg_distance_evaluations: avg_dists,
+        is_survival_pass: is_survival,
+        is_production_candidate: is_production,
+    }
 }
 
 fn main() {
     println!("╔═════════════════════════════════════════════════════════════════════════════╗");
-    println!("║       HOLOSPHERE PERFORMANCE TRACK P1: RECONSTRUCTED HNSW MATRIX SWEEP      ║");
-    println!("║                 (SIFT1M 128D & GloVe-100 100D, 500 Queries)                 ║");
+    println!("║       HOLOSPHERE PERFORMANCE TRACK P1: CLASSICAL HNSW PARETO CHARACTERIZATION║");
+    println!("║                 (SIFT1M 128D & GloVe-100 100D, Two-Stage Admission)          ║");
     println!("╚═════════════════════════════════════════════════════════════════════════════╝");
 
-    // Load P0 Exact baselines
-    let sift_exact_p50 = 178.97;
-    let glove_exact_p50 = 224.86;
+    // 1. Load P0 Exact Baseline values from performance-baseline-v1
+    let sift_baseline_path = PathBuf::from("performance-baseline-v1/sift1m_exact.json");
+    let glove_baseline_path = PathBuf::from("performance-baseline-v1/glove100_exact.json");
+
+    let sift_exact_p50 = if sift_baseline_path.exists() {
+        let file = File::open(&sift_baseline_path).expect("open sift1m baseline");
+        let data: serde_json::Value = serde_json::from_reader(file).expect("parse sift1m baseline");
+        data["aggregate_held_out_admission"]["p50_ms"].as_f64().unwrap_or(33.74)
+    } else {
+        33.74
+    };
+
+    let glove_exact_p50 = if glove_baseline_path.exists() {
+        let file = File::open(&glove_baseline_path).expect("open glove100 baseline");
+        let data: serde_json::Value = serde_json::from_reader(file).expect("parse glove100 baseline");
+        data["aggregate_held_out_admission"]["p50_ms"].as_f64().unwrap_or(34.85)
+    } else {
+        34.85
+    };
+
+    println!("  P0 Frozen Exact Held-out p50: SIFT1M = {:.2} ms | GloVe-100 = {:.2} ms\n", sift_exact_p50, glove_exact_p50);
 
     let m_grid = [8, 16, 32, 48];
     let efc_grid = [100, 200, 400];
     let efs_grid = [16, 32, 64, 128, 256, 512];
 
-    let sift_corpus_path = PathBuf::from("datasets/sift_1m/sift1m_base.fvecs");
-    let sift_query_path = PathBuf::from("datasets/sift_1m/sift1m_query.fvecs");
-    let sift_oracle =
-        PathBuf::from("benchmark_databases/million_sift1m_strict_v6_pStrict_d64_n1000000.snapshot");
-
-    let glove_corpus_path = PathBuf::from("datasets/glove_100/glove100_base.fvecs");
-    let glove_query_path = PathBuf::from("datasets/glove_100/glove100_query.fvecs");
-    let glove_oracle = PathBuf::from(
-        "benchmark_databases/million_glove100_strict_v6_pStrict_d50_n1183514.snapshot",
-    );
-
-    let mut all_results = Vec::new();
-
-    if sift_corpus_path.exists() && sift_query_path.exists() && sift_oracle.exists() {
-        let sift_rows = evaluate_hnsw_corpus(
+    let datasets = [
+        (
             "SIFT1M",
-            &sift_corpus_path,
-            &sift_query_path,
-            &sift_oracle,
-            128,
+            PathBuf::from("datasets/sift_1m/sift1m_base.fvecs"),
+            PathBuf::from("datasets/sift_1m/sift1m_query.fvecs"),
+            PathBuf::from("benchmark_databases/million_sift1m_strict_v6_pStrict_d64_n1000000.snapshot"),
+            128usize,
             sift_exact_p50,
-            &m_grid,
-            &efc_grid,
-            &efs_grid,
-        );
-        all_results.extend(sift_rows);
-    }
-
-    if glove_corpus_path.exists() && glove_query_path.exists() && glove_oracle.exists() {
-        let glove_rows = evaluate_hnsw_corpus(
+        ),
+        (
             "GloVe-100",
-            &glove_corpus_path,
-            &glove_query_path,
-            &glove_oracle,
-            100,
+            PathBuf::from("datasets/glove_100/glove100_base.fvecs"),
+            PathBuf::from("datasets/glove_100/glove100_query.fvecs"),
+            PathBuf::from("benchmark_databases/million_glove100_strict_v6_pStrict_d50_n1183514.snapshot"),
+            100usize,
             glove_exact_p50,
-            &m_grid,
-            &efc_grid,
-            &efs_grid,
-        );
-        all_results.extend(glove_rows);
-    }
+        ),
+    ];
 
-    // Filter Pareto-frontier rows
-    println!(
-        "\n\n═══════════════════════════════════════════════════════════════════════════════════════════════════════"
-    );
-    println!("  🏆 STOP CONDITION SUMMARY: PARETO FRONTIER MATRIX");
-    println!(
-        "═══════════════════════════════════════════════════════════════════════════════════════════════════════"
-    );
-    println!(
-        "  {:<10} │ {:>3} │ {:>3} │ {:>3} │ {:>10} │ {:>10} │ {:>10} │ {:>10} │ {:>8} │ {:>10} │ {:>8}",
-        "Corpus",
-        "M",
-        "efC",
-        "efS",
-        "Recall@10",
-        "Min R@10",
-        "Exact p50",
-        "HNSW p50",
-        "Speedup",
-        "p99",
-        "Visits"
-    );
-    println!("  {}", "─".repeat(110));
+    let mut all_tuning_results = Vec::new();
+    let mut all_admission_results = Vec::new();
+    let mut all_seed_variance_results = Vec::new();
 
-    for corpus_tag in &["SIFT1M", "GloVe-100"] {
-        let rows: Vec<&HnswMatrixRow> = all_results
+    for (corpus_tag, corpus_path, query_path, oracle_path, dim, exact_p50) in &datasets {
+        println!("\n═══════════════════════════════════════════════════════════════════════════════");
+        println!("  STAGE 1: FULL TUNING MATRIX (100 Queries, 20%) FOR {corpus_tag}");
+        println!("═══════════════════════════════════════════════════════════════════════════════");
+
+        let corpus = read_fvecs(corpus_path, None).expect("load corpus");
+        let all_queries = read_fvecs(query_path, Some(TOTAL_QUERIES_COUNT)).expect("load queries");
+        let tuning_queries = &all_queries[..TUNING_QUERIES_COUNT];
+        let admission_queries =
+            &all_queries[TUNING_QUERIES_COUNT..TUNING_QUERIES_COUNT + ADMISSION_QUERIES_COUNT];
+
+        let oracle = HNSQRIndex::open_snapshot_v2(oracle_path, SnapshotOpenOptions::default())
+
+            .expect("open oracle snapshot");
+
+        println!("  Precomputing exact ground truth for 100 tuning queries...");
+        let tuning_gt: Vec<Vec<usize>> = tuning_queries
             .iter()
-            .filter(|r| r.corpus == *corpus_tag)
+            .map(|q| {
+                let res = oracle.search_indices_exact(q, K_NEIGHBORS, None).unwrap();
+                res.into_iter().map(|(idx, _)| idx as usize).collect()
+            })
             .collect();
-        // Compute Pareto frontier:
-        let mut pareto: Vec<&HnswMatrixRow> = Vec::new();
-        for candidate in &rows {
-            let dominated = rows.iter().any(|other| {
+
+        println!("  Precomputing exact ground truth for 400 held-out admission queries...");
+        let admission_gt: Vec<Vec<usize>> = admission_queries
+            .iter()
+            .map(|q| {
+                let res = oracle.search_indices_exact(q, K_NEIGHBORS, None).unwrap();
+                res.into_iter().map(|(idx, _)| idx as usize).collect()
+            })
+            .collect();
+
+        // Stage 1 Sweep
+        let mut corpus_tuning_rows = Vec::new();
+        for &m in &m_grid {
+            let m0 = 2 * m;
+            for &ef_c in &efc_grid {
+                let index = get_or_build_hnsw_index(corpus_tag, &corpus, dim.div_ceil(2), m, m0, ef_c, DEFAULT_CONSTRUCTION_SEED);
+                for &ef_s in &efs_grid {
+                    let row = evaluate_hnsw_subset(
+                        corpus_tag,
+                        "tuning",
+                        &index,
+                        tuning_queries,
+                        &tuning_gt,
+                        m,
+                        m0,
+                        ef_c,
+                        ef_s,
+                        DEFAULT_CONSTRUCTION_SEED,
+                        *exact_p50,
+                    );
+                    println!(
+                        "    [Tuning] M={:>2} efC={:>3} efS={:>3} │ R@10={:>5.1}% │ p50={:>6.2} ms │ Speedup={:>5.2}x │ Visits={:>4}",
+                        row.m, row.ef_construction, row.ef_search, row.mean_recall_10, row.hnsw_p50_ms, row.speedup, row.avg_visited_nodes
+                    );
+                    corpus_tuning_rows.push(row);
+                }
+            }
+        }
+
+        // Identify Pareto frontier on Tuning set
+        let mut tuning_pareto = Vec::new();
+        for candidate in &corpus_tuning_rows {
+            let dominated = corpus_tuning_rows.iter().any(|other| {
                 other.mean_recall_10 >= candidate.mean_recall_10
                     && other.hnsw_p50_ms <= candidate.hnsw_p50_ms
                     && (other.mean_recall_10 > candidate.mean_recall_10
                         || other.hnsw_p50_ms < candidate.hnsw_p50_ms)
             });
             if !dominated {
-                pareto.push(candidate);
+                tuning_pareto.push(candidate.clone());
             }
         }
-        pareto.sort_by(|a, b| a.mean_recall_10.total_cmp(&b.mean_recall_10));
+        tuning_pareto.sort_by(|a, b| a.mean_recall_10.total_cmp(&b.mean_recall_10));
+        all_tuning_results.extend(corpus_tuning_rows);
 
-        for r in pareto {
-            println!(
-                "  {:<10} │ {:>3} │ {:>3} │ {:>3} │ {:>9.1}% │ {:>9.1}% │ {:>8.2} ms │ {:>8.2} ms │ {:>7.2}x │ {:>8.2} ms │ {:>8}",
-                r.corpus,
-                r.m,
-                r.ef_construction,
-                r.ef_search,
-                r.mean_recall_10,
-                r.min_recall_10,
-                r.exact_p50_ms,
-                r.hnsw_p50_ms,
-                r.speedup,
-                r.hnsw_p99_ms,
-                r.avg_visits
+        println!("\n═══════════════════════════════════════════════════════════════════════════════");
+        println!("  STAGE 2: HELD-OUT ADMISSION (400 Queries, 80%) ON TUNING PARETO FRONTIER FOR {corpus_tag}");
+        println!("═══════════════════════════════════════════════════════════════════════════════");
+
+        let mut corpus_admission_rows = Vec::new();
+        for frontier_point in &tuning_pareto {
+            let index = get_or_build_hnsw_index(
+                corpus_tag,
+                &corpus,
+                dim.div_ceil(2),
+                frontier_point.m,
+                frontier_point.m0,
+                frontier_point.ef_construction,
+                DEFAULT_CONSTRUCTION_SEED,
             );
+            let adm_row = evaluate_hnsw_subset(
+                corpus_tag,
+                "held_out_admission",
+                &index,
+                admission_queries,
+                &admission_gt,
+                frontier_point.m,
+                frontier_point.m0,
+                frontier_point.ef_construction,
+                frontier_point.ef_search,
+                DEFAULT_CONSTRUCTION_SEED,
+                *exact_p50,
+            );
+            println!(
+                "  🎯 [Held-Out] M={:>2} efC={:>3} efS={:>3} │ R@10={:>5.1}% (min={:>4.0}%, p05={:>4.0}%) │ p50={:>6.2} ms (p99={:>6.2} ms) │ Speedup={:>5.2}x │ {}",
+                adm_row.m, adm_row.ef_construction, adm_row.ef_search,
+                adm_row.mean_recall_10, adm_row.min_recall_10, adm_row.p05_recall_10,
+                adm_row.hnsw_p50_ms, adm_row.hnsw_p99_ms, adm_row.speedup,
+                if adm_row.is_production_candidate {
+                    "🌟 PRODUCTION CANDIDATE"
+                } else if adm_row.is_survival_pass {
+                    "✓ Survival"
+                } else {
+                    "✗ Rejected (<95%)"
+                }
+            );
+            corpus_admission_rows.push(adm_row);
         }
-        println!("  {}", "─".repeat(110));
+
+        // Check if any frontier points passed Production Candidate gate
+        let production_finalists: Vec<HnswEvaluationRow> = corpus_admission_rows
+            .iter()
+            .filter(|r| r.is_production_candidate)
+            .cloned()
+            .collect();
+
+        if !production_finalists.is_empty() {
+            println!("\n  STAGE 3: SEED INVARIANCE CHECK FOR PRODUCTION CANDIDATES ON {corpus_tag}");
+            let additional_seeds = [1337u64, 2026u64, 9999u64];
+            for finalist in &production_finalists {
+                for &seed in &additional_seeds {
+                    let index = get_or_build_hnsw_index(
+                        corpus_tag,
+                        &corpus,
+                        dim.div_ceil(2),
+                        finalist.m,
+                        finalist.m0,
+                        finalist.ef_construction,
+                        seed,
+                    );
+                    let seed_row = evaluate_hnsw_subset(
+                        corpus_tag,
+                        "seed_invariance",
+                        &index,
+                        admission_queries,
+                        &admission_gt,
+                        finalist.m,
+                        finalist.m0,
+                        finalist.ef_construction,
+                        finalist.ef_search,
+                        seed,
+                        *exact_p50,
+                    );
+                    println!(
+                        "    🎲 [Seed={seed}] M={:>2} efC={:>3} efS={:>3} │ R@10={:>5.1}% (min={:>4.0}%) │ p50={:>6.2} ms │ Speedup={:>5.2}x",
+                        seed_row.m, seed_row.ef_construction, seed_row.ef_search,
+                        seed_row.mean_recall_10, seed_row.min_recall_10,
+                        seed_row.hnsw_p50_ms, seed_row.speedup
+                    );
+                    all_seed_variance_results.push(seed_row);
+                }
+            }
+        } else {
+            println!("  ℹ️ No production candidates reached >=99% Recall@10 AND >=2.0x speedup on held-out {corpus_tag}.");
+        }
+
+        all_admission_results.extend(corpus_admission_rows);
     }
+
+    // Save full machine readable JSON
+    let out_dir = PathBuf::from("performance-baseline-v1");
+    let p1_json_path = out_dir.join("hnsw_p1_matrix.json");
+    let serialized = serde_json::to_string_pretty(&serde_json::json!({
+        "semantic_kernel_version": 1,
+        "benchmark_stage": "P1-Classical-HNSW-Pareto",
+        "tuning_matrix": all_tuning_results,
+        "held_out_admission_pareto": all_admission_results,
+        "seed_variance_trials": all_seed_variance_results,
+    })).expect("serialize p1 json");
+    let mut file = File::create(&p1_json_path).expect("create p1 json");
+    file.write_all(serialized.as_bytes()).expect("write p1 json");
+
+    // Output Final Brutally Small Summary Table
+    println!("\n\n═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════");
+    println!("  🏆 P1 HELD-OUT PARETO-FRONTIER ADMISSION SUMMARY TABLE");
+    println!("═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════");
     println!(
-        "═══════════════════════════════════════════════════════════════════════════════════════════════════════\n"
+        "  {:<10} │ {:>2} │ {:>2} │ {:>3} │ {:>3} │ {:>6} │ {:>9} │ {:>8} │ {:>9} │ {:>8} │ {:>7} │ {:>8} │ {:>6}",
+        "Dataset", "M", "M0", "efC", "efS", "R@10", "p05 R@10", "Min R@10", "Exact p50", "HNSW p50", "Speedup", "HNSW p99", "Visits"
     );
+    println!("  {}", "─".repeat(123));
+
+    for r in &all_admission_results {
+        println!(
+            "  {:<10} │ {:>2} │ {:>2} │ {:>3} │ {:>3} │ {:>5.1}% │ {:>8.1}% │ {:>7.1}% │ {:>7.2} ms │ {:>6.2} ms │ {:>6.2}x │ {:>6.2} ms │ {:>6}",
+            r.corpus, r.m, r.m0, r.ef_construction, r.ef_search,
+            r.mean_recall_10, r.p05_recall_10, r.min_recall_10,
+            r.exact_p50_ms, r.hnsw_p50_ms, r.speedup, r.hnsw_p99_ms, r.avg_visited_nodes
+        );
+    }
+    println!("═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════\n");
 }

@@ -18,7 +18,9 @@ pub use linguistic::{
 };
 pub use multivector::{MultiVectorEmbedding, MultiVectorIndex};
 pub use performance_trial::{
-    AdmissionGateStatus, BenchmarkRecord, RetrievalTrial, evaluate_admission_gates,
+    AdmissionGateStatus, BenchmarkRecord, BenchmarkRunIdentity, CertifiedEvidence,
+    HnswBuildDescriptor, HnswSearchDescriptor, RetrievalTrial, TrialValidationError,
+    evaluate_admission_gates,
 };
 pub use sparse::{
     InvertedPostingList, PostingChunk, PostingEntry, SparseInvertedIndex, SparseVector,

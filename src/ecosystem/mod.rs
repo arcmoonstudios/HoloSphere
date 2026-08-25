@@ -75,7 +75,7 @@ impl HNSQRVectorStore for crate::HNSQRIndex {
         let contract = if certified_exact {
             crate::planning::planner::RetrievalContract::Certified
         } else {
-            crate::planning::planner::RetrievalContract::HighRecall(0.99)
+            crate::planning::planner::RetrievalContract::Exact
         };
         let results = self.search_indices_with_contract(query, k, None, contract)?;
         Ok(results

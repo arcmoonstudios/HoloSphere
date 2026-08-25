@@ -283,44 +283,34 @@ pub fn generate_realistic_text_corpus(
 ) -> TextRetrievalCorpus {
     let (base_path, query_path, actual_dim) = find_best_matching_dataset(real_dim);
 
-    let (mut corpus_raw, mut folded_corpus, dim_loaded) = if base_path.exists() {
+    let (corpus_raw, folded_corpus, dim_loaded) = if base_path.exists() {
         read_fvecs_raw(&base_path, Some(n)).unwrap_or_else(|_| (Vec::new(), Vec::new(), actual_dim))
     } else {
         (Vec::new(), Vec::new(), actual_dim)
     };
 
-    let (mut queries_raw, mut folded_queries, _) = if query_path.exists() {
+    let (queries_raw, folded_queries, _) = if query_path.exists() {
         read_fvecs_raw(&query_path, Some(num_queries))
             .unwrap_or_else(|_| (Vec::new(), Vec::new(), actual_dim))
     } else {
         (Vec::new(), Vec::new(), actual_dim)
     };
 
-    // If dataset on disk is smaller than requested n, pad with repeated slices
+    // Fail closed if dataset on disk is smaller than requested n
     if folded_corpus.len() < n && !folded_corpus.is_empty() {
-        let original_len = folded_corpus.len();
-        while folded_corpus.len() < n {
-            let take = (n - folded_corpus.len()).min(original_len);
-            for i in 0..take {
-                folded_corpus.push(folded_corpus[i].clone());
-                if !corpus_raw.is_empty() {
-                    corpus_raw.push(corpus_raw[i].clone());
-                }
-            }
-        }
+        panic!(
+            "BenchmarkDatasetTooSmall: requested {n} corpus vectors from {}, but only loaded {}",
+            base_path.display(),
+            folded_corpus.len()
+        );
     }
 
     if folded_queries.len() < num_queries && !folded_queries.is_empty() {
-        let original_len = folded_queries.len();
-        while folded_queries.len() < num_queries {
-            let take = (num_queries - folded_queries.len()).min(original_len);
-            for i in 0..take {
-                folded_queries.push(folded_queries[i].clone());
-                if !queries_raw.is_empty() {
-                    queries_raw.push(queries_raw[i].clone());
-                }
-            }
-        }
+        panic!(
+            "BenchmarkDatasetTooSmall: requested {num_queries} query vectors from {}, but only loaded {}",
+            query_path.display(),
+            folded_queries.len()
+        );
     }
 
     let hard_negatives = folded_queries.clone();
@@ -420,6 +410,19 @@ pub fn open_prebuilt_index(
                 snap_path.display()
             )
         });
+    assert_eq!(
+        index.dimension(),
+        dim,
+        "prebuilt index dimension mismatch: expected {dim}, got {}",
+        index.dimension()
+    );
+    assert_eq!(
+        index.size(),
+        corpus.len(),
+        "prebuilt index row count mismatch: expected {}, got {}",
+        corpus.len(),
+        index.size()
+    );
     index.freeze_rivero_routing();
     index
 }

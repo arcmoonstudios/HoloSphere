@@ -166,8 +166,10 @@ pub struct SearchToolRequest {
     pub k: usize,
     #[serde(default)]
     pub filter: Option<FilterExpr>,
-    #[serde(default = "default_true")]
-    pub certified_exact: bool,
+    #[serde(default)]
+    pub retrieval_contract: Option<String>,
+    #[serde(default)]
+    pub certified_exact: Option<bool>,
     #[serde(default)]
     pub snapshot_lsn: Option<u64>,
 }
@@ -888,13 +890,22 @@ impl ModelToolService {
         } else {
             request.k
         };
+        let effective_contract = if let Some(ref c) = request.retrieval_contract {
+            c.to_ascii_lowercase()
+        } else if let Some(true) = request.certified_exact {
+            "certified".to_string()
+        } else {
+            "exact".to_string()
+        };
+        let is_certified = effective_contract == "certified";
+
         let (results, certified, proof_upper_bound) =
             self.vectors.search_llm_vector_with_contract(
                 &internal_collection,
                 &vector,
                 internal_k,
                 request.filter,
-                request.certified_exact,
+                is_certified,
             )?;
         let mut results: Vec<_> = results
             .into_iter()
@@ -908,12 +919,8 @@ impl ModelToolService {
         Ok(EvidenceEnvelope {
             tenant_id: subject.tenant_id.clone(),
             snapshot_lsn,
-            retrieval_contract: if request.certified_exact {
-                "certified".to_string()
-            } else {
-                "best_effort".to_string()
-            },
-            certified,
+            retrieval_contract: effective_contract,
+            certified: is_certified && certified,
             proof_upper_bound,
             content_is_untrusted: true,
             results,
@@ -1009,7 +1016,8 @@ impl ModelToolService {
                 collection: request.collection,
                 k: request.max_hypotheses,
                 filter: None,
-                certified_exact: true,
+                retrieval_contract: Some("exact".to_string()),
+                certified_exact: None,
                 snapshot_lsn: request.snapshot_lsn,
             },
         )?;
@@ -1116,9 +1124,6 @@ fn default_collection() -> String {
 }
 fn default_k() -> usize {
     10
-}
-fn default_true() -> bool {
-    true
 }
 fn default_depth() -> usize {
     3
@@ -1390,7 +1395,8 @@ mod tests {
                     collection: "knowledge".to_string(),
                     k: 5,
                     filter: None,
-                    certified_exact: true,
+                    retrieval_contract: Some("exact".to_string()),
+                    certified_exact: None,
                     snapshot_lsn: None,
                 },
             )
@@ -1407,7 +1413,8 @@ mod tests {
                         collection: "knowledge".to_string(),
                         k: 5,
                         filter: None,
-                        certified_exact: true,
+                        retrieval_contract: Some("exact".to_string()),
+                        certified_exact: None,
                         snapshot_lsn: None,
                     },
                 )
@@ -1452,7 +1459,8 @@ mod tests {
                     collection: "knowledge".to_string(),
                     k: 1,
                     filter: None,
-                    certified_exact: true,
+                    retrieval_contract: Some("exact".to_string()),
+                    certified_exact: None,
                     snapshot_lsn: None,
                 },
             )
@@ -1513,7 +1521,8 @@ mod tests {
                     collection: "knowledge".to_string(),
                     k: 1,
                     filter: None,
-                    certified_exact: true,
+                    retrieval_contract: Some("exact".to_string()),
+                    certified_exact: None,
                     snapshot_lsn: Some(first.snapshot_lsn),
                 },
             )

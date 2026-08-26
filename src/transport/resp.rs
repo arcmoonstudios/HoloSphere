@@ -295,6 +295,7 @@ pub struct RespServer {
     pubsub: Arc<PubSubBroker>,
     streams: Arc<RedisStreamEngine>,
     index: Option<Arc<crate::HNSQRIndex>>,
+    graph: Option<Arc<crate::graph::mutation::GraphMutationApplier>>,
 }
 
 impl RespServer {
@@ -303,14 +304,23 @@ impl RespServer {
     }
 
     pub fn with_index(kv_store: Arc<MemoryKvStore>, index: Option<Arc<crate::HNSQRIndex>>) -> Self {
+        Self::with_index_and_graph(kv_store, index, None)
+    }
+
+    /// Creates a RESP server bound to the authoritative graph state.
+    pub fn with_index_and_graph(
+        kv_store: Arc<MemoryKvStore>,
+        index: Option<Arc<crate::HNSQRIndex>>,
+        graph: Option<Arc<crate::graph::mutation::GraphMutationApplier>>,
+    ) -> Self {
         Self {
             kv_store,
             pubsub: Arc::new(PubSubBroker::new()),
             streams: Arc::new(RedisStreamEngine::new()),
             index,
+            graph,
         }
     }
-
 
     /// Dispatches raw byte slice command arguments with zero UTF-8 allocation overhead.
     pub fn handle_raw_command(&self, args: &[&[u8]]) -> RespFrame {
@@ -420,18 +430,25 @@ impl RespServer {
             }
             let graph_name = String::from_utf8_lossy(args[1]);
             let cypher_query = String::from_utf8_lossy(args[2]);
-            if let Some(ref idx) = self.index {
-                let lc = crate::graph::catalog::labels::LabelCatalog::default();
-                let rc = crate::graph::catalog::relationships::RelTypeCatalog::default();
-                match crate::graph::query::planner::QueryPlanner::compile(&cypher_query, &lc, &rc, None) {
+            if let (Some(idx), Some(graph)) = (&self.index, &self.graph) {
+                let lc = graph.label_catalog();
+                let rc = graph.rel_catalog();
+                match crate::graph::query::planner::QueryPlanner::compile(
+                    &cypher_query,
+                    &lc,
+                    &rc,
+                    None,
+                ) {
                     Ok(compiled) => {
-                        let gen_lock = Arc::new(parking_lot::RwLock::new(
-                            crate::graph::storage::generation::GraphGeneration::new_mutable(1),
-                        ));
-                        let read_gen = Arc::new(crate::graph::storage::generation::GraphReadGeneration::new(
-                            gen_lock, 1,
-                        ));
-                        let mut exec_ctx = crate::graph::query::executor::ExecutionContext::new(read_gen);
+                        let gen_lock = graph.generation();
+                        let generation_id = gen_lock.read().generation;
+                        let read_gen =
+                            Arc::new(crate::graph::storage::generation::GraphReadGeneration::new(
+                                gen_lock,
+                                generation_id,
+                            ));
+                        let mut exec_ctx =
+                            crate::graph::query::executor::ExecutionContext::new(read_gen);
                         match exec_ctx.execute_with_vector_engine(
                             &compiled.plan,
                             idx,
@@ -460,14 +477,11 @@ impl RespServer {
                     Err(e) => RespFrame::Error(format!("ERR cypher compilation failed: {e}")),
                 }
             } else {
-                RespFrame::Array(Some(vec![
-                    RespFrame::BulkString(Some(format!("Graph: {}", graph_name).into_bytes())),
-                    RespFrame::BulkString(Some(format!("Query: {}", cypher_query).into_bytes())),
-                    RespFrame::SimpleString("OK".into()),
-                ]))
+                RespFrame::Error(format!(
+                    "ERR GRAPH.QUERY requires a live graph binding (graph '{graph_name}')"
+                ))
             }
         } else if cmd.eq_ignore_ascii_case(b"FT.SEARCH") {
-
             if args.len() < 3 {
                 return RespFrame::Error(
                     "ERR wrong number of arguments for 'ft.search' command".into(),

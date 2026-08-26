@@ -33,18 +33,31 @@ use std::f32::consts::PI;
 
 use std::sync::OnceLock;
 
-/// Exact phase extraction for CPQ quantization.
+/// Fast phase extraction for CPQ ingestion.
 ///
-/// This compatibility-named function delegates to the platform `atan2f`.
-/// It runs only while vectors are written or quantized, never during search,
-/// so it removes polynomial approximation error from ingestion without adding
-/// query-path work.
-///
-/// Output contract: `[-π, π]`, matching `f32::atan2` exactly.
+/// The approximation is well below one CPQ-8 phase bin (about 0.0245 rad),
+/// avoiding an expensive platform `atan2f` for every complex component.
 ///
 #[inline(always)]
 pub fn fast_atan2_approx(y: f32, x: f32) -> f32 {
-    y.atan2(x)
+    let abs_x = x.abs();
+    let abs_y = y.abs();
+    let x_dominant = abs_x >= abs_y;
+    let (num, den) = if x_dominant {
+        (abs_y, abs_x)
+    } else {
+        (abs_x, abs_y)
+    };
+    let r = num / (den + 1e-9);
+    let r2 = r * r;
+    let angle = ((0.080_537 * r2 - 0.316_022) * r2 + 0.999_133) * r;
+    let base = if x_dominant {
+        angle
+    } else {
+        std::f32::consts::FRAC_PI_2 - angle
+    };
+    let signed_x = if x < 0.0 { PI - base } else { base };
+    if y < 0.0 { -signed_x } else { signed_x }
 }
 
 static TRIG_TABLES: OnceLock<([f32; 256], [f32; 256])> = OnceLock::new();
@@ -318,18 +331,18 @@ mod tests {
         // Verify max error < 0.003 rad across representative quadrants.
         // 8-bit bin width ≈ 2π/256 ≈ 0.0245 rad, so 0.003 rad is sub-LSB.
         let cases: &[(f32, f32)] = &[
-            (0.0, 1.0),     // 0
-            (1.0, 1.0),     // π/4
-            (1.0, 0.0),     // π/2
-            (1.0, -1.0),    // 3π/4
-            (0.0, -1.0),    // π
-            (-1.0, -1.0),   // -3π/4
-            (-1.0, 0.0),    // -π/2
-            (-1.0, 1.0),    // -π/4
+            (0.0, 1.0),   // 0
+            (1.0, 1.0),   // π/4
+            (1.0, 0.0),   // π/2
+            (1.0, -1.0),  // 3π/4
+            (0.0, -1.0),  // π
+            (-1.0, -1.0), // -3π/4
+            (-1.0, 0.0),  // -π/2
+            (-1.0, 1.0),  // -π/4
             (0.707, 0.707),
             (0.3, 0.9),
             (-0.5, 0.8),
-            (0.0, 0.0),     // degenerate: both zero
+            (0.0, 0.0), // degenerate: both zero
         ];
         for &(y, x) in cases {
             let expected = y.atan2(x);

@@ -98,7 +98,7 @@ impl GraphGeneration {
         let node_count = self.nodes.capacity(); // include tombstoned slots for stable indices
         self.node_count_at_seal = node_count;
         let outgoing = Arc::new(CsrAdjacency::build(&self.nodes, &delta, node_count));
-        let incoming = Arc::new(CscAdjacency::build(&delta, node_count));
+        let incoming = Arc::new(CscAdjacency::build(&self.nodes, &delta, node_count));
         self.sealed = Some(SealedAdjacency::Csr { outgoing, incoming });
         Ok(())
     }

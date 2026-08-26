@@ -60,7 +60,7 @@ fn chain_projection(n: usize) -> CsrProjection {
         delta.append(EdgeRecord::new(0, i, i + 1, 1.0, 0));
     }
     let csr = Arc::new(CsrAdjacency::build(&arena, &delta, n));
-    let csc = Arc::new(CscAdjacency::build(&delta, n));
+    let csc = Arc::new(CscAdjacency::build(&arena, &delta, n));
     CsrProjection::new(csr, csc)
 }
 
@@ -80,7 +80,7 @@ fn triangle_projection() -> CsrProjection {
     delta.append(EdgeRecord::new(0, 0, 2, 1.0, 0));
     delta.append(EdgeRecord::new(0, 2, 0, 1.0, 0));
     let csr = Arc::new(CsrAdjacency::build(&arena, &delta, n));
-    let csc = Arc::new(CscAdjacency::build(&delta, n));
+    let csc = Arc::new(CscAdjacency::build(&arena, &delta, n));
     CsrProjection::new(csr, csc)
 }
 
@@ -112,6 +112,24 @@ fn test_node_arena_alloc_get_delete() {
     arena.delete(0);
     assert!(!arena.is_live(0));
     assert!(arena.get(0).is_none());
+}
+
+#[test]
+fn csr_and_csc_exclude_edges_with_tombstoned_endpoints() {
+    let arena = NodeArena::new();
+    for _ in 0..3 {
+        arena.alloc(GraphNodeRecord::default());
+    }
+    assert!(arena.delete(1));
+    let delta = EdgeDelta::new();
+    delta.append(EdgeRecord::new(0, 0, 1, 1.0, 0));
+    delta.append(EdgeRecord::new(0, 1, 2, 1.0, 0));
+    delta.append(EdgeRecord::new(0, 0, 2, 1.0, 0));
+
+    let csr = CsrAdjacency::build(&arena, &delta, 3);
+    let csc = CscAdjacency::build(&arena, &delta, 3);
+    assert_eq!(csr.out_neighbors(0), &[2]);
+    assert_eq!(csc.in_neighbors(2), &[0]);
 }
 
 // ─── 3. EdgeDelta out-chain traversal ────────────────────────────────────────
@@ -248,7 +266,7 @@ fn test_connected_components_two_islands() {
     delta.append(EdgeRecord::new(0, 1, 2, 1.0, 0));
     delta.append(EdgeRecord::new(0, 3, 4, 1.0, 0));
     let csr = Arc::new(CsrAdjacency::build(&arena, &delta, n));
-    let csc = Arc::new(CscAdjacency::build(&delta, n));
+    let csc = Arc::new(CscAdjacency::build(&arena, &delta, n));
     let proj = CsrProjection::new(csr, csc);
 
     let cc = ConnectedComponents::compute(&proj);
@@ -326,7 +344,7 @@ fn test_k_core_isolated_node() {
     delta.append(EdgeRecord::new(0, 0, 1, 1.0, 0));
     delta.append(EdgeRecord::new(0, 1, 0, 1.0, 0)); // bidirectional for k-core
     let csr = Arc::new(CsrAdjacency::build(&arena, &delta, n));
-    let csc = Arc::new(CscAdjacency::build(&delta, n));
+    let csc = Arc::new(CscAdjacency::build(&arena, &delta, n));
     let proj = CsrProjection::new(csr, csc);
 
     let kc = KCoreDecomposition::compute(&proj);

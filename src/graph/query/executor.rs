@@ -470,8 +470,9 @@ impl ExecutionContext {
                 let gen_lock = self.generation.generation.read();
                 let node_count = gen_lock.node_count();
 
-                // Build a CsrProjection if the generation is sealed, otherwise
-                // materialise per-node neighbour vecs from the mutable delta.
+                // Build a CsrProjection if the generation is sealed. For a mutable
+                // generation, compact once into contiguous CSR/CSC arrays instead
+                // of allocating four `Vec`s per node for every path query.
                 let proj: Box<dyn crate::graph::analytics::projection::GraphProjection> =
                     match &gen_lock.sealed {
                         Some(crate::graph::storage::generation::SealedAdjacency::Csr {
@@ -482,29 +483,25 @@ impl ExecutionContext {
                             incoming.clone(),
                         )),
                         None => {
-                            // Mutable generation: materialise adjacency vecs once.
-                            let mut out_nb = vec![Vec::<NodeIndex>::new(); node_count];
-                            let mut out_wt = vec![Vec::<f32>::new(); node_count];
-                            let mut in_nb = vec![Vec::<NodeIndex>::new(); node_count];
-                            let mut in_wt = vec![Vec::<f32>::new(); node_count];
-                            let adj = gen_lock.adjacency();
-                            for u in 0..node_count as NodeIndex {
-                                adj.expand_out(u, None, |v, w| {
-                                    out_nb[u as usize].push(v);
-                                    out_wt[u as usize].push(w);
-                                });
-                                adj.expand_in(u, None, |v, w| {
-                                    in_nb[u as usize].push(v);
-                                    in_wt[u as usize].push(w);
-                                });
-                            }
-                            Box::new(VecProjection {
-                                node_count,
-                                out_nb,
-                                out_wt,
-                                in_nb,
-                                in_wt,
-                            })
+                            let delta = gen_lock
+                                .edge_delta
+                                .as_ref()
+                                .expect("mutable generation must retain its edge delta");
+                            let outgoing =
+                                Arc::new(crate::graph::storage::csr::CsrAdjacency::build(
+                                    &gen_lock.nodes,
+                                    delta,
+                                    node_count,
+                                ));
+                            let incoming =
+                                Arc::new(crate::graph::storage::csr::CscAdjacency::build(
+                                    &gen_lock.nodes,
+                                    delta,
+                                    node_count,
+                                ));
+                            Box::new(crate::graph::analytics::projection::CsrProjection::new(
+                                outgoing, incoming,
+                            ))
                         }
                     };
 
@@ -625,50 +622,5 @@ impl ExecutionContext {
             // Property-ref and parameter predicates are deferred to v2.
             _ => true,
         }
-    }
-}
-
-// ── VecProjection ─────────────────────────────────────────────────────────
-// A materialised-vector GraphProjection used for ShortestPath dispatch over
-// mutable (delta) generations that have no sealed CSR/CSC yet.
-
-struct VecProjection {
-    node_count: usize,
-    out_nb: Vec<Vec<NodeIndex>>,
-    out_wt: Vec<Vec<f32>>,
-    in_nb: Vec<Vec<NodeIndex>>,
-    in_wt: Vec<Vec<f32>>,
-}
-
-impl crate::graph::analytics::projection::GraphProjection for VecProjection {
-    fn node_count(&self) -> usize {
-        self.node_count
-    }
-    fn out_neighbors(&self, node: NodeIndex) -> &[NodeIndex] {
-        self.out_nb
-            .get(node as usize)
-            .map(|v| v.as_slice())
-            .unwrap_or(&[])
-    }
-    fn in_neighbors(&self, node: NodeIndex) -> &[NodeIndex] {
-        self.in_nb
-            .get(node as usize)
-            .map(|v| v.as_slice())
-            .unwrap_or(&[])
-    }
-    fn out_weights(&self, node: NodeIndex) -> &[f32] {
-        self.out_wt
-            .get(node as usize)
-            .map(|v| v.as_slice())
-            .unwrap_or(&[])
-    }
-    fn in_weights(&self, node: NodeIndex) -> &[f32] {
-        self.in_wt
-            .get(node as usize)
-            .map(|v| v.as_slice())
-            .unwrap_or(&[])
-    }
-    fn edge_count(&self) -> usize {
-        self.out_nb.iter().map(|v| v.len()).sum()
     }
 }

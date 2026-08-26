@@ -295,6 +295,8 @@ impl FilterExpr {
 pub struct MetadataInvertedIndex {
     categorical: RwLock<HashMap<String, HashMap<String, RoaringBitmap>>>,
     numeric: RwLock<HashMap<String, BTreeMap<i64, RoaringBitmap>>>,
+    /// Packed `(lat, lon)` postings. Coordinate text is parsed only at ingestion.
+    spatial: RwLock<HashMap<String, HashMap<u64, RoaringBitmap>>>,
 }
 
 impl Default for MetadataInvertedIndex {
@@ -309,6 +311,7 @@ impl MetadataInvertedIndex {
         Self {
             categorical: RwLock::new(HashMap::new()),
             numeric: RwLock::new(HashMap::new()),
+            spatial: RwLock::new(HashMap::new()),
         }
     }
 
@@ -332,14 +335,17 @@ impl MetadataInvertedIndex {
         categorical: HashMap<String, HashMap<String, RoaringBitmap>>,
         numeric: HashMap<String, BTreeMap<i64, RoaringBitmap>>,
     ) {
+        let spatial = Self::spatial_postings_from_categorical(&categorical);
         *self.categorical.write() = categorical;
         *self.numeric.write() = numeric;
+        *self.spatial.write() = spatial;
     }
 
     /// Parses JSON metadata at ingestion time and sets the corresponding bits lock-free.
     pub fn insert_metadata(&self, node_index: NodeIndex, metadata: &serde_json::Value) {
         if let serde_json::Value::Object(map) = metadata {
             let mut index_write = self.categorical.write();
+            let mut spatial_write = self.spatial.write();
             for (key, value) in map {
                 let val_str = match value {
                     serde_json::Value::String(s) => s.clone(),
@@ -347,12 +353,21 @@ impl MetadataInvertedIndex {
                     serde_json::Value::Bool(b) => b.to_string(),
                     _ => continue,
                 };
+                let geo_point = Self::packed_geo_str(&val_str);
                 index_write
                     .entry(key.clone())
                     .or_default()
                     .entry(val_str)
                     .or_default()
                     .insert(node_index);
+                if let Some(point) = geo_point {
+                    spatial_write
+                        .entry(key.clone())
+                        .or_default()
+                        .entry(point)
+                        .or_default()
+                        .insert(node_index);
+                }
             }
         }
     }
@@ -394,6 +409,7 @@ impl MetadataInvertedIndex {
     pub fn index_node(&self, index: NodeIndex, metadata: &HashMap<String, MetadataValue>) {
         let mut cat_write = self.categorical.write();
         let mut num_write = self.numeric.write();
+        let mut spatial_write = self.spatial.write();
 
         for (field, val) in metadata {
             let key_str = val.to_string_key();
@@ -412,6 +428,14 @@ impl MetadataInvertedIndex {
                     .or_default()
                     .insert(index);
             }
+            if let Some(point) = Self::packed_geo_value(val) {
+                spatial_write
+                    .entry(field.clone())
+                    .or_default()
+                    .entry(point)
+                    .or_default()
+                    .insert(index);
+            }
         }
     }
 
@@ -419,6 +443,7 @@ impl MetadataInvertedIndex {
     pub fn index_nodes_batch(&self, batch: &[(NodeIndex, &HashMap<String, MetadataValue>)]) {
         let mut cat_write = self.categorical.write();
         let mut num_write = self.numeric.write();
+        let mut spatial_write = self.spatial.write();
 
         for &(index, metadata) in batch {
             for (field, val) in metadata {
@@ -438,6 +463,14 @@ impl MetadataInvertedIndex {
                         .or_default()
                         .insert(index);
                 }
+                if let Some(point) = Self::packed_geo_value(val) {
+                    spatial_write
+                        .entry(field.clone())
+                        .or_default()
+                        .entry(point)
+                        .or_default()
+                        .insert(index);
+                }
             }
         }
     }
@@ -446,6 +479,7 @@ impl MetadataInvertedIndex {
     pub fn remove_node(&self, index: NodeIndex, metadata: &HashMap<String, MetadataValue>) {
         let mut cat_write = self.categorical.write();
         let mut num_write = self.numeric.write();
+        let mut spatial_write = self.spatial.write();
 
         for (field, val) in metadata {
             let key_str = val.to_string_key();
@@ -461,6 +495,12 @@ impl MetadataInvertedIndex {
                         bitmap.remove(index);
                     }
                 }
+            }
+            if let Some(point) = Self::packed_geo_value(val)
+                && let Some(field_map) = spatial_write.get_mut(field)
+                && let Some(bitmap) = field_map.get_mut(&point)
+            {
+                bitmap.remove(index);
             }
         }
     }
@@ -486,14 +526,24 @@ impl MetadataInvertedIndex {
             });
         }
         numeric.retain(|_, value_map| !value_map.is_empty());
+
+        let mut spatial = self.spatial.write();
+        for field_map in spatial.values_mut() {
+            field_map.retain(|_, bitmap| {
+                bitmap.remove(index);
+                !bitmap.is_empty()
+            });
+        }
+        spatial.retain(|_, field_map| !field_map.is_empty());
     }
 
     /// Evaluates a structured [`FilterExpr`] into a single consolidated [`RoaringBitmap`].
     pub fn evaluate_filter(&self, expr: &FilterExpr, total_nodes: usize) -> RoaringBitmap {
         let cat_read = self.categorical.read();
         let num_read = self.numeric.read();
+        let spatial_read = self.spatial.read();
 
-        self.eval_internal(expr, &cat_read, &num_read, total_nodes)
+        self.eval_internal(expr, &cat_read, &num_read, &spatial_read, total_nodes)
     }
 
     fn eval_internal(
@@ -501,6 +551,7 @@ impl MetadataInvertedIndex {
         expr: &FilterExpr,
         cat: &HashMap<String, HashMap<String, RoaringBitmap>>,
         num: &HashMap<String, BTreeMap<i64, RoaringBitmap>>,
+        spatial: &HashMap<String, HashMap<u64, RoaringBitmap>>,
         total_nodes: usize,
     ) -> RoaringBitmap {
         match expr {
@@ -534,17 +585,10 @@ impl MetadataInvertedIndex {
             }
             FilterExpr::GeoWithin(field, polygon) => {
                 let mut out = RoaringBitmap::new();
-                if let Some(field_map) = cat.get(field) {
-                    for (val_str, bm) in field_map {
-                        if let Some((lat_s, lon_s)) = val_str.split_once(',') {
-                            if let (Ok(lat), Ok(lon)) =
-                                (lat_s.trim().parse::<f64>(), lon_s.trim().parse::<f64>())
-                            {
-                                let pt = crate::metadata::geo::GeoPoint::new(lat, lon);
-                                if polygon.contains_point(&pt) {
-                                    out |= bm;
-                                }
-                            }
+                if let Some(field_map) = spatial.get(field) {
+                    for (&packed, bm) in field_map {
+                        if polygon.contains_point(&Self::unpack_geo_point(packed)) {
+                            out |= bm;
                         }
                     }
                 }
@@ -552,17 +596,11 @@ impl MetadataInvertedIndex {
             }
             FilterExpr::GeoRadius(field, center, max_km) => {
                 let mut out = RoaringBitmap::new();
-                if let Some(field_map) = cat.get(field) {
-                    for (val_str, bm) in field_map {
-                        if let Some((lat_s, lon_s)) = val_str.split_once(',') {
-                            if let (Ok(lat), Ok(lon)) =
-                                (lat_s.trim().parse::<f64>(), lon_s.trim().parse::<f64>())
-                            {
-                                let pt = crate::metadata::geo::GeoPoint::new(lat, lon);
-                                if center.haversine_distance_km(&pt) <= *max_km {
-                                    out |= bm;
-                                }
-                            }
+                if let Some(field_map) = spatial.get(field) {
+                    for (&packed, bm) in field_map {
+                        if center.haversine_distance_km(&Self::unpack_geo_point(packed)) <= *max_km
+                        {
+                            out |= bm;
                         }
                     }
                 }
@@ -572,12 +610,12 @@ impl MetadataInvertedIndex {
                 if children.is_empty() {
                     return RoaringBitmap::new();
                 }
-                let mut result = self.eval_internal(&children[0], cat, num, total_nodes);
+                let mut result = self.eval_internal(&children[0], cat, num, spatial, total_nodes);
                 for child in &children[1..] {
                     if result.is_empty() {
                         break;
                     }
-                    let child_bm = self.eval_internal(child, cat, num, total_nodes);
+                    let child_bm = self.eval_internal(child, cat, num, spatial, total_nodes);
                     result &= child_bm;
                 }
                 result
@@ -585,18 +623,65 @@ impl MetadataInvertedIndex {
             FilterExpr::Or(children) => {
                 let mut result = RoaringBitmap::new();
                 for child in children {
-                    let child_bm = self.eval_internal(child, cat, num, total_nodes);
+                    let child_bm = self.eval_internal(child, cat, num, spatial, total_nodes);
                     result |= child_bm;
                 }
                 result
             }
             FilterExpr::Not(inner) => {
-                let inner_bm = self.eval_internal(inner, cat, num, total_nodes);
+                let inner_bm = self.eval_internal(inner, cat, num, spatial, total_nodes);
                 let mut universe = RoaringBitmap::new();
                 universe.insert_range(0..(total_nodes as u32));
                 universe - inner_bm
             }
         }
+    }
+
+    #[inline]
+    fn packed_geo_value(value: &MetadataValue) -> Option<u64> {
+        let MetadataValue::String(raw) = value else {
+            return None;
+        };
+        Self::packed_geo_str(raw)
+    }
+
+    #[inline]
+    fn packed_geo_str(raw: &str) -> Option<u64> {
+        let (lat, lon) = raw.split_once(',')?;
+        let lat = lat.trim().parse::<f64>().ok()?;
+        let lon = lon.trim().parse::<f64>().ok()?;
+        if !(-90.0..=90.0).contains(&lat) || !(-180.0..=180.0).contains(&lon) {
+            return None;
+        }
+        let lat_e6 = (lat * 1_000_000.0).round() as i32;
+        let lon_e6 = (lon * 1_000_000.0).round() as i32;
+        Some(((lat_e6 as u32 as u64) << 32) | lon_e6 as u32 as u64)
+    }
+
+    fn spatial_postings_from_categorical(
+        categorical: &HashMap<String, HashMap<String, RoaringBitmap>>,
+    ) -> HashMap<String, HashMap<u64, RoaringBitmap>> {
+        let mut spatial = HashMap::new();
+        for (field, postings) in categorical {
+            for (value, bitmap) in postings {
+                if let Some(point) = Self::packed_geo_str(value) {
+                    let entry = spatial
+                        .entry(field.clone())
+                        .or_insert_with(HashMap::new)
+                        .entry(point)
+                        .or_insert_with(RoaringBitmap::new);
+                    *entry |= bitmap;
+                }
+            }
+        }
+        spatial
+    }
+
+    #[inline]
+    fn unpack_geo_point(packed: u64) -> crate::metadata::geo::GeoPoint {
+        let lat = ((packed >> 32) as u32 as i32) as f64 / 1_000_000.0;
+        let lon = (packed as u32 as i32) as f64 / 1_000_000.0;
+        crate::metadata::geo::GeoPoint::new(lat, lon)
     }
 
     /// Looks up a categorical bitmap using a borrowed or stack-formatted key.

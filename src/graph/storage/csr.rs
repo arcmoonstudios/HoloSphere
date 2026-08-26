@@ -51,7 +51,10 @@ impl CsrAdjacency {
         // Pass 1: count out-degrees.
         let mut out_deg = vec![0usize; node_count];
         for (_, rec) in delta.live_edges() {
-            if (rec.src_node as usize) < node_count {
+            if arena.is_live(rec.src_node)
+                && arena.is_live(rec.dst_node)
+                && (rec.src_node as usize) < node_count
+            {
                 out_deg[rec.src_node as usize] += 1;
             }
         }
@@ -71,7 +74,7 @@ impl CsrAdjacency {
         let mut cursors: Vec<u64> = row_offsets[..node_count].to_vec();
         for (_, rec) in delta.live_edges() {
             let src = rec.src_node as usize;
-            if src < node_count {
+            if arena.is_live(rec.src_node) && arena.is_live(rec.dst_node) && src < node_count {
                 let pos = cursors[src] as usize;
                 targets[pos] = rec.dst_node;
                 rel_types[pos] = rec.rel_type;
@@ -97,9 +100,6 @@ impl CsrAdjacency {
                 }
             }
         }
-
-        // Suppress unused warning for arena (used for node_count validation).
-        let _ = arena;
 
         Self {
             row_offsets,
@@ -275,11 +275,14 @@ pub struct CscAdjacency {
 
 impl CscAdjacency {
     /// Builds a CSC (transpose of CSR) from the live edge delta.
-    pub fn build(delta: &EdgeDelta, node_count: usize) -> Self {
+    pub fn build(arena: &NodeArena, delta: &EdgeDelta, node_count: usize) -> Self {
         // Pass 1: count in-degrees.
         let mut in_deg = vec![0usize; node_count];
         for (_, rec) in delta.live_edges() {
-            if (rec.dst_node as usize) < node_count {
+            if arena.is_live(rec.src_node)
+                && arena.is_live(rec.dst_node)
+                && (rec.dst_node as usize) < node_count
+            {
                 in_deg[rec.dst_node as usize] += 1;
             }
         }
@@ -299,7 +302,7 @@ impl CscAdjacency {
         let mut cursors: Vec<u64> = col_offsets[..node_count].to_vec();
         for (_, rec) in delta.live_edges() {
             let dst = rec.dst_node as usize;
-            if dst < node_count {
+            if arena.is_live(rec.src_node) && arena.is_live(rec.dst_node) && dst < node_count {
                 let pos = cursors[dst] as usize;
                 sources[pos] = rec.src_node;
                 rel_types[pos] = rec.rel_type;

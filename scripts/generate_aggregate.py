@@ -24,7 +24,7 @@ def generate_aggregate():
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     output_path = os.path.join(repo_root, "holosphere.txt")
     
-    ignore_dirs = {".git", ".github", "target", ".gemini", ".idea", ".vscode", "__pycache__", "node_modules", "datasets", "benchmark_databases", "scripts", "tests", "benches", "performance-baseline-v1" }
+    ignore_dirs = {".git", ".github", "target", "target-embedding-validation", "target-gate-b-validation", "target-web-release", "target-web-release-fix", "target-web-validation", ".gemini", ".idea", ".vscode", "__pycache__", "node_modules", "datasets", "benchmark_databases", "scripts", "tests", "benches", "performance-baseline-v1" }
     ignore_files = {"holosphere.txt", "Cargo.lock", "SignalTraceMACROS.md"}
     
     collected_files = []

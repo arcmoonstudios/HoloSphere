@@ -166,7 +166,7 @@ impl Default for RiveroAddressConfig {
         Self {
             foundations: RIVERO_DEFAULT_FOUNDATIONS as u8,
             projection: RiveroProjectionMode::GlobalMix,
-            geometry: VectorGeometry::ComplexPhaseInvariant,
+            geometry: VectorGeometry::Real,
         }
     }
 }
@@ -439,7 +439,7 @@ impl TerritoryEnvelope {
 /// Configurable parameters for Rivero candidate routing and Pareto optimization.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RiveroConfig {
-    /// Number of independent E8 foundations probed (1..=24). Default: 24.
+    /// Number of independent E8 foundations probed (1..=64). Default: 24.
     pub foundations: usize,
     /// Number of nearest SimHash probe signatures per foundation (0..=128). Default: 32.
     pub simhash_query_probes: usize,
@@ -482,7 +482,7 @@ impl RiveroConfig {
         cell_budget: usize,
         query_candidate_cap: usize,
     ) -> Self {
-        let foundations = foundations.clamp(1, RIVERO_FOUNDATIONS);
+        let foundations = foundations.clamp(1, RIVERO_MAX_FOUNDATIONS);
         let cell_capacity = cell_capacity.clamp(4, RIVERO_CELL_CAPACITY);
         let affinity_elites = (cell_capacity * 3) / 8;
         let cell_budget = cell_budget.clamp(1, cell_capacity);
@@ -2617,6 +2617,15 @@ pub fn cell_affinity(sig: u32, coords: &[f32; 8]) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn operational_defaults_use_real_geometry_and_allow_64_foundations() {
+        assert_eq!(
+            RiveroAddressConfig::default().geometry,
+            VectorGeometry::Real
+        );
+        assert_eq!(RiveroConfig::custom(usize::MAX, 1, 4, 1, 1).foundations, 64);
+    }
 
     #[test]
     fn address_is_invariant_under_global_phase() {

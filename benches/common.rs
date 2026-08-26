@@ -37,7 +37,7 @@ use num_complex::Complex32;
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_BENCH_SEED: u64 = 0x484e_5351_525f_5632;
-const CACHE_VERSION: u32 = 6;
+pub const CACHE_VERSION: u32 = 6;
 
 /// Multi-tier benchmarking scale configuration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

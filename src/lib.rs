@@ -1254,9 +1254,9 @@ pub struct HNSQRConfig {
     pub level_multiplier: f32,
     /// Maximum number of nodes the index arena is bounded to. Default: 100,000.
     pub max_elements: usize,
-    /// Distance and similarity metric. Default: ProjectiveOverlap.
+    /// Distance and similarity metric. Default: Cosine.
     pub distance_function: DistanceFunction,
-    /// Execution plan and automatic small-corpus crossover strategy. Default: Auto.
+    /// Execution plan and automatic small-corpus crossover strategy. Default: Exact.
     pub search_plan: SearchPlan,
     /// Maximum live corpus size where exact scan is chosen automatically under `SearchPlan::Auto`. Default: 2000.
     pub exact_scan_threshold: usize,
@@ -1389,7 +1389,10 @@ impl HNSQRConfig {
     /// in the embedding dimension.
     pub fn strict_rivero_for_dim(dimension: usize) -> Self {
         let mut config = Self::adaptive_for_dim(dimension);
+        config.search_plan = SearchPlan::Rivero;
         config.rivero_enabled = true;
+        config.rivero_mode = RiveroSearchMode::Strict;
+        config.adaptive_policy = AdaptivePolicy::RiveroOnly;
         config.rivero_fallback_on_underfill = false;
         config
     }
@@ -6041,6 +6044,16 @@ mod tests {
         assert!(diagnostics.exact_score_evaluations <= diagnostics.unique_candidates);
         assert!(!diagnostics.fallback_used);
         assert_eq!(index.level_distribution(), vec![0]);
+    }
+
+    #[test]
+    fn strict_rivero_configuration_selects_the_strict_dispatch_contract() {
+        let config = HNSQRConfig::strict_rivero_for_dim(768);
+        assert_eq!(config.search_plan, SearchPlan::Rivero);
+        assert_eq!(config.rivero_mode, RiveroSearchMode::Strict);
+        assert_eq!(config.adaptive_policy, AdaptivePolicy::RiveroOnly);
+        assert!(config.rivero_enabled);
+        assert!(!config.rivero_fallback_on_underfill);
     }
 
     #[test]

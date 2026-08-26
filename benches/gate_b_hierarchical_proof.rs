@@ -41,7 +41,7 @@ struct BenchmarkResult {
     speedup: f64,
 }
 
-fn run_experiment(exp: &ExperimentConfig) -> BenchmarkResult {
+fn run_experiment(exp: &ExperimentConfig) -> Option<BenchmarkResult> {
     // 1. Load real corpus & queries from datasets/
     let (base_path, query_path, source_real_dim) = common::find_best_matching_dataset(exp.d_real);
     let (corpus, _) = common::read_fvecs(&base_path, Some(exp.n_corpus))
@@ -72,14 +72,30 @@ fn run_experiment(exp: &ExperimentConfig) -> BenchmarkResult {
     let actual_n = corpus.len();
     let proof_path = common::bench_cache_dir()
         .join(proof_benchmark_artifact_filename(source_real_dim, actual_n));
-    assert!(
-        proof_path.is_file(),
-        "prebuilt Gate B proof artifact is missing: {}\n\
-         Build it once from the real dataset with:\n\
-           cargo run --release --bin hnsqr_build_bench_db -- --kind proof --vectors {actual_n} --source-dim {source_real_dim}\n\
-         Benchmark processes never build proof state.",
-        proof_path.display()
-    );
+    if !proof_path.is_file() {
+        eprintln!(
+            "   ⏭ Gate B SKIPPED: proof artifact missing: {}\n\
+             Build it once from the real dataset with:\n\
+               cargo run --release --bin hnsqr_build_bench_db -- --kind proof --vectors {actual_n} --source-dim {source_real_dim}",
+            proof_path.display()
+        );
+        return None;
+    }
+    let exact_tag = format!("gate_b_exact_d{source_real_dim}");
+    let exact_path = common::bench_cache_dir().join(format!(
+        "{exact_tag}_v{}_p{:?}_d{complex_dim}_n{actual_n}.snapshot",
+        common::CACHE_VERSION,
+        RiveroProfile::Balanced
+    ));
+    if !exact_path.is_file() {
+        eprintln!(
+            "   ⏭ Gate B SKIPPED: exact-index snapshot missing: {}\n\
+             Build it once from the real dataset with:\n\
+               cargo run --release --bin hnsqr_build_bench_db -- --kind index --tag {exact_tag} --vectors {actual_n} --source-dim {source_real_dim} --index-dim {complex_dim} --profile balanced",
+            exact_path.display()
+        );
+        return None;
+    }
     let proof_artifact = ProofBenchmarkArtifact::load(&proof_path, source_real_dim, actual_n)
         .unwrap_or_else(|error| {
             panic!(
@@ -92,7 +108,6 @@ fn run_experiment(exp: &ExperimentConfig) -> BenchmarkResult {
         proof_artifact.vector_count,
         proof_artifact.tree.nodes.len()
     );
-    let exact_tag = format!("gate_b_exact_d{source_real_dim}");
     let exact_index =
         common::open_prebuilt_index(&exact_tag, &corpus, complex_dim, RiveroProfile::Balanced);
 
@@ -233,7 +248,7 @@ fn run_experiment(exp: &ExperimentConfig) -> BenchmarkResult {
     );
     println!("      • Speedup Factor vs Brute Force: {:.2}x", speedup);
 
-    BenchmarkResult {
+    Some(BenchmarkResult {
         d_real: complex_dim * 2,
         n_corpus: actual_n,
         exact_recall,
@@ -242,7 +257,7 @@ fn run_experiment(exp: &ExperimentConfig) -> BenchmarkResult {
         exact_simd_evals_pct,
         proof_lat_us: proof_lat_p50,
         speedup,
-    }
+    })
 }
 
 fn main() {
@@ -280,7 +295,9 @@ fn main() {
 
     let mut results = Vec::new();
     for exp in &matrix {
-        results.push(run_experiment(exp));
+        if let Some(result) = run_experiment(exp) {
+            results.push(result);
+        }
     }
 
     println!(
@@ -305,7 +322,7 @@ fn main() {
         "---------------------------------------------------------------------------------------------------------------"
     );
     let mut admitted = 0usize;
-    for r in results {
+    for r in &results {
         let admission = r.exact_recall == 100.0 && r.speedup > 1.0;
         admitted += admission as usize;
         println!(
@@ -324,7 +341,9 @@ fn main() {
     println!(
         "═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════\n"
     );
-    if admitted == 0 {
+    if results.is_empty() {
+        println!("Gate B completed with no runnable rows; missing artifacts were skipped.");
+    } else if admitted == 0 {
         eprintln!(
             "Gate B rejected every configuration: exact proof search did not beat Exact SIMD. \\
              Keep Exact SIMD as the production retrieval path."

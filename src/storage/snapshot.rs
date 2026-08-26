@@ -35,7 +35,7 @@ use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::rivero::{RIVERO_SCHEMA_VERSION, RiveroAddressConfig, RiveroConfig};
+use crate::rivero::{RIVERO_SCHEMA_VERSION, RiveroAddressConfig, RiveroConfig, RiveroProfile};
 use crate::rivero_witness::ScoredWitness;
 use crate::{HNSQRConfig, HNSQRError, HNSQRIndex, HNSQRResult, Node, NodeIndex};
 
@@ -47,6 +47,21 @@ pub struct RiveroSnapshotConfig {
     pub witness_degree: usize,
     pub witness_seeds: usize,
     pub witness_second_seeds: usize,
+}
+
+/// Runtime dispatch contract stored independently from Rivero's structural state.
+///
+/// Loading a frozen territory without these fields must never silently change a
+/// configured Rivero workload into the default Exact execution path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RuntimeSearchSnapshotConfig {
+    pub search_plan: crate::SearchPlan,
+    pub rivero_mode: crate::RiveroSearchMode,
+    pub adaptive_policy: crate::AdaptivePolicy,
+    pub rivero_enabled: bool,
+    pub rivero_fallback_on_underfill: bool,
+    pub rivero_cell_budget: usize,
+    pub exact_scan_threshold: usize,
 }
 
 pub const SNAPSHOT_V2_MAGIC: [u8; 8] = *b"HNSQRV2\0";
@@ -73,6 +88,7 @@ pub enum SectionKind {
     HnswGraphOffsets = 13,
     HnswGraphEdges = 14,
     IndexStats = 15,
+    RuntimeSearchConfig = 16,
 }
 
 impl SectionKind {
@@ -93,6 +109,7 @@ impl SectionKind {
             13 => Some(Self::HnswGraphOffsets),
             14 => Some(Self::HnswGraphEdges),
             15 => Some(Self::IndexStats),
+            16 => Some(Self::RuntimeSearchConfig),
             _ => None,
         }
     }
@@ -361,7 +378,7 @@ impl HNSQRIndex {
         ));
 
         // 7. RIVERO_CONFIG
-        let (rivero_cfg, addr_cfg, wit_degree, wit_seeds, wit_second_seeds) = {
+        let (rivero_cfg, addr_cfg, wit_degree, wit_seeds, wit_second_seeds, runtime_cfg) = {
             let cfg = self.config.read();
             (
                 cfg.rivero_config,
@@ -369,6 +386,15 @@ impl HNSQRIndex {
                 cfg.rivero_witness_degree,
                 cfg.rivero_witness_seeds,
                 cfg.rivero_witness_second_seeds,
+                RuntimeSearchSnapshotConfig {
+                    search_plan: cfg.search_plan,
+                    rivero_mode: cfg.rivero_mode,
+                    adaptive_policy: cfg.adaptive_policy,
+                    rivero_enabled: cfg.rivero_enabled,
+                    rivero_fallback_on_underfill: cfg.rivero_fallback_on_underfill,
+                    rivero_cell_budget: cfg.rivero_cell_budget,
+                    exact_scan_threshold: cfg.exact_scan_threshold,
+                },
             )
         };
         let snap_cfg = RiveroSnapshotConfig {
@@ -381,6 +407,14 @@ impl HNSQRIndex {
         let cfg_bytes = bincode::serialize(&snap_cfg)
             .map_err(|e| HNSQRError::SerializationError(e.to_string()))?;
         sections.push(create_section(SectionKind::RiveroConfig, 0, 1, &cfg_bytes));
+        let runtime_cfg_bytes = bincode::serialize(&runtime_cfg)
+            .map_err(|e| HNSQRError::SerializationError(e.to_string()))?;
+        sections.push(create_section(
+            SectionKind::RuntimeSearchConfig,
+            0,
+            1,
+            &runtime_cfg_bytes,
+        ));
 
         // 8. RIVERO_CELL_DIRECTORY & 9. RIVERO_CELL_RESIDENTS
         let mut all_cells: Vec<(u64, Vec<(NodeIndex, u32)>, usize, bool)> = Vec::new();
@@ -504,7 +538,10 @@ impl HNSQRIndex {
         }
 
         let structural_hash = self.structural_fingerprint();
-        let config_hash = Sha256::digest(&cfg_bytes).into();
+        let mut config_hasher = Sha256::new();
+        config_hasher.update(&cfg_bytes);
+        config_hasher.update(&runtime_cfg_bytes);
+        let config_hash = config_hasher.finalize().into();
 
         let header = SnapshotHeaderV2 {
             magic: SNAPSHOT_V2_MAGIC,
@@ -516,7 +553,7 @@ impl HNSQRIndex {
             vector_count: vector_count as u64,
             live_count: live_count as u64,
             rivero_schema_version: RIVERO_SCHEMA_VERSION,
-            rivero_profile: 1, // Balanced
+            rivero_profile: rivero_profile_tag(rivero_cfg),
             distance_metric: match self.config.read().distance_function {
                 crate::DistanceFunction::Cosine => 1,
                 _ => 0,
@@ -740,6 +777,29 @@ impl HNSQRIndex {
                 config.rivero_config = rivero_cfg;
                 config.rivero_enabled = true;
             }
+        }
+        if let Some(desc) = section_map.get(&SectionKind::RuntimeSearchConfig) {
+            let payload = &mmap[desc.offset as usize..(desc.offset + desc.length) as usize];
+            let runtime =
+                bincode::deserialize::<RuntimeSearchSnapshotConfig>(payload).map_err(|error| {
+                    HNSQRError::SnapshotIncompatible(format!(
+                        "cannot decode runtime search configuration: {error}"
+                    ))
+                })?;
+            config.search_plan = runtime.search_plan;
+            config.rivero_mode = runtime.rivero_mode;
+            config.adaptive_policy = runtime.adaptive_policy;
+            config.rivero_enabled = runtime.rivero_enabled;
+            config.rivero_fallback_on_underfill = runtime.rivero_fallback_on_underfill;
+            config.rivero_cell_budget = runtime.rivero_cell_budget;
+            config.exact_scan_threshold = runtime.exact_scan_threshold;
+        } else if section_map.contains_key(&SectionKind::RiveroConfig) {
+            // V2 snapshots created before RuntimeSearchConfig only preserved
+            // structural Rivero state. Keep their prior conservative Exact default
+            // instead of guessing an execution contract; re-snapshot to retain it.
+            tracing::warn!(
+                "legacy snapshot lacks runtime search configuration; using conservative Exact dispatch"
+            );
         }
         let config_restore_us = t4.elapsed().as_micros() as f64;
 
@@ -1033,6 +1093,19 @@ impl HNSQRIndex {
     }
 }
 
+#[inline]
+fn rivero_profile_tag(config: RiveroConfig) -> u8 {
+    if config == RiveroProfile::Fast.config() {
+        0
+    } else if config == RiveroProfile::Balanced.config() {
+        1
+    } else if config == RiveroProfile::Strict.config() {
+        2
+    } else {
+        u8::MAX
+    }
+}
+
 #[inline(always)]
 fn create_section(
     kind: SectionKind,
@@ -1124,6 +1197,44 @@ mod tests {
         );
 
         let _ = std::fs::remove_file(snap_path);
+    }
+
+    #[test]
+    fn snapshot_roundtrip_preserves_runtime_search_contract() {
+        let mut config = HNSQRConfig::strict_rivero_for_dim(8);
+        config.exact_scan_threshold = 4_096;
+        config.rivero_cell_budget = 7;
+        config.rivero_config = RiveroConfig::custom(64, 32, 64, 16, 2_048);
+        config.rivero_address_config.foundations = 64;
+        let index = HNSQRIndex::new(config.clone(), 8);
+        index.insert("one", make_test_vector(8, 1)).unwrap();
+
+        let path = std::env::temp_dir().join(format!(
+            "test_runtime_contract_{}.hnsqr",
+            uuid::Uuid::new_v4()
+        ));
+        index.save_snapshot_v2(&path).unwrap();
+        let restored = HNSQRIndex::open_snapshot_v2(&path, SnapshotOpenOptions::default()).unwrap();
+        let restored_config = restored.config();
+
+        assert_eq!(restored_config.search_plan, config.search_plan);
+        assert_eq!(restored_config.rivero_mode, config.rivero_mode);
+        assert_eq!(restored_config.adaptive_policy, config.adaptive_policy);
+        assert_eq!(restored_config.rivero_enabled, config.rivero_enabled);
+        assert_eq!(
+            restored_config.rivero_fallback_on_underfill,
+            config.rivero_fallback_on_underfill
+        );
+        assert_eq!(
+            restored_config.rivero_cell_budget,
+            config.rivero_cell_budget
+        );
+        assert_eq!(
+            restored_config.exact_scan_threshold,
+            config.exact_scan_threshold
+        );
+        assert_eq!(restored_config.rivero_config.foundations, 64);
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

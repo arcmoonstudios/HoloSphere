@@ -533,7 +533,10 @@ pub fn load_adversarial_regression_corpus() -> AdversarialRegressionCorpus {
     let hard_negatives = dataset.folded_queries[32..64].to_vec();
     let ood_noise_queries = dataset.folded_queries[64..96].to_vec();
     let mut phase_adversaries = Vec::new();
-    for folded in &in_domain_queries {
+    // Use indexed corpus vectors, not holdout queries: the phase-adversary
+    // assertion verifies self-alignment before applying a global phase shift.
+    // A real holdout query has no guaranteed near-identical corpus member.
+    for folded in corpus.iter().take(32) {
         let phase = std::f32::consts::PI;
         let rotated = folded
             .complex_data()

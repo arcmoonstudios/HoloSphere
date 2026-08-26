@@ -33,7 +33,7 @@ enum ArtifactKind {
 
 fn usage() -> ! {
     eprintln!(
-        "Usage: hnsqr_build_bench_db [--kind snapshot|index] [--algorithm rivero|hnsw] [--tag NAME] [--vectors N] [--queries N] [--source-dim D] [--index-dim D] [--profile fast|balanced|strict] [--m M] [--m0 M0] [--ef-construction EFC] [--output DIR]"
+        "Usage: hnsqr_build_bench_db [--kind snapshot|index] [--algorithm rivero|hnsw] [--tag NAME] [--vectors N] [--queries N] [--source-dim D] [--index-dim D] [--profile fast|balanced|strict] [--geometry real|complex-phase-invariant] [--m M] [--m0 M0] [--ef-construction EFC] [--output DIR]"
     );
     eprintln!(
         "\nExamples:\n  cargo run --release --bin hnsqr_build_bench_db -- --vectors 5000 --queries 64 --source-dim 128 --profile balanced\n  cargo run --release --bin hnsqr_build_bench_db -- --kind index --algorithm hnsw --tag hnsw_sweep --vectors 5000 --source-dim 128 --m 16 --m0 32 --ef-construction 200"
@@ -109,6 +109,7 @@ fn main() {
     let mut m = 16usize;
     let mut m0 = 32usize;
     let mut ef_construction = 128usize;
+    let mut geometry = VectorGeometry::Real;
     let mut output = std::env::var_os("HNSQR_BENCH_DATABASE_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("benchmark_databases"));
@@ -141,6 +142,15 @@ fn main() {
                     "fast" => RiveroProfile::Fast,
                     "balanced" => RiveroProfile::Balanced,
                     "strict" => RiveroProfile::Strict,
+                    _ => usage(),
+                }
+            }
+            "--geometry" => {
+                geometry = match value.to_ascii_lowercase().as_str() {
+                    "real" => VectorGeometry::Real,
+                    "complex-phase-invariant" | "complex" | "projective" => {
+                        VectorGeometry::ComplexPhaseInvariant
+                    }
                     _ => usage(),
                 }
             }
@@ -232,7 +242,7 @@ fn main() {
     config.ef_construction = ef_construction;
     config.m = m;
     config.m0 = m0;
-    config.rivero_address_config.geometry = VectorGeometry::Real;
+    config.rivero_address_config.geometry = geometry;
 
     let index = HNSQRIndex::new(config, dimension);
     for (slot, vector) in corpus.iter().enumerate() {

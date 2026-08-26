@@ -58,8 +58,6 @@ use thiserror::Error;
 use tracing::{info, instrument, trace, warn};
 
 /// Capacity Planning & Infrastructure Sizing.
-#[doc(hidden)]
-pub mod bench_support;
 pub mod capacity;
 /// Distributed Cluster Control Plane & Partition Sharding.
 pub mod cluster;

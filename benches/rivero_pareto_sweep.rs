@@ -53,7 +53,7 @@ struct SweepResult {
     latency_p50_us: f64,
 }
 
-use hnsqr::bench_support as common;
+mod common;
 
 fn load_real_workload(name: &str, count: usize, dim: usize, query_count: usize) -> Workload {
     let (base_path, query_path, _) = common::find_best_matching_dataset(dim);

@@ -38,7 +38,7 @@ use hnsqr::{
 use num_complex::Complex32;
 use rayon::prelude::*;
 
-use hnsqr::bench_support as common;
+mod common;
 
 use common::{TextRetrievalCorpus, load_real_dataset_corpus, open_prebuilt_index};
 

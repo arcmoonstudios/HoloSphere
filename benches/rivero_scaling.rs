@@ -60,7 +60,7 @@ struct AuditRow {
     empty_routes: usize,
 }
 
-use hnsqr::bench_support as common;
+mod common;
 
 fn load_master_dataset(
     count: usize,

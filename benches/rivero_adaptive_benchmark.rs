@@ -44,7 +44,7 @@ struct Workload {
     ground_truth: Vec<Vec<(NodeIndex, SimilarityScore)>>,
 }
 
-use hnsqr::bench_support as common;
+mod common;
 
 fn load_real_workload(name: &str, n: usize, d: usize, q_count: usize) -> Workload {
     let (base_path, query_path, _) = common::find_best_matching_dataset(d);

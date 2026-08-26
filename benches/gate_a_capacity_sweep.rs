@@ -8,7 +8,7 @@
 //!   - |GT ∩ (raw - vote)|: GT neighbors dropped by cap truncation
 //!   - |GT ∩ (witness - raw)|: GT neighbors discovered outside raw territory by witnesses
 
-use hnsqr::bench_support as common;
+mod common;
 
 use std::collections::HashSet;
 use std::time::Instant;

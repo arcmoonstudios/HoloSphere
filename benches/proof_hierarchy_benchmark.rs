@@ -10,7 +10,7 @@
 //!   - Memory traffic (L0/L1 bytes vs Full-Vector bytes touched)
 //!   - Latency distribution (p50 / p95 / p99) and speedup vs brute-force exact.
 
-use hnsqr::bench_support as common;
+mod common;
 
 use std::time::Instant;
 

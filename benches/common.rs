@@ -1,4 +1,4 @@
-/* holosphere/src/bench_support/mod.rs */
+/* holosphere/benches/common.rs */
 //!▫~•◦-------------------------------‣
 //! # Benchmark Support & Dataset Fixtures
 //!▫~•◦-------------------------------------------------------------------‣
@@ -21,16 +21,18 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
+#![allow(dead_code)]
+
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use crate::metadata::index::MetadataValue;
-use crate::rivero::RiveroProfile;
-use crate::storage::snapshot::SnapshotOpenOptions;
-use crate::vector::folding::ComplexWeaver;
-use crate::{HNSQRIndex, NodeIndex, VectorEmbedding};
+use hnsqr::metadata::index::MetadataValue;
+use hnsqr::rivero::RiveroProfile;
+use hnsqr::storage::snapshot::SnapshotOpenOptions;
+use hnsqr::vector::folding::ComplexWeaver;
+use hnsqr::{HNSQRIndex, NodeIndex, VectorEmbedding};
 use num_complex::Complex32;
 use serde::{Deserialize, Serialize};
 
@@ -334,7 +336,7 @@ pub fn load_real_dataset_corpus(
     // or use open_prebuilt_index(), which asserts against the snapshot row count.
     if folded_corpus.len() < n && !folded_corpus.is_empty() {
         eprintln!(
-            "[bench_support] warning: requested {n} corpus vectors from '{}', \
+            "[bench_common] warning: requested {n} corpus vectors from '{}', \
              only {loaded} available — proceeding with {loaded}",
             base_path.display(),
             loaded = folded_corpus.len()
@@ -343,7 +345,7 @@ pub fn load_real_dataset_corpus(
 
     if folded_queries.len() < num_queries && !folded_queries.is_empty() {
         eprintln!(
-            "[bench_support] warning: requested {num_queries} query vectors from '{}', \
+            "[bench_common] warning: requested {num_queries} query vectors from '{}', \
              only {loaded} available — proceeding with {loaded}",
             query_path.display(),
             loaded = folded_queries.len()

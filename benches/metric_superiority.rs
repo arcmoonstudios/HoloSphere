@@ -82,7 +82,7 @@ fn hybrid_similarity(a: &VectorEmbedding, b: &VectorEmbedding, alpha: f32) -> f3
     alpha * fidelity + (1.0 - alpha) * herm
 }
 
-use hnsqr::bench_support as common;
+mod common;
 
 fn load_dataset() -> Dataset {
     let total_vectors = CLUSTERS * VECTORS_PER_CLUSTER;

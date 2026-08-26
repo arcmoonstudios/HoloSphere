@@ -1,4 +1,4 @@
-use hnsqr::bench_support as common;
+mod common;
 
 use common::load_adversarial_regression_corpus;
 use hnsqr::metadata::index::{FilterExpr, MetadataValue};

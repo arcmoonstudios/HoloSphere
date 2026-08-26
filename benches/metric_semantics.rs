@@ -1,4 +1,4 @@
-use hnsqr::bench_support as common;
+mod common;
 
 use common::load_real_dataset_corpus;
 use hnsqr::VectorEmbedding;

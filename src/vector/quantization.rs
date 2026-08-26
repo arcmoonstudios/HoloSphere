@@ -33,52 +33,18 @@ use std::f32::consts::PI;
 
 use std::sync::OnceLock;
 
-/// Branchless minimax polynomial approximation of `atan2(y, x)`.
+/// Exact phase extraction for CPQ quantization.
 ///
-/// Replaces `libm` `atan2f` with a branchless arithmetic sequence.
-/// Maximum angular error < 0.003 radians — well within 8-bit quantization noise
-/// (each bin spans 2π/256 ≈ 0.0245 rad).
+/// This compatibility-named function delegates to the platform `atan2f`.
+/// It runs only while vectors are written or quantized, never during search,
+/// so it removes polynomial approximation error from ingestion without adding
+/// query-path work.
 ///
 /// Output contract: `[-π, π]`, matching `f32::atan2` exactly.
 ///
-/// ## Algorithm
-/// Reduces to the first octant via axis swap + sign tracking, then evaluates
-/// a degree-9 minimax polynomial approximation for `atan(r)` on `[0, 1]`:
-/// ```text
-/// atan(r) ≈ r·(0.9998660 − 0.3302995r² + 0.1801410r⁴
-///              − 0.0851330r⁶ + 0.0208351r⁸)
-/// ```
 #[inline(always)]
 pub fn fast_atan2_approx(y: f32, x: f32) -> f32 {
-    let abs_x = x.abs();
-    let abs_y = y.abs();
-
-    // Reduce to first octant: swap axes so the argument is always in [0, 1].
-    let (num, den, offset) = if abs_x >= abs_y {
-        (abs_y, abs_x, 0.0f32)
-    } else {
-        (abs_x, abs_y, std::f32::consts::FRAC_PI_2)
-    };
-
-    // Guarded divide: den >= num, so den is always the larger magnitude.
-    // The 1e-9 guard prevents 0/0 when both components are zero.
-    let r = num / (den + 1e-9);
-
-    // Degree-9 minimax polynomial for atan(r) on [0, 1]. The previous
-    // degree-5 coefficients had a 0.02175-radian error at r = 1, far beyond
-    // the documented quantization contract.
-    let r2 = r * r;
-    let angle = ((((0.0208351 * r2 - 0.0851330) * r2 + 0.1801410) * r2 - 0.3302995)
-        * r2
-        + 0.9998660)
-        * r;
-
-    // Reconstruct the full-octant angle and restore the x-sign quadrant.
-    let base = if abs_x >= abs_y { angle } else { offset - angle };
-    let signed_x = if x < 0.0 { PI - base } else { base };
-
-    // Restore the y-sign half-plane.
-    if y < 0.0 { -signed_x } else { signed_x }
+    y.atan2(x)
 }
 
 static TRIG_TABLES: OnceLock<([f32; 256], [f32; 256])> = OnceLock::new();

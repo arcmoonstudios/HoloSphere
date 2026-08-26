@@ -7,7 +7,7 @@
 //!   4. Exact SIMD escalation rate (% corpus evaluated exactly)
 //!   5. End-to-End Latency vs Brute Force Exact Scan across D_real in [384, 1536, 4096]
 
-use hnsqr::bench_support as common;
+mod common;
 
 use std::time::Instant;
 

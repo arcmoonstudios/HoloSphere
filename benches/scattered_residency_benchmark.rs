@@ -40,29 +40,17 @@ fn run_residency_benchmark(
         .unwrap_or_else(|_| panic!("failed to load {}", base_path.display()));
     let (folded_queries, _) = common::read_fvecs(&query_path, Some(num_queries))
         .unwrap_or_else(|_| panic!("failed to load {}", query_path.display()));
-    // Wrap as a minimal struct to minimize downstream changes
-    struct Dataset {
-        folded_corpus: Vec<hnsqr::VectorEmbedding>,
-        folded_queries: Vec<hnsqr::VectorEmbedding>,
-        queries_raw: Vec<Vec<f32>>,
-    }
-    let dataset = Dataset {
-        folded_corpus,
-        folded_queries,
-        queries_raw: Vec::new(), // not used by this bench
-    };
 
     let compiler = RiveroCompiler::new(complex_dim);
     let territory_index = RiveroTerritoryIndex::new();
 
     // Fast direct Rivero insertion
-    for (i, v) in dataset.folded_corpus.iter().enumerate() {
+    for (i, v) in folded_corpus.iter().enumerate() {
         let addr = compiler.compile(v.complex_data());
         territory_index.insert(&addr, i as NodeIndex);
     }
 
-    let lutz_codes: Vec<LutzCode> = dataset
-        .folded_corpus
+    let lutz_codes: Vec<LutzCode> = folded_corpus
         .iter()
         .map(|v| LutzCode::encode(v, true))
         .collect();
@@ -79,8 +67,8 @@ fn run_residency_benchmark(
     let mut unique_pages_list = Vec::with_capacity(num_queries);
     let mut lutz_evals_list = Vec::with_capacity(num_queries);
 
-    for q_idx in 0..dataset.folded_queries.len() {
-        let folded_q = &dataset.folded_queries[q_idx];
+    for q_idx in 0..folded_queries.len() {
+        let folded_q = &folded_queries[q_idx];
         let q_addr = compiler.compile(folded_q.complex_data());
 
         // Extract real Rivero routed candidates (512 candidates)
@@ -97,7 +85,7 @@ fn run_residency_benchmark(
             .map(|&s| {
                 (
                     s,
-                    (folded_q.dot_product_complex(&dataset.folded_corpus[s as usize])).re,
+                    (folded_q.dot_product_complex(&folded_corpus[s as usize])).re,
                 )
             })
             .collect();
@@ -111,7 +99,7 @@ fn run_residency_benchmark(
             .map(|&s| {
                 (
                     s,
-                    (folded_q.dot_product_complex(&dataset.folded_corpus[s as usize])).re,
+                    (folded_q.dot_product_complex(&folded_corpus[s as usize])).re,
                 )
             })
             .collect();
@@ -122,7 +110,7 @@ fn run_residency_benchmark(
         let t2 = Instant::now();
         let _scored_loc = exact_rerank_locality_sorted(
             &candidate_slots,
-            |s| (folded_q.dot_product_complex(&dataset.folded_corpus[s as usize])).re,
+            |s| (folded_q.dot_product_complex(&folded_corpus[s as usize])).re,
             k,
         );
         scattered_locality_times.push(t2.elapsed().as_secs_f64() * 1_000_000.0);
@@ -153,7 +141,7 @@ fn run_residency_benchmark(
             &query_lut,
             &candidate_slots,
             |s| Some(&lutz_codes[s as usize]),
-            |s| (folded_q.dot_product_complex(&dataset.folded_corpus[s as usize])).re,
+            |s| (folded_q.dot_product_complex(&folded_corpus[s as usize])).re,
             k,
         );
         let lutz_compute_us = t3.elapsed().as_secs_f64() * 1_000_000.0;

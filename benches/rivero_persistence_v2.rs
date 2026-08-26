@@ -25,9 +25,8 @@ use sha2::{Digest, Sha256};
 use hnsqr::bench_support as common;
 
 const D: usize = 50;
-const SEED: u64 = 0x536e_6170_7368_6f74;
 
-fn generate_dataset(n: usize, d: usize, _seed: u64) -> Vec<VectorEmbedding> {
+fn generate_dataset(n: usize, d: usize) -> Vec<VectorEmbedding> {
     let (base_path, _, _) = common::find_best_matching_dataset(d);
     let (corpus, _) = common::read_fvecs(&base_path, Some(n)).unwrap_or_default();
     assert!(
@@ -50,7 +49,7 @@ fn benchmark_cold_start_and_recovery(n: usize) {
         "════════════════════════════════════════════════════════════════════════════════════════"
     );
 
-    let vectors = generate_dataset(n, D, SEED);
+    let vectors = generate_dataset(n, D);
     let d = vectors.first().map_or(D / 2, |v| v.dimension());
     let query = VectorEmbedding::from_complex(
         (0..d)
@@ -239,7 +238,7 @@ fn benchmark_snapshot_scaling() {
     for &n in &sizes {
         let snap_path = common::bench_cache_dir().join(format!("bench_scaling_{n}.hnsqr"));
         let stats = if !snap_path.exists() {
-            let vectors = generate_dataset(n, D, SEED ^ (n as u64));
+            let vectors = generate_dataset(n, D);
             let d = vectors.first().map_or(D / 2, |v| v.dimension());
             let mut config = HNSQRConfig::strict_rivero_for_dim(d);
             config.max_elements = n + 1000;
@@ -312,7 +311,7 @@ fn benchmark_thread_invariance_snapshot() {
         "════════════════════════════════════════════════════════════════════════════════════════"
     );
 
-    let vectors = generate_dataset(2_000, D, SEED);
+    let vectors = generate_dataset(2_000, D);
     let d = vectors.first().map_or(D / 2, |v| v.dimension());
     let thread_counts = [1, 4, 16];
     let mut file_hashes: Vec<[u8; 32]> = Vec::new();

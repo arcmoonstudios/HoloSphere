@@ -67,11 +67,10 @@ fn generate_semantic_manifold_corpus(
     n_corpus: usize,
     n_queries: usize,
     d_real: usize,
-    seed: u64,
 ) -> (Vec<VectorEmbedding>, Vec<VectorEmbedding>) {
     let (base_path, query_path, _) = common::find_best_matching_dataset(d_real);
-    let (mut corpus, _) = common::read_fvecs(&base_path, Some(n_corpus)).unwrap_or_default();
-    let (mut queries, _) = common::read_fvecs(&query_path, Some(n_queries)).unwrap_or_default();
+    let (corpus, _) = common::read_fvecs(&base_path, Some(n_corpus)).unwrap_or_default();
+    let (queries, _) = common::read_fvecs(&query_path, Some(n_queries)).unwrap_or_default();
 
     assert!(
         !corpus.is_empty(),
@@ -102,7 +101,6 @@ fn run_hierarchy_experiment(exp: &HierarchyExperiment) -> HierarchyResult {
         exp.n_corpus,
         exp.n_queries,
         exp.d_real,
-        0xB0B3_0000 + exp.d_real as u64,
     );
     let complex_dim = exp.d_real / 2;
 

@@ -86,12 +86,12 @@ fn hybrid_similarity(a: &VectorEmbedding, b: &VectorEmbedding, alpha: f32) -> f3
 
 use hnsqr::bench_support as common;
 
-fn generate_dataset(seed: u64) -> Dataset {
+fn generate_dataset() -> Dataset {
     let total_vectors = CLUSTERS * VECTORS_PER_CLUSTER;
     let (base_path, query_path, _) = common::find_best_matching_dataset(D_REAL);
-    let (mut complex_corpus, _) =
+    let (complex_corpus, _) =
         common::read_fvecs(&base_path, Some(total_vectors)).unwrap_or_default();
-    let (mut complex_queries, _) =
+    let (complex_queries, _) =
         common::read_fvecs(&query_path, Some(QUERY_COUNT)).unwrap_or_default();
 
     if complex_corpus.is_empty() {
@@ -328,7 +328,7 @@ fn main() {
             SEEDS.len(),
             seed
         );
-        let dataset = generate_dataset(seed);
+        let dataset = generate_dataset();
 
         let cos = evaluate_metric(&dataset, |q, c| {
             cosine_similarity_real(&dataset.real_queries[q], &dataset.real_corpus[c])
@@ -451,7 +451,7 @@ fn main() {
     );
 
     println!("Adversarial Global Phase Invariance Test:");
-    let dataset = generate_dataset(SEEDS[0]);
+    let dataset = generate_dataset();
     let (fid_drift, herm_drift, real_drift) = adversarial_phase_test(&dataset);
     println!(
         "  - Projective Overlap Drift under Global Phase Rotations: {:.6} (Mathematically Invariant)",

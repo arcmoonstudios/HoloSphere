@@ -1,23 +1,72 @@
-/target
-Cargo.lock
-**/*.rs.bk
-*.mmap
-*.tmp
+# Rust build products and native debug symbols
+/target/
+*.pdb
+*.dSYM/
+
+# Local HoloSphere runtime state, snapshots, and benchmark output
+/hnsqr_data/
+/datasets/**
+!/datasets/README.md
+/benchmark_databases/**
+!/benchmark_databases/README.md
+/performance-baseline-v1/
+/benches/benches.txt
 *.hnsqr
+*.snapshot
+*.mmap
+*.wal
+*.wal.*
+*.pid
+
+# Profiling, coverage, and benchmark captures
+*.profraw
+*.profdata
+*.gcda
+*.gcno
+*.lcov
+coverage/
+tarpaulin-report.html
+
+# Local configuration and secrets (commit only documented examples)
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Temporary files and logs
+**/*.rs.bk
+*.tmp
+*.temp
+*.bak
 *.log
+*.log.*
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.db-wal
+holosphere.txt
+
+# Python tooling
 __pycache__/
 *.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Editor and operating-system files
 .DS_Store
 Thumbs.db
+Desktop.ini
+.idea/
+*.swp
+*.swo
+*~
+.direnv/
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
-.idea/
-*.swp
-*~
-holosphere.txt
-datasets/
-benchmark_databases/
-/performance-baseline-v1/
-benches/benches.txt

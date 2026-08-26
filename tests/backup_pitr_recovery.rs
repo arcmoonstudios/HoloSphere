@@ -12,8 +12,8 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use hnsqr::VectorEmbedding;
 use hnsqr::LocalKmsProvider;
+use hnsqr::VectorEmbedding;
 use hnsqr::storage::backup::{BackupManager, BackupType};
 use hnsqr::storage::manifest::UnifiedSnapshotEngine;
 use hnsqr::storage::wal::{DurabilityPolicy, WalManager, WalMutation};
@@ -213,15 +213,17 @@ fn encrypted_full_backup_authenticates_before_restore() {
     let mut ciphertext = std::fs::read(&encrypted_path).unwrap();
     ciphertext[0] ^= 0x01;
     std::fs::write(&encrypted_path, ciphertext).unwrap();
-    assert!(BackupManager::restore_encrypted_pitr(
-        &backup_dir,
-        base_dir.join("tampered_restore"),
-        "encrypted-full",
-        None,
-        10,
-        &kms,
-        |_lsn, _mutation| Ok(()),
-    )
-    .is_err());
+    assert!(
+        BackupManager::restore_encrypted_pitr(
+            &backup_dir,
+            base_dir.join("tampered_restore"),
+            "encrypted-full",
+            None,
+            10,
+            &kms,
+            |_lsn, _mutation| Ok(()),
+        )
+        .is_err()
+    );
     let _ = std::fs::remove_dir_all(&base_dir);
 }

@@ -156,9 +156,7 @@ pub fn evaluate_admission_gates(
         }
         if recall_at_10 < 1.0 {
             return AdmissionGateStatus::Rejected {
-                reason: Arc::from(
-                    "Certified retrieval failed empirical 100% recall sanity check",
-                ),
+                reason: Arc::from("Certified retrieval failed empirical 100% recall sanity check"),
             };
         }
         if candidate_p50_ns < exact_p50_ns {

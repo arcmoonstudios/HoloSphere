@@ -554,7 +554,6 @@ impl SegmentedEngine {
         }
     }
 
-
     /// Returns the current monotonic segment storage generation.
     pub fn active_generation(&self) -> u64 {
         self.generation.load(std::sync::atomic::Ordering::SeqCst)
@@ -890,7 +889,6 @@ impl SegmentedEngine {
                         let new_slot = merged_vectors.len() as u32;
                         merged_id_to_slot.insert(id.clone(), new_slot);
                         merged_slot_to_id.push(id.clone());
-
 
                         let addr = compiler.compile(v.complex_data());
                         territories.insert(&addr, new_slot);

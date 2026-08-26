@@ -521,16 +521,14 @@ impl RiveroBulkBuilder {
                             let cell_slice = flat_table.get_residents(key);
                             if cell_slice.len() <= budget {
                                 for r in cell_slice {
-                                    if r.slot != current_slot && !candidate_set.contains(&r.slot)
-                                    {
+                                    if r.slot != current_slot && !candidate_set.contains(&r.slot) {
                                         delta_slots.push(r.slot);
                                     }
                                 }
                             } else {
                                 let mut best: SmallVec<[(i16, NodeIndex); 64]> = SmallVec::new();
                                 for r in cell_slice {
-                                    if r.slot != current_slot && !candidate_set.contains(&r.slot)
-                                    {
+                                    if r.slot != current_slot && !candidate_set.contains(&r.slot) {
                                         let (dot, _) =
                                             projected_similarity(query_code, r.projected_code());
                                         best.push((dot, r.slot));

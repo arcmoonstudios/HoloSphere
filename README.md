@@ -625,5 +625,3 @@ Licensed under either of:
 - [MIT License](https://spdx.org/licenses/MIT.html)
 
 at your option.
-
-

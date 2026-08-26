@@ -58,7 +58,10 @@ impl KmsProvider for LocalKmsProvider {
         let ciphertext = cipher
             .encrypt(
                 Nonce::from_slice(&nonce),
-                Payload { msg: &plaintext_dek, aad: key_id.as_bytes() },
+                Payload {
+                    msg: &plaintext_dek,
+                    aad: key_id.as_bytes(),
+                },
             )
             .map_err(|_| crate::HNSQRError::Internal("local KMS encryption failed".into()))?;
         let mut encrypted_dek = nonce.to_vec();
@@ -80,8 +83,13 @@ impl KmsProvider for LocalKmsProvider {
         cipher
             .decrypt(
                 Nonce::from_slice(&encrypted_dek[..12]),
-                Payload { msg: &encrypted_dek[12..], aad: key_id.as_bytes() },
+                Payload {
+                    msg: &encrypted_dek[12..],
+                    aad: key_id.as_bytes(),
+                },
             )
-            .map_err(|_| crate::HNSQRError::Unauthorized("local KMS key unwrap authentication failed".into()))
+            .map_err(|_| {
+                crate::HNSQRError::Unauthorized("local KMS key unwrap authentication failed".into())
+            })
     }
 }

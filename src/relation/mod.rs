@@ -440,8 +440,20 @@ mod tests {
             schema_version: 1,
             state: RelationTypeState::Admitted,
             roles: vec![
-                RoleSchema { role_id: 1, name: Arc::from("source"), min_count: 1, max_count: 1, required: true },
-                RoleSchema { role_id: 2, name: Arc::from("target"), min_count: 1, max_count: 1, required: true },
+                RoleSchema {
+                    role_id: 1,
+                    name: Arc::from("source"),
+                    min_count: 1,
+                    max_count: 1,
+                    required: true,
+                },
+                RoleSchema {
+                    role_id: 2,
+                    name: Arc::from("target"),
+                    min_count: 1,
+                    max_count: 1,
+                    required: true,
+                },
             ],
             binary_projection: None,
             provenance_id: 0,
@@ -451,8 +463,14 @@ mod tests {
             relation_id: 99,
             relation_type_id: 1,
             bindings: vec![
-                DurableRoleBinding { entity_id: 10, role_id: 1 },
-                DurableRoleBinding { entity_id: 20, role_id: 2 },
+                DurableRoleBinding {
+                    entity_id: 10,
+                    role_id: 1,
+                },
+                DurableRoleBinding {
+                    entity_id: 20,
+                    role_id: 2,
+                },
             ],
             provenance_id: 0,
             provenance_record: None,
@@ -466,13 +484,30 @@ mod tests {
 
         let current_rel = rel_seg.read_snapshot(250);
         let current_ent = ent_seg.read_snapshot(250);
-        assert!(RelationQuery::new().with_type(1).execute(&current_rel, &current_ent).is_empty());
-        assert!(RelationQuery::new().with_type(1).with_role(1, 10).execute(&current_rel, &current_ent).is_empty());
+        assert!(
+            RelationQuery::new()
+                .with_type(1)
+                .execute(&current_rel, &current_ent)
+                .is_empty()
+        );
+        assert!(
+            RelationQuery::new()
+                .with_type(1)
+                .with_role(1, 10)
+                .execute(&current_rel, &current_ent)
+                .is_empty()
+        );
 
-        let historical = RelationQuery::new().with_type(1).with_as_of(150).execute(&current_rel, &current_ent);
+        let historical = RelationQuery::new()
+            .with_type(1)
+            .with_as_of(150)
+            .execute(&current_rel, &current_ent);
         assert_eq!(historical.len(), 1);
         assert_eq!(historical[0].relation_id, 99);
-        assert_eq!(historical[0].lifecycle_status, crate::entity::status::LifecycleStatus::Active);
+        assert_eq!(
+            historical[0].lifecycle_status,
+            crate::entity::status::LifecycleStatus::Active
+        );
         assert!(current_rel.as_of(99, 250, &current_ent).is_some());
     }
 }

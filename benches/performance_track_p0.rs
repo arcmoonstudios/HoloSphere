@@ -154,7 +154,10 @@ fn percentile_u64(mut xs: Vec<u64>, pct: f64) -> u64 {
     xs[idx.min(xs.len() - 1)]
 }
 
-fn compute_latency_distribution(latencies_ns: &[u64], total_wall_dur: std::time::Duration) -> LatencyDistribution {
+fn compute_latency_distribution(
+    latencies_ns: &[u64],
+    total_wall_dur: std::time::Duration,
+) -> LatencyDistribution {
     let p50_ns = percentile_u64(latencies_ns.to_vec(), 0.50);
     let p95_ns = percentile_u64(latencies_ns.to_vec(), 0.95);
     let p99_ns = percentile_u64(latencies_ns.to_vec(), 0.99);
@@ -278,8 +281,14 @@ fn benchmark_oracle_dataset(
     let total_wall_dur = t_all_start.elapsed();
 
     let aggregate_overall = compute_latency_distribution(&overall_latencies, total_wall_dur);
-    let aggregate_tuning = compute_latency_distribution(&tuning_latencies, total_wall_dur * (TUNING_QUERIES_COUNT as u32) / (TOTAL_QUERIES_COUNT as u32));
-    let aggregate_held_out_admission = compute_latency_distribution(&admission_latencies, total_wall_dur * (ADMISSION_QUERIES_COUNT as u32) / (TOTAL_QUERIES_COUNT as u32));
+    let aggregate_tuning = compute_latency_distribution(
+        &tuning_latencies,
+        total_wall_dur * (TUNING_QUERIES_COUNT as u32) / (TOTAL_QUERIES_COUNT as u32),
+    );
+    let aggregate_held_out_admission = compute_latency_distribution(
+        &admission_latencies,
+        total_wall_dur * (ADMISSION_QUERIES_COUNT as u32) / (TOTAL_QUERIES_COUNT as u32),
+    );
 
     println!("  Exact SIMD Oracle Telemetry:");
     println!("    • Vectors Scored / Query: {}", n);
@@ -364,18 +373,17 @@ fn main() {
 
     // 1. SIFT1M Baseline
     if sift1m_raw.exists() && sift1m_base.exists() && sift1m_query.exists() {
-        let sift_record = benchmark_oracle_dataset(
-            "SIFT1M",
-            &sift1m_raw,
-            &sift1m_base,
-            &sift1m_query,
-            128,
-        );
+        let sift_record =
+            benchmark_oracle_dataset("SIFT1M", &sift1m_raw, &sift1m_base, &sift1m_query, 128);
         let sift_path = out_dir.join("sift1m_exact.json");
         let sift_json = serde_json::to_string_pretty(&sift_record).expect("serialize sift1m");
         let mut file = File::create(&sift_path).expect("create sift1m baseline file");
-        file.write_all(sift_json.as_bytes()).expect("write sift1m baseline");
-        println!("  ✓ Saved SIFT1M exact baseline to: {}", sift_path.display());
+        file.write_all(sift_json.as_bytes())
+            .expect("write sift1m baseline");
+        println!(
+            "  ✓ Saved SIFT1M exact baseline to: {}",
+            sift_path.display()
+        );
         dataset_names.push("SIFT1M".to_string());
     } else {
         panic!("Missing required SIFT1M dataset or snapshot files");
@@ -393,8 +401,12 @@ fn main() {
         let glove_path = out_dir.join("glove100_exact.json");
         let glove_json = serde_json::to_string_pretty(&glove_record).expect("serialize glove100");
         let mut file = File::create(&glove_path).expect("create glove100 baseline file");
-        file.write_all(glove_json.as_bytes()).expect("write glove100 baseline");
-        println!("  ✓ Saved GloVe-100 exact baseline to: {}", glove_path.display());
+        file.write_all(glove_json.as_bytes())
+            .expect("write glove100 baseline");
+        println!(
+            "  ✓ Saved GloVe-100 exact baseline to: {}",
+            glove_path.display()
+        );
         dataset_names.push("GloVe-100".to_string());
     } else {
         panic!("Missing required GloVe-100 dataset or snapshot files");
@@ -411,8 +423,12 @@ fn main() {
     let manifest_path = out_dir.join("manifest.json");
     let manifest_json = serde_json::to_string_pretty(&manifest).expect("serialize manifest");
     let mut file = File::create(&manifest_path).expect("create manifest file");
-    file.write_all(manifest_json.as_bytes()).expect("write manifest");
-    println!("  ✓ Saved immutable baseline manifest to: {}", manifest_path.display());
+    file.write_all(manifest_json.as_bytes())
+        .expect("write manifest");
+    println!(
+        "  ✓ Saved immutable baseline manifest to: {}",
+        manifest_path.display()
+    );
 
     println!("\n═══════════════════════════════════════════════════════════════════════════════");
     println!("  🏆 FROZEN P0 EXACT ORACLE BASELINE (performance-baseline-v1/) COMPLETE");

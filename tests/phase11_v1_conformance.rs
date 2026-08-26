@@ -71,7 +71,6 @@ fn test_phase11_unsupported_version_fails_closed() {
     );
 }
 
-
 /// 11.5: Canonical Export / Import Equivalence Invariant
 #[test]
 fn test_phase11_canonical_export_import_equivalence() {

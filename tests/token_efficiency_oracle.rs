@@ -53,7 +53,10 @@ fn test_holosphere_token_reduction_guarantee() {
     let compression_factor = estimated_raw_tokens / evidence_tokens;
 
     println!("Total Raw Context Bytes : {} bytes", total_raw_bytes);
-    println!("Estimated Raw Tokens    : {:.0} tokens", estimated_raw_tokens);
+    println!(
+        "Estimated Raw Tokens    : {:.0} tokens",
+        estimated_raw_tokens
+    );
     println!("Evidence Payload Bytes  : {} bytes", evidence_bytes);
     println!("Evidence Tokens         : {:.0} tokens", evidence_tokens);
     println!("Token Reduction Ratio   : {:.2}%", reduction_ratio * 100.0);

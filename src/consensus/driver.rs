@@ -31,17 +31,17 @@
  *///•------------------------------------------------------------------------------------‣
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use crossbeam_channel::{Sender, TryRecvError, bounded};
 use parking_lot::RwLock;
 
+use crate::cluster::state_machine::DataMutation;
 use crate::consensus::pending::{ApplyError, CommitReceipt, MutationId};
 use crate::consensus::raft::{RaftCluster, RaftMessage, RaftNode, RaftNodeId};
-use crate::cluster::state_machine::DataMutation;
 use crate::storage::wal::{DurabilityPolicy, WalManager, WalMutation};
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -209,20 +209,24 @@ impl RaftDriver {
         let wal_thread = thread::Builder::new()
             .name("hnsqr-wal-worker".into())
             .spawn(move || {
-                let poison = |liveness: &ClusterLiveness, event_tx: &Sender<DriverEvent>, msg: &str| {
-                    // Mark storage unhealthy and signal the driver to shut down.
-                    // Called on any unrecoverable WAL I/O error.
-                    eprintln!("[hnsqr-wal-worker] FATAL: {msg}");
-                    liveness.is_storage_healthy.store(false, Ordering::Release);
-                    // Best-effort: if the channel is already gone this is a no-op.
-                    let _ = event_tx.send(DriverEvent::Shutdown);
-                };
+                let poison =
+                    |liveness: &ClusterLiveness, event_tx: &Sender<DriverEvent>, msg: &str| {
+                        // Mark storage unhealthy and signal the driver to shut down.
+                        // Called on any unrecoverable WAL I/O error.
+                        eprintln!("[hnsqr-wal-worker] FATAL: {msg}");
+                        liveness.is_storage_healthy.store(false, Ordering::Release);
+                        // Best-effort: if the channel is already gone this is a no-op.
+                        let _ = event_tx.send(DriverEvent::Shutdown);
+                    };
 
                 let wal = match WalManager::open(&wal_dir) {
                     Ok(w) => w,
                     Err(e) => {
-                        poison(&liveness_wal, &event_tx_wal,
-                               &format!("failed to open WAL at {}: {e}", wal_dir.display()));
+                        poison(
+                            &liveness_wal,
+                            &event_tx_wal,
+                            &format!("failed to open WAL at {}: {e}", wal_dir.display()),
+                        );
                         return;
                     }
                 };
@@ -231,8 +235,11 @@ impl RaftDriver {
                 // batches into a single coalesced fsync (group commit).
                 while let Ok(first) = wal_rx.recv() {
                     if let Err(e) = wal.append(&first.mutation, DurabilityPolicy::WalGroupCommit) {
-                        poison(&liveness_wal, &event_tx_wal,
-                               &format!("WAL append failed: {e}"));
+                        poison(
+                            &liveness_wal,
+                            &event_tx_wal,
+                            &format!("WAL append failed: {e}"),
+                        );
                         return;
                     }
 
@@ -240,12 +247,14 @@ impl RaftDriver {
                     loop {
                         match wal_rx.try_recv() {
                             Ok(batch) => {
-                                if let Err(e) = wal.append(
-                                    &batch.mutation,
-                                    DurabilityPolicy::WalGroupCommit,
-                                ) {
-                                    poison(&liveness_wal, &event_tx_wal,
-                                           &format!("WAL append failed: {e}"));
+                                if let Err(e) =
+                                    wal.append(&batch.mutation, DurabilityPolicy::WalGroupCommit)
+                                {
+                                    poison(
+                                        &liveness_wal,
+                                        &event_tx_wal,
+                                        &format!("WAL append failed: {e}"),
+                                    );
                                     return;
                                 }
                             }
@@ -257,8 +266,11 @@ impl RaftDriver {
                     // Single fsync for the entire collected group.
                     let target_lsn = wal.current_lsn();
                     if let Err(e) = wal.sync_target_lsn(target_lsn) {
-                        poison(&liveness_wal, &event_tx_wal,
-                               &format!("fsync failed at LSN {target_lsn}: {e}"));
+                        poison(
+                            &liveness_wal,
+                            &event_tx_wal,
+                            &format!("fsync failed at LSN {target_lsn}: {e}"),
+                        );
                         return;
                     }
 
@@ -340,7 +352,10 @@ impl RaftDriver {
                             }
                         }
 
-                        DriverEvent::PeerMessage { target_node, message } => {
+                        DriverEvent::PeerMessage {
+                            target_node,
+                            message,
+                        } => {
                             let Some(node) = cluster.nodes.get(&target_node) else {
                                 continue;
                             };
@@ -405,7 +420,9 @@ impl RaftDriver {
                         }
 
                         DriverEvent::WalFlushed { lsn } => {
-                            liveness_driver.flushed_lsn.fetch_max(lsn, Ordering::Release);
+                            liveness_driver
+                                .flushed_lsn
+                                .fetch_max(lsn, Ordering::Release);
 
                             // Fix 3: If the WAL worker has poisoned the health flag,
                             // step the local node down from leadership immediately so
@@ -467,7 +484,10 @@ impl RaftDriver {
     ) -> Result<tokio::sync::oneshot::Receiver<Result<CommitReceipt, ApplyError>>, RaftDriverError>
     {
         let (response_tx, response_rx) = tokio::sync::oneshot::channel();
-        let event = DriverEvent::Propose(ClientProposal { mutation, response_tx });
+        let event = DriverEvent::Propose(ClientProposal {
+            mutation,
+            response_tx,
+        });
         self.event_tx
             .try_send(event)
             .map_err(|_| RaftDriverError::ChannelFull)?;
@@ -480,7 +500,10 @@ impl RaftDriver {
     #[inline(always)]
     pub fn ingest_peer_message(&self, target_node: RaftNodeId, message: RaftMessage) -> bool {
         self.event_tx
-            .try_send(DriverEvent::PeerMessage { target_node, message })
+            .try_send(DriverEvent::PeerMessage {
+                target_node,
+                message,
+            })
             .is_ok()
     }
 

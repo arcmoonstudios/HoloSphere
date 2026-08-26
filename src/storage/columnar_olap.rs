@@ -106,7 +106,6 @@ impl ColumnarFloatArray {
     }
 }
 
-
 /// Columnar OLAP Table and Embedded Media Store.
 pub struct ColumnarOlapEngine {
     columns: RwLock<HashMap<String, ColumnarFloatArray>>,

@@ -119,10 +119,10 @@ pub use cluster::{
 pub use conformance::{
     CANONICAL_EXPORT_VERSION, CanonicalExportArchive, ENTITY_SCHEMA_VERSION,
     EXPERIENCE_SCHEMA_VERSION, ExportedEntity, ExportedExperience, ExportedLearningRecord,
-    ExportedRelation,
-    INFERENCE_TRACE_VERSION, KernelError, LEARNING_SCHEMA_VERSION, RAFT_LOG_RECORD_VERSION,
-    RELATION_SCHEMA_VERSION, SEMANTIC_KERNEL_VERSION, SNAPSHOT_FORMAT_VERSION,
-    SYNTHESIS_TRACE_VERSION, WORLD_DIGEST_VERSION, create_v1_golden_fixture,
+    ExportedRelation, INFERENCE_TRACE_VERSION, KernelError, LEARNING_SCHEMA_VERSION,
+    RAFT_LOG_RECORD_VERSION, RELATION_SCHEMA_VERSION, SEMANTIC_KERNEL_VERSION,
+    SNAPSHOT_FORMAT_VERSION, SYNTHESIS_TRACE_VERSION, WORLD_DIGEST_VERSION,
+    create_v1_golden_fixture,
 };
 pub use consensus::{
     AdaptiveMicrobatcher, AppendEntriesArgs, AppendEntriesReply, ApplyError, CommitReceipt,
@@ -3211,7 +3211,10 @@ impl HNSQRIndex {
                     }
 
                     let worst_sim = if results_heap.len() >= ef {
-                        results_heap.peek().map(|w| w.0.similarity).unwrap_or(f32::NEG_INFINITY)
+                        results_heap
+                            .peek()
+                            .map(|w| w.0.similarity)
+                            .unwrap_or(f32::NEG_INFINITY)
                     } else {
                         f32::NEG_INFINITY
                     };
@@ -3369,7 +3372,10 @@ impl HNSQRIndex {
             return self.search_indices_hnsw_classical(query, k, filter_mask);
         }
 
-        if search_plan != SearchPlan::GraphOnly && search_plan != SearchPlan::GraphSuperposition && rivero_enabled {
+        if search_plan != SearchPlan::GraphOnly
+            && search_plan != SearchPlan::GraphSuperposition
+            && rivero_enabled
+        {
             match rivero_mode {
                 RiveroSearchMode::Strict => {
                     return self
@@ -3556,7 +3562,6 @@ impl HNSQRIndex {
         }
 
         if proof.deadline_exceeded {
-
             Ok(CertifiedSearchOutcome::DeadlineExceeded {
                 partial_results: results,
                 proof,
@@ -4229,19 +4234,37 @@ impl HNSQRIndex {
                 }
 
                 // Filter-Aware Adaptive Expansion: If high-selectivity filter starved candidates, expand probe budget
-                if filter_mask.is_some() && all_scored.len() < k && current_profile != RiveroProfile::Strict {
+                if filter_mask.is_some()
+                    && all_scored.len() < k
+                    && current_profile != RiveroProfile::Strict
+                {
                     let expanded_budget = target_config.cell_budget * 2;
                     let mut expanded_config = target_config;
                     expanded_config.cell_budget = expanded_budget;
-                    expanded_config.simhash_query_probes = (expanded_config.simhash_query_probes * 2).min(64);
+                    expanded_config.simhash_query_probes =
+                        (expanded_config.simhash_query_probes * 2).min(64);
                     route_state.expand_to_config(&self.rivero_index, &address, expanded_config);
-                    for extra in route_state.current_voted.iter().skip(selected_cap).take(selected_cap) {
+                    for extra in route_state
+                        .current_voted
+                        .iter()
+                        .skip(selected_cap)
+                        .take(selected_cap)
+                    {
                         let cand = extra.slot;
-                        if !visited.is_visited(cand, epoch) && self.arena.is_live(cand) && filter_mask.unwrap().contains(cand) {
+                        if !visited.is_visited(cand, epoch)
+                            && self.arena.is_live(cand)
+                            && filter_mask.unwrap().contains(cand)
+                        {
                             visited.mark_visited(cand, epoch);
                             let v = self.arena.get_vector_slice(cand);
                             let norm_sq = self.arena.get_norm_squared(cand);
-                            let score = self.similarity_score_slices_with_metric(query_data, v, query_norm_sq, norm_sq, dist_fn);
+                            let score = self.similarity_score_slices_with_metric(
+                                query_data,
+                                v,
+                                query_norm_sq,
+                                norm_sq,
+                                dist_fn,
+                            );
                             all_scored.push((cand, score));
                         }
                     }
@@ -5471,14 +5494,13 @@ impl HNSQRIndex {
                 affect,
             );
             match plan {
-                crate::planning::planner::ExecutionPlan::LutzGlobalCertified { .. } => {
-                    self.search_indices_with_contract(
+                crate::planning::planner::ExecutionPlan::LutzGlobalCertified { .. } => self
+                    .search_indices_with_contract(
                         query,
                         k * 3,
                         compiled_mask.as_ref(),
                         crate::planning::planner::RetrievalContract::Certified,
-                    )?
-                }
+                    )?,
                 crate::planning::planner::ExecutionPlan::LutzPacRelaxed {
                     epsilon, delta, ..
                 } => self.search_indices_with_contract(
@@ -5492,7 +5514,6 @@ impl HNSQRIndex {
         } else {
             self.search_indices_filtered(query, k * 3, compiled_mask.as_ref())?
         };
-
 
         let mut reranked = Vec::with_capacity(base_results.len());
         let now = current_unix_timestamp();

@@ -55,7 +55,16 @@ fn test_performance_p0_retrieval_trial_strict_validation() {
     // 1. Candidate with duplicate IDs [1, 1] must fail closed with DuplicateCandidateId
     let cand_duplicates = vec![1, 1];
     let err_cand_dup = RetrievalTrial::compute(
-        1, 2, &ref_top2, &cand_duplicates, 100, 50, 100, 50, 10, 1024,
+        1,
+        2,
+        &ref_top2,
+        &cand_duplicates,
+        100,
+        50,
+        100,
+        50,
+        10,
+        1024,
     );
     assert_eq!(
         err_cand_dup,
@@ -65,8 +74,18 @@ fn test_performance_p0_retrieval_trial_strict_validation() {
     // 2. Reference with duplicate IDs [1, 1] must fail closed with DuplicateReferenceId
     let ref_duplicates = vec![1, 1];
     let cand_valid = vec![1, 2];
-    let err_ref_dup =
-        RetrievalTrial::compute(1, 2, &ref_duplicates, &cand_valid, 100, 50, 100, 50, 10, 1024);
+    let err_ref_dup = RetrievalTrial::compute(
+        1,
+        2,
+        &ref_duplicates,
+        &cand_valid,
+        100,
+        50,
+        100,
+        50,
+        10,
+        1024,
+    );
     assert_eq!(
         err_ref_dup,
         Err(TrialValidationError::DuplicateReferenceId { id: 1 })
@@ -87,10 +106,7 @@ fn test_performance_p0_retrieval_trial_strict_validation() {
         RetrievalTrial::compute(1, 2, &ref_top2, &cand_oversized, 100, 50, 100, 50, 10, 1024);
     assert_eq!(
         err_oversized,
-        Err(TrialValidationError::CandidateLenExceedsK {
-            actual: 3,
-            k: 2,
-        })
+        Err(TrialValidationError::CandidateLenExceedsK { actual: 3, k: 2 })
     );
 }
 
@@ -202,7 +218,8 @@ fn test_performance_p0_benchmark_record_serialization() {
         benchmark_schema_version: 1,
         dataset_sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".into(),
         query_set_sha256: "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb".into(),
-        index_snapshot_sha256: "3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".into(),
+        index_snapshot_sha256: "3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            .into(),
         metric: "Cosine".into(),
         exact_scorer_fingerprint: "AVX2-FMA-DualAccComplex".into(),
         git_commit: "deadbeef2026".into(),

@@ -85,8 +85,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = HNSQRConfig::default();
     let index = Arc::new(HNSQRIndex::new(config, dim));
     let kv_store = Arc::new(MemoryKvStore::new());
-    let resp_server = Arc::new(RespServer::with_index(kv_store.clone(), Some(index.clone())));
-
+    let resp_server = Arc::new(RespServer::with_index(
+        kv_store.clone(),
+        Some(index.clone()),
+    ));
 
     // 1. QIR0 Binary TCP Protocol
     let tcp_server = HNSQRServer::new(index.clone(), tcp_addr);
@@ -188,7 +190,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let _ = byte_buffer.split_to(consumed);
                         }
                     }
-
                 });
             }
         }

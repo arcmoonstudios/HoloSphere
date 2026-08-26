@@ -70,5 +70,7 @@ fn main() {
     println!("   • In-Process Embedder Cache: {:>8.2} GB", 2.0);
 
     println!("\n✨ SIZING ANALYSIS COMPLETE.");
-    println!("   CPU/memory throughput was calibrated locally; NVMe and network figures use the documented baseline until measured telemetry is supplied.\n");
+    println!(
+        "   CPU/memory throughput was calibrated locally; NVMe and network figures use the documented baseline until measured telemetry is supplied.\n"
+    );
 }

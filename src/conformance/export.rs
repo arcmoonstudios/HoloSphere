@@ -186,6 +186,9 @@ mod tests {
         let original = create_v1_golden_fixture();
         let mut changed = original.clone();
         changed.learning_records[0].payload_digest[0] ^= 0xFF;
-        assert_ne!(original.compute_world_digest(), changed.compute_world_digest());
+        assert_ne!(
+            original.compute_world_digest(),
+            changed.compute_world_digest()
+        );
     }
 }

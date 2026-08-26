@@ -13,7 +13,6 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::sync::Arc;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use hnsqr::planning::RetrievalContract;
@@ -22,6 +21,7 @@ use hnsqr::{
     ModelToolService, SearchPlan, create_model_api_router,
 };
 use http_body_util::BodyExt;
+use std::sync::Arc;
 use tower::ServiceExt;
 
 #[test]
@@ -100,7 +100,12 @@ async fn test_v1_retrieval_default_omitted_contract_in_rest_gateway() {
         .unwrap();
     let search_cert_resp = app.clone().oneshot(search_cert_req).await.unwrap();
     assert_eq!(search_cert_resp.status(), StatusCode::OK);
-    let cert_bytes = search_cert_resp.into_body().collect().await.unwrap().to_bytes();
+    let cert_bytes = search_cert_resp
+        .into_body()
+        .collect()
+        .await
+        .unwrap()
+        .to_bytes();
     let cert_json: serde_json::Value = serde_json::from_slice(&cert_bytes).unwrap();
     assert_eq!(cert_json["retrieval_contract"], "certified");
 
@@ -119,7 +124,12 @@ async fn test_v1_retrieval_default_omitted_contract_in_rest_gateway() {
         .unwrap();
     let search_exact_resp = app.oneshot(search_exact_req).await.unwrap();
     assert_eq!(search_exact_resp.status(), StatusCode::OK);
-    let exact_bytes = search_exact_resp.into_body().collect().await.unwrap().to_bytes();
+    let exact_bytes = search_exact_resp
+        .into_body()
+        .collect()
+        .await
+        .unwrap()
+        .to_bytes();
     let exact_json: serde_json::Value = serde_json::from_slice(&exact_bytes).unwrap();
     assert_eq!(exact_json["retrieval_contract"], "exact");
 }

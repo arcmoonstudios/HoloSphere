@@ -467,7 +467,6 @@ impl DistributedCoordinator {
         global_candidates
     }
 
-
     /// Scatter-gather query across all shards with global Top-K merging.
     pub fn search(
         &self,

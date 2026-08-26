@@ -1,0 +1,7 @@
+# Update this mapping as maintainership expands.
+* @arcmoonstudios
+
+/src/consensus/ @arcmoonstudios
+/src/security/ @arcmoonstudios
+/src/storage/ @arcmoonstudios
+/src/transport/ @arcmoonstudios

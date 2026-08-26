@@ -99,10 +99,7 @@ fn run_experiment(exp: &ExperimentConfig) -> BenchmarkResult {
     );
 
     // Exact baseline is a prebuilt snapshot over the same real dataset slice.
-    let exact_cache_key = format!(
-        "gate_b_exact_d{}_n{}",
-        exp.d_real, exp.n_corpus
-    );
+    let exact_cache_key = format!("gate_b_exact_d{}_n{}", exp.d_real, exp.n_corpus);
     let exact_index = common::open_prebuilt_snapshot(&exact_cache_key);
 
     // 5. Execute Evaluation

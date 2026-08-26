@@ -379,7 +379,6 @@ impl SearchService for StandaloneService {
         result.column_names = compiled.column_names;
         Ok(result)
     }
-
 }
 
 impl HNSQRService for StandaloneService {}

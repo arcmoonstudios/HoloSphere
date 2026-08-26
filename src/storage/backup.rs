@@ -20,9 +20,9 @@ use aes_gcm::{Aes256Gcm, Nonce};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::security::KmsProvider;
 use crate::storage::manifest::{SnapshotManifest, UnifiedSnapshotEngine};
 use crate::storage::wal::{WalManager, WalMutation, WalRecoverySummary};
-use crate::security::KmsProvider;
 use crate::{HNSQRError, HNSQRResult};
 
 /// Backup category.
@@ -123,7 +123,9 @@ impl BackupManager {
         kms: &dyn KmsProvider,
     ) -> HNSQRResult<BackupMetadata> {
         if key_id.trim().is_empty() {
-            return Err(HNSQRError::InvalidRequest("backup key_id must not be empty".into()));
+            return Err(HNSQRError::InvalidRequest(
+                "backup key_id must not be empty".into(),
+            ));
         }
         let source_snapshot_dir = source_snapshot_dir.as_ref();
         let backup_dir = backup_dir.as_ref().join(backup_id);
@@ -165,7 +167,14 @@ impl BackupManager {
         std::fs::write(backup_dir.join("encryption.json"), envelope_bytes)?;
 
         let sha256_hex = sha256_hex(&snapshot_bytes);
-        let meta = backup_metadata(backup_id, BackupType::Full, manifest.generation, 0, manifest.snapshot_lsn, sha256_hex);
+        let meta = backup_metadata(
+            backup_id,
+            BackupType::Full,
+            manifest.generation,
+            0,
+            manifest.snapshot_lsn,
+            sha256_hex,
+        );
         write_backup_metadata(&backup_dir, &meta)?;
         Ok(meta)
     }
@@ -265,15 +274,17 @@ impl BackupManager {
         kms: &dyn KmsProvider,
         apply_mutation: F,
     ) -> HNSQRResult<WalRecoverySummary>
-
     where
         F: FnMut(u64, WalMutation) -> HNSQRResult<()>,
     {
         let full_dir = backup_base_dir.as_ref().join(full_backup_id);
-        let envelope: EncryptedBackupMetadata = serde_json::from_slice(&std::fs::read(full_dir.join("encryption.json"))?)
-            .map_err(|error| HNSQRError::SerializationError(error.to_string()))?;
+        let envelope: EncryptedBackupMetadata =
+            serde_json::from_slice(&std::fs::read(full_dir.join("encryption.json"))?)
+                .map_err(|error| HNSQRError::SerializationError(error.to_string()))?;
         if envelope.format_version != 1 || envelope.algorithm != "AES-256-GCM" {
-            return Err(HNSQRError::SnapshotIncompatible("unsupported encrypted backup envelope".into()));
+            return Err(HNSQRError::SnapshotIncompatible(
+                "unsupported encrypted backup envelope".into(),
+            ));
         }
         let dek = kms.decrypt_data_key(&envelope.key_id, &envelope.encrypted_dek)?;
         let cipher = Aes256Gcm::new_from_slice(&dek).map_err(|_| {
@@ -287,7 +298,9 @@ impl BackupManager {
                     aad: full_backup_id.as_bytes(),
                 },
             )
-            .map_err(|_| HNSQRError::CorruptedSnapshot("encrypted backup authentication failed".into()))?;
+            .map_err(|_| {
+                HNSQRError::CorruptedSnapshot("encrypted backup authentication failed".into())
+            })?;
         let payload: EncryptedSnapshotPayload = bincode::deserialize(&plaintext)
             .map_err(|error| HNSQRError::CorruptedSnapshot(error.to_string()))?;
         Self::restore_pitr_from_snapshot(
@@ -369,7 +382,11 @@ impl BackupManager {
 fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
-    hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
+    hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn backup_metadata(
@@ -384,7 +401,15 @@ fn backup_metadata(
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64;
-    BackupMetadata { backup_id: backup_id.into(), backup_type, created_at_epoch_ms, base_generation, start_lsn, end_lsn, sha256_hex }
+    BackupMetadata {
+        backup_id: backup_id.into(),
+        backup_type,
+        created_at_epoch_ms,
+        base_generation,
+        start_lsn,
+        end_lsn,
+        sha256_hex,
+    }
 }
 
 fn write_backup_metadata(backup_dir: &Path, meta: &BackupMetadata) -> HNSQRResult<()> {

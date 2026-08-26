@@ -197,7 +197,7 @@ impl HypercubeTensorSpace {
         let mut local = Vec::with_capacity(self.shape.len());
         for &c in coords {
             origin.push((c >> TILE_SHIFT) << TILE_SHIFT); // (c / 16) * 16
-            local.push(c & TILE_MASK);                    // c % 16
+            local.push(c & TILE_MASK); // c % 16
         }
         let local_morton = self.encoder.encode(&local) as u32;
         (origin, local_morton)

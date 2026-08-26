@@ -1,0 +1,6 @@
+* text=auto eol=lf
+
+*.rs diff=rust
+Cargo.lock linguist-generated=true
+datasets/** -text -diff linguist-generated=true
+benchmark_databases/** -text -diff linguist-generated=true

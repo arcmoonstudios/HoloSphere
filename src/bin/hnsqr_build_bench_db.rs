@@ -179,12 +179,16 @@ fn main() {
         ArtifactKind::Snapshot => {
             if is_hnsw {
                 (
-                    format!("hnsw-v{CACHE_VERSION}-n{vectors}-m{m}-efc{ef_construction}-d{loaded_dim}.snapshot"),
+                    format!(
+                        "hnsw-v{CACHE_VERSION}-n{vectors}-m{m}-efc{ef_construction}-d{loaded_dim}.snapshot"
+                    ),
                     loaded_dim.div_ceil(2),
                 )
             } else {
                 (
-                    format!("snapshot-v{CACHE_VERSION}-n{vectors}-p{profile:?}-d{loaded_dim}.hnsqr"),
+                    format!(
+                        "snapshot-v{CACHE_VERSION}-n{vectors}-p{profile:?}-d{loaded_dim}.hnsqr"
+                    ),
                     loaded_dim.div_ceil(2),
                 )
             }
@@ -194,7 +198,9 @@ fn main() {
             let dim = index_dim.unwrap_or_else(|| loaded_dim.div_ceil(2));
             if is_hnsw {
                 (
-                    format!("{tag}_v{CACHE_VERSION}_m{m}_efc{ef_construction}_d{dim}_n{vectors}.snapshot"),
+                    format!(
+                        "{tag}_v{CACHE_VERSION}_m{m}_efc{ef_construction}_d{dim}_n{vectors}.snapshot"
+                    ),
                     dim,
                 )
             } else {

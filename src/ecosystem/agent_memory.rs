@@ -87,8 +87,7 @@ pub struct ExpirationRecord {
 /// `(recall_count + 1) × (1 + emotional_salience × 2)`
 #[inline]
 pub fn compute_expiry_secs(fact: &EpisodicFact, r_prune: f32) -> u64 {
-    let memory_strength =
-        (fact.recall_count as f32 + 1.0) * (1.0 + fact.emotional_salience * 2.0);
+    let memory_strength = (fact.recall_count as f32 + 1.0) * (1.0 + fact.emotional_salience * 2.0);
     // −ln(r_prune) is positive for r_prune ∈ (0, 1).
     let lifetime_secs = (-r_prune.ln()) * memory_strength * 86400.0;
     fact.last_accessed_secs.saturating_add(lifetime_secs as u64)
@@ -297,8 +296,7 @@ impl AutonomousMemoryConsolidator {
                     }
                     Some(&idx) => {
                         let fact = &profile.consolidated_facts[idx];
-                        let actual_retention =
-                            Self::retention_pure(fact, current_time_secs);
+                        let actual_retention = Self::retention_pure(fact, current_time_secs);
                         if actual_retention < min_retention {
                             expired_ids.push(rec.fact_id.clone());
                         } else {

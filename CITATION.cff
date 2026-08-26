@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use HoloSphere in academic or industrial research, please cite this software."
+title: "HoloSphere"
+version: 0.1.0
+date-released: 2026-08-26
+authors:
+  - family-names: Xyn
+    given-names: Lord
+    email: lordxyn@proton.me
+license: Apache-2.0 OR MIT
+repository-code: https://github.com/arcmoonstudios/holosphere

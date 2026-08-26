@@ -350,7 +350,6 @@ pub struct ContinuousDiscoveryReport {
     pub audit: DiscoveryAuditLog,
 }
 
-
 impl ContinuousDiscoveryReport {
     /// Produces the complete deterministic mutation stream needed to make this
     /// report durable. The caller submits each action through Raft in order.
@@ -1070,7 +1069,6 @@ impl ContinuousDiscoveryEngine {
                         revision,
                         excluded_counterexamples: monitoring_evaluation.counterexamples,
                     });
-
                 }
             }
         }

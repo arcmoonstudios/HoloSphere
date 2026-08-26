@@ -164,7 +164,6 @@ impl ExactScanCrossoverModel {
     }
 }
 
-
 /// Universal Cost-Based Query Planner.
 pub struct UniversalPlanner;
 
@@ -221,7 +220,6 @@ impl UniversalPlanner {
         if !is_mmap_cold && effective_n < 50_000 && matches!(contract, RetrievalContract::Exact) {
             return ExecutionPlan::ExactScan { effective_n };
         }
-
 
         // Apply XyCo 8D Dual-Regime Gating
         let effective_contract = match affect.regime() {
@@ -389,4 +387,3 @@ mod tests {
         assert!(d50_threshold > 40_000 && d50_threshold < 50_000);
     }
 }
-

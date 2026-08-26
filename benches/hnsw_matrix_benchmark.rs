@@ -150,9 +150,7 @@ fn get_or_build_hnsw_index(
     let total = corpus_vecs.len();
 
     for (i, v) in corpus_vecs.iter().enumerate() {
-        index
-            .insert(format!("doc_{i}"), v.clone())
-            .expect("insert");
+        index.insert(format!("doc_{i}"), v.clone()).expect("insert");
         if (i + 1) % 100_000 == 0 || i + 1 == total {
             print!(
                 "\r      -> Inserted {} / {} vectors ({:.1}%)...",
@@ -215,9 +213,13 @@ fn evaluate_hnsw_subset(
         total_visits += diagnostics.visited_nodes as usize;
         total_dists += diagnostics.distance_evaluations as usize;
 
-        let hit_top1 = results.first().map_or(0.0, |(idx, _)| {
-            if *idx as usize == gt_top1 { 100.0 } else { 0.0 }
-        });
+        let hit_top1 =
+            results.first().map_or(
+                0.0,
+                |(idx, _)| {
+                    if *idx as usize == gt_top1 { 100.0 } else { 0.0 }
+                },
+            );
         let matched_10 = results
             .iter()
             .filter(|(idx, _)| gt_set.contains(&(*idx as usize)))
@@ -284,20 +286,28 @@ fn main() {
     let sift_exact_p50 = if sift_baseline_path.exists() {
         let file = File::open(&sift_baseline_path).expect("open sift1m baseline");
         let data: serde_json::Value = serde_json::from_reader(file).expect("parse sift1m baseline");
-        data["aggregate_held_out_admission"]["p50_ms"].as_f64().unwrap_or(33.74)
+        data["aggregate_held_out_admission"]["p50_ms"]
+            .as_f64()
+            .unwrap_or(33.74)
     } else {
         33.74
     };
 
     let glove_exact_p50 = if glove_baseline_path.exists() {
         let file = File::open(&glove_baseline_path).expect("open glove100 baseline");
-        let data: serde_json::Value = serde_json::from_reader(file).expect("parse glove100 baseline");
-        data["aggregate_held_out_admission"]["p50_ms"].as_f64().unwrap_or(34.85)
+        let data: serde_json::Value =
+            serde_json::from_reader(file).expect("parse glove100 baseline");
+        data["aggregate_held_out_admission"]["p50_ms"]
+            .as_f64()
+            .unwrap_or(34.85)
     } else {
         34.85
     };
 
-    println!("  P0 Frozen Exact Held-out p50: SIFT1M = {:.2} ms | GloVe-100 = {:.2} ms\n", sift_exact_p50, glove_exact_p50);
+    println!(
+        "  P0 Frozen Exact Held-out p50: SIFT1M = {:.2} ms | GloVe-100 = {:.2} ms\n",
+        sift_exact_p50, glove_exact_p50
+    );
 
     let m_grid = [8, 16, 32, 48];
     let efc_grid = [100, 200, 400];
@@ -308,7 +318,9 @@ fn main() {
             "SIFT1M",
             PathBuf::from("datasets/sift_1m/sift1m_base.fvecs"),
             PathBuf::from("datasets/sift_1m/sift1m_query.fvecs"),
-            PathBuf::from("benchmark_databases/million_sift1m_strict_v6_pStrict_d64_n1000000.snapshot"),
+            PathBuf::from(
+                "benchmark_databases/million_sift1m_strict_v6_pStrict_d64_n1000000.snapshot",
+            ),
             128usize,
             sift_exact_p50,
         ),
@@ -316,7 +328,9 @@ fn main() {
             "GloVe-100",
             PathBuf::from("datasets/glove_100/glove100_base.fvecs"),
             PathBuf::from("datasets/glove_100/glove100_query.fvecs"),
-            PathBuf::from("benchmark_databases/million_glove100_strict_v6_pStrict_d50_n1183514.snapshot"),
+            PathBuf::from(
+                "benchmark_databases/million_glove100_strict_v6_pStrict_d50_n1183514.snapshot",
+            ),
             100usize,
             glove_exact_p50,
         ),
@@ -327,7 +341,9 @@ fn main() {
     let mut all_seed_variance_results = Vec::new();
 
     for (corpus_tag, corpus_path, query_path, oracle_path, dim, exact_p50) in &datasets {
-        println!("\n═══════════════════════════════════════════════════════════════════════════════");
+        println!(
+            "\n═══════════════════════════════════════════════════════════════════════════════"
+        );
         println!("  STAGE 1: FULL TUNING MATRIX (100 Queries, 20%) FOR {corpus_tag}");
         println!("═══════════════════════════════════════════════════════════════════════════════");
 
@@ -338,7 +354,6 @@ fn main() {
             &all_queries[TUNING_QUERIES_COUNT..TUNING_QUERIES_COUNT + ADMISSION_QUERIES_COUNT];
 
         let oracle = HNSQRIndex::open_snapshot_v2(oracle_path, SnapshotOpenOptions::default())
-
             .expect("open oracle snapshot");
 
         println!("  Precomputing exact ground truth for 100 tuning queries...");
@@ -364,7 +379,15 @@ fn main() {
         for &m in &m_grid {
             let m0 = 2 * m;
             for &ef_c in &efc_grid {
-                let index = get_or_build_hnsw_index(corpus_tag, &corpus, dim.div_ceil(2), m, m0, ef_c, DEFAULT_CONSTRUCTION_SEED);
+                let index = get_or_build_hnsw_index(
+                    corpus_tag,
+                    &corpus,
+                    dim.div_ceil(2),
+                    m,
+                    m0,
+                    ef_c,
+                    DEFAULT_CONSTRUCTION_SEED,
+                );
                 for &ef_s in &efs_grid {
                     let row = evaluate_hnsw_subset(
                         corpus_tag,
@@ -381,7 +404,13 @@ fn main() {
                     );
                     println!(
                         "    [Tuning] M={:>2} efC={:>3} efS={:>3} │ R@10={:>5.1}% │ p50={:>6.2} ms │ Speedup={:>5.2}x │ Visits={:>4}",
-                        row.m, row.ef_construction, row.ef_search, row.mean_recall_10, row.hnsw_p50_ms, row.speedup, row.avg_visited_nodes
+                        row.m,
+                        row.ef_construction,
+                        row.ef_search,
+                        row.mean_recall_10,
+                        row.hnsw_p50_ms,
+                        row.speedup,
+                        row.avg_visited_nodes
                     );
                     corpus_tuning_rows.push(row);
                 }
@@ -404,8 +433,12 @@ fn main() {
         tuning_pareto.sort_by(|a, b| a.mean_recall_10.total_cmp(&b.mean_recall_10));
         all_tuning_results.extend(corpus_tuning_rows);
 
-        println!("\n═══════════════════════════════════════════════════════════════════════════════");
-        println!("  STAGE 2: HELD-OUT ADMISSION (400 Queries, 80%) ON TUNING PARETO FRONTIER FOR {corpus_tag}");
+        println!(
+            "\n═══════════════════════════════════════════════════════════════════════════════"
+        );
+        println!(
+            "  STAGE 2: HELD-OUT ADMISSION (400 Queries, 80%) ON TUNING PARETO FRONTIER FOR {corpus_tag}"
+        );
         println!("═══════════════════════════════════════════════════════════════════════════════");
 
         let mut corpus_admission_rows = Vec::new();
@@ -434,9 +467,15 @@ fn main() {
             );
             println!(
                 "  🎯 [Held-Out] M={:>2} efC={:>3} efS={:>3} │ R@10={:>5.1}% (min={:>4.0}%, p05={:>4.0}%) │ p50={:>6.2} ms (p99={:>6.2} ms) │ Speedup={:>5.2}x │ {}",
-                adm_row.m, adm_row.ef_construction, adm_row.ef_search,
-                adm_row.mean_recall_10, adm_row.min_recall_10, adm_row.p05_recall_10,
-                adm_row.hnsw_p50_ms, adm_row.hnsw_p99_ms, adm_row.speedup,
+                adm_row.m,
+                adm_row.ef_construction,
+                adm_row.ef_search,
+                adm_row.mean_recall_10,
+                adm_row.min_recall_10,
+                adm_row.p05_recall_10,
+                adm_row.hnsw_p50_ms,
+                adm_row.hnsw_p99_ms,
+                adm_row.speedup,
                 if adm_row.is_production_candidate {
                     "🌟 PRODUCTION CANDIDATE"
                 } else if adm_row.is_survival_pass {
@@ -456,7 +495,9 @@ fn main() {
             .collect();
 
         if !production_finalists.is_empty() {
-            println!("\n  STAGE 3: SEED INVARIANCE CHECK FOR PRODUCTION CANDIDATES ON {corpus_tag}");
+            println!(
+                "\n  STAGE 3: SEED INVARIANCE CHECK FOR PRODUCTION CANDIDATES ON {corpus_tag}"
+            );
             let additional_seeds = [1337u64, 2026u64, 9999u64];
             for finalist in &production_finalists {
                 for &seed in &additional_seeds {
@@ -484,15 +525,21 @@ fn main() {
                     );
                     println!(
                         "    🎲 [Seed={seed}] M={:>2} efC={:>3} efS={:>3} │ R@10={:>5.1}% (min={:>4.0}%) │ p50={:>6.2} ms │ Speedup={:>5.2}x",
-                        seed_row.m, seed_row.ef_construction, seed_row.ef_search,
-                        seed_row.mean_recall_10, seed_row.min_recall_10,
-                        seed_row.hnsw_p50_ms, seed_row.speedup
+                        seed_row.m,
+                        seed_row.ef_construction,
+                        seed_row.ef_search,
+                        seed_row.mean_recall_10,
+                        seed_row.min_recall_10,
+                        seed_row.hnsw_p50_ms,
+                        seed_row.speedup
                     );
                     all_seed_variance_results.push(seed_row);
                 }
             }
         } else {
-            println!("  ℹ️ No production candidates reached >=99% Recall@10 AND >=2.0x speedup on held-out {corpus_tag}.");
+            println!(
+                "  ℹ️ No production candidates reached >=99% Recall@10 AND >=2.0x speedup on held-out {corpus_tag}."
+            );
         }
 
         all_admission_results.extend(corpus_admission_rows);
@@ -507,27 +554,57 @@ fn main() {
         "tuning_matrix": all_tuning_results,
         "held_out_admission_pareto": all_admission_results,
         "seed_variance_trials": all_seed_variance_results,
-    })).expect("serialize p1 json");
+    }))
+    .expect("serialize p1 json");
     let mut file = File::create(&p1_json_path).expect("create p1 json");
-    file.write_all(serialized.as_bytes()).expect("write p1 json");
+    file.write_all(serialized.as_bytes())
+        .expect("write p1 json");
 
     // Output Final Brutally Small Summary Table
-    println!("\n\n═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════");
+    println!(
+        "\n\n═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════"
+    );
     println!("  🏆 P1 HELD-OUT PARETO-FRONTIER ADMISSION SUMMARY TABLE");
-    println!("═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════");
+    println!(
+        "═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════"
+    );
     println!(
         "  {:<10} │ {:>2} │ {:>2} │ {:>3} │ {:>3} │ {:>6} │ {:>9} │ {:>8} │ {:>9} │ {:>8} │ {:>7} │ {:>8} │ {:>6}",
-        "Dataset", "M", "M0", "efC", "efS", "R@10", "p05 R@10", "Min R@10", "Exact p50", "HNSW p50", "Speedup", "HNSW p99", "Visits"
+        "Dataset",
+        "M",
+        "M0",
+        "efC",
+        "efS",
+        "R@10",
+        "p05 R@10",
+        "Min R@10",
+        "Exact p50",
+        "HNSW p50",
+        "Speedup",
+        "HNSW p99",
+        "Visits"
     );
     println!("  {}", "─".repeat(123));
 
     for r in &all_admission_results {
         println!(
             "  {:<10} │ {:>2} │ {:>2} │ {:>3} │ {:>3} │ {:>5.1}% │ {:>8.1}% │ {:>7.1}% │ {:>7.2} ms │ {:>6.2} ms │ {:>6.2}x │ {:>6.2} ms │ {:>6}",
-            r.corpus, r.m, r.m0, r.ef_construction, r.ef_search,
-            r.mean_recall_10, r.p05_recall_10, r.min_recall_10,
-            r.exact_p50_ms, r.hnsw_p50_ms, r.speedup, r.hnsw_p99_ms, r.avg_visited_nodes
+            r.corpus,
+            r.m,
+            r.m0,
+            r.ef_construction,
+            r.ef_search,
+            r.mean_recall_10,
+            r.p05_recall_10,
+            r.min_recall_10,
+            r.exact_p50_ms,
+            r.hnsw_p50_ms,
+            r.speedup,
+            r.hnsw_p99_ms,
+            r.avg_visited_nodes
         );
     }
-    println!("═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════\n");
+    println!(
+        "═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════\n"
+    );
 }

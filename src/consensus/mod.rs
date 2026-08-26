@@ -17,13 +17,11 @@ pub mod read_index;
 pub mod state_machine;
 pub mod storage;
 
+pub use driver::{ClientProposal, ClusterLiveness, DriverEvent, RaftDriver, RaftDriverError};
 pub use durability_controller::{DurabilityBatchPlan, DurabilityController, StorageTelemetry};
 pub use pending::{
     ApplyError, CommitReceipt, CommitStatus, DurabilityLevel, MutationId, PendingProposals,
     ProposalId,
-};
-pub use driver::{
-    ClientProposal, ClusterLiveness, DriverEvent, RaftDriver, RaftDriverError,
 };
 pub use raft::{
     AdaptiveMicrobatcher, AppendEntriesArgs, AppendEntriesReply, MembershipMutation, RaftCluster,

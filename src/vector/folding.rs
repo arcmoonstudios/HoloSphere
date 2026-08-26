@@ -45,7 +45,7 @@ use tower_http::cors::CorsLayer;
 use tracing::info;
 
 use crate::metadata::index::{FilterExpr, MetadataValue};
-use crate::vector::inference::{InferenceModelConfig, InProcessModelEmbedder};
+use crate::vector::inference::{InProcessModelEmbedder, InferenceModelConfig};
 use crate::{
     HNSQRConfig, HNSQRError, HNSQRIndex, HNSQRResult, NodeIndex, SimilarityScore, VectorEmbedding,
 };
@@ -798,7 +798,9 @@ mod tests {
         let mut config = InferenceModelConfig::default();
         config.output_dimension = 64;
         let embedder = InProcessModelEmbedder::try_new(config).unwrap();
-        let embedded = embedder.embed_text("liquid cooling for datacenters").unwrap();
+        let embedded = embedder
+            .embed_text("liquid cooling for datacenters")
+            .unwrap();
         let raw = ComplexWeaver::unfold_to_real(&embedded, 64);
 
         router

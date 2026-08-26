@@ -2,7 +2,7 @@ use hnsqr::bench_support as common;
 
 use std::time::Instant;
 
-use common::generate_realistic_text_corpus;
+use common::load_real_dataset_corpus;
 use hnsqr::rivero::RiveroProfile;
 
 fn percentile(mut latencies: Vec<f64>, p: f64) -> f64 {
@@ -22,7 +22,7 @@ struct DimCrossoverResult {
 
 fn measure_point(n: usize, complex_dim: usize, num_queries: usize) -> (f64, f64) {
     let dataset =
-        generate_realistic_text_corpus(n, num_queries, complex_dim * 2, common::DEFAULT_BENCH_SEED);
+        load_real_dataset_corpus(n, num_queries, complex_dim * 2, common::DEFAULT_BENCH_SEED);
 
     let actual_complex_dim = dataset.complex_dim;
     let index = common::open_prebuilt_index(

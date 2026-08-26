@@ -111,6 +111,18 @@ pub struct AppendEntriesReply {
     pub match_index: u64,
 }
 
+/// Tagged union of all Raft peer-to-peer RPC messages.
+///
+/// Used by [`crate::consensus::driver::RaftDriver`] to multiplex inbound peer messages
+/// through a single channel into the driver event loop.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum RaftMessage {
+    RequestVote(RequestVoteArgs),
+    RequestVoteReply(RequestVoteReply),
+    AppendEntries(AppendEntriesArgs),
+    AppendEntriesReply(AppendEntriesReply),
+}
+
 /// Adaptive microbatching controller driven by runtime queuing and hardware metrics.
 #[derive(Debug, Clone)]
 pub struct AdaptiveMicrobatcher {

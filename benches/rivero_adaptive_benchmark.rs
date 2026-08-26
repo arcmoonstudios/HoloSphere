@@ -71,15 +71,15 @@ fn load_real_workload(name: &str, n: usize, d: usize, q_count: usize) -> Workloa
     }
 }
 
-fn generate_clustered_workload(n: usize, d: usize, q_count: usize, _seed: u64) -> Workload {
+fn load_clustered_workload(n: usize, d: usize, q_count: usize, _seed: u64) -> Workload {
     load_real_workload("Real Clustered Semantic", n, d, q_count)
 }
 
-fn generate_boundary_workload(n: usize, d: usize, q_count: usize, _seed: u64) -> Workload {
+fn load_boundary_workload(n: usize, d: usize, q_count: usize, _seed: u64) -> Workload {
     load_real_workload("Real Boundary Workload", n, d, q_count)
 }
 
-fn generate_isotropic_workload(n: usize, d: usize, q_count: usize, _seed: u64) -> Workload {
+fn load_isotropic_workload(n: usize, d: usize, q_count: usize, _seed: u64) -> Workload {
     load_real_workload("Real Isotropic Uniform", n, d, q_count)
 }
 
@@ -581,13 +581,13 @@ fn main() {
     println!("  Random Seed:         0x{:x}", SEED);
     println!();
 
-    let clustered = generate_clustered_workload(N, D, QUERY_COUNT, SEED);
+    let clustered = load_clustered_workload(N, D, QUERY_COUNT, SEED);
     run_workload_benchmark(&clustered);
 
-    let boundary = generate_boundary_workload(N, D, QUERY_COUNT, SEED ^ 0x1111);
+    let boundary = load_boundary_workload(N, D, QUERY_COUNT, SEED ^ 0x1111);
     run_workload_benchmark(&boundary);
 
-    let isotropic = generate_isotropic_workload(N, D, QUERY_COUNT, SEED ^ 0x2222);
+    let isotropic = load_isotropic_workload(N, D, QUERY_COUNT, SEED ^ 0x2222);
     run_workload_benchmark(&isotropic);
 
     println!(

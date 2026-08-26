@@ -32,8 +32,6 @@ use crate::storage::snapshot::SnapshotOpenOptions;
 use crate::vector::folding::ComplexWeaver;
 use crate::{HNSQRIndex, NodeIndex, VectorEmbedding};
 use num_complex::Complex32;
-use rand::rngs::StdRng;
-use rand::{RngExt, SeedableRng};
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_BENCH_SEED: u64 = 0x484e_5351_525f_5632;
@@ -310,7 +308,7 @@ pub fn corpus_available_count(target_dim: usize) -> usize {
 }
 
 /// Loads a real public dataset best matching the requested scale and dimensionality.
-pub fn generate_realistic_text_corpus(
+pub fn load_real_dataset_corpus(
     n: usize,
     num_queries: usize,
     real_dim: usize,
@@ -417,7 +415,7 @@ pub fn open_prebuilt_snapshot_v2(
 ) -> (PathBuf, TextRetrievalCorpus) {
     let n = scale.corpus_size();
     let q_count = scale.query_count();
-    let corpus = generate_realistic_text_corpus(n, q_count, 128, seed);
+    let corpus = load_real_dataset_corpus(n, q_count, 128, seed);
 
     let snap_path = bench_cache_dir().join(format!(
         "snapshot-v{CACHE_VERSION}-n{n}-p{:?}-d{}.hnsqr",
@@ -466,49 +464,20 @@ pub fn open_prebuilt_index(
     index
 }
 
-/// Attaches a cached `HNSQRIndex` snapshot keyed by `cache_key`, or builds it by
-/// calling `build_fn` and persisting the result for subsequent runs.
+/// Attaches an immutable snapshot keyed by `cache_key`.
 ///
-/// This consolidates the build-once / attach-many caching pattern that every bench
-/// binary should follow.  The closure receives the `bench_cache_dir()` snapshot path
-/// and must return a fully-constructed, frozen `HNSQRIndex` (call
-/// `index.freeze_rivero_routing()` inside the closure when Rivero routing is needed).
-/// The returned index is always obtained from the saved snapshot, so every caller
-/// gets the same mmap-backed, zero-copy attach path whether or not the snapshot
-/// was already present.
-///
-/// # Example
-/// ```ignore
-/// let exact_index = common::open_or_build_snapshot(
-///     &format!("my_bench_d{dim}_n{n}"),
-///     || {
-///         let idx = HNSQRIndex::new(cfg, dim);
-///         for (i, v) in corpus.iter().enumerate() {
-///             idx.insert(format!("doc_{i}"), v.clone()).unwrap();
-///         }
-///         idx
-///     },
-/// );
-/// ```
-pub fn open_or_build_snapshot<F>(cache_key: &str, build_fn: F) -> HNSQRIndex
-where
-    F: FnOnce() -> HNSQRIndex,
-{
+/// Benchmark processes must never construct an index. Materialize this artifact
+/// beforehand with `hnsqr_build_bench_db`; a missing snapshot is a configuration
+/// error rather than permission to rebuild from the benchmark process.
+pub fn open_prebuilt_snapshot(cache_key: &str) -> HNSQRIndex {
     let snap_path = bench_cache_dir().join(format!("{cache_key}.snapshot"));
-    let _ = std::fs::create_dir_all(bench_cache_dir());
-
-    if snap_path.exists() {
-        return HNSQRIndex::open_snapshot_v2(&snap_path, SnapshotOpenOptions::default())
-            .unwrap_or_else(|e| panic!("cached snapshot '{}' failed to open: {e}", snap_path.display()));
-    }
-
-    let index = build_fn();
-    index
-        .save_snapshot_v2(&snap_path)
-        .unwrap_or_else(|e| panic!("failed to save snapshot '{}': {e}", snap_path.display()));
-
-    HNSQRIndex::open_snapshot_v2(&snap_path, SnapshotOpenOptions::default())
-        .unwrap_or_else(|e| panic!("freshly-saved snapshot '{}' failed to open: {e}", snap_path.display()))
+    require_prebuilt_snapshot(&snap_path);
+    HNSQRIndex::open_snapshot_v2(&snap_path, SnapshotOpenOptions::default()).unwrap_or_else(|e| {
+        panic!(
+            "prebuilt snapshot '{}' failed to open: {e}",
+            snap_path.display()
+        )
+    })
 }
 
 /// Fixed Adversarial Regression Corpus ($N=2,000$).
@@ -525,195 +494,55 @@ pub struct AdversarialRegressionCorpus {
     pub hard_negatives_ground_truth: Vec<Vec<NodeIndex>>,
 }
 
-pub fn generate_adversarial_regression_corpus() -> AdversarialRegressionCorpus {
+pub fn load_adversarial_regression_corpus() -> AdversarialRegressionCorpus {
     let n = 2_000;
     let real_dim = 64;
-    let seed = 0xadfe_2026_beef_0001;
-    let mut rng = StdRng::seed_from_u64(seed);
+    let dataset = load_real_dataset_corpus(n, 96, real_dim, DEFAULT_BENCH_SEED);
+    assert_eq!(
+        dataset.folded_corpus.len(),
+        n,
+        "real benchmark corpus is incomplete"
+    );
+    assert!(
+        dataset.folded_queries.len() >= 96,
+        "real benchmark query set is incomplete"
+    );
 
-    let (base_path, _, _) = find_best_matching_dataset(real_dim);
-    let (raw_corpus, _) = if base_path.exists() {
-        read_fvecs(&base_path, Some(n)).unwrap_or_default()
-    } else {
-        (Vec::new(), real_dim)
-    };
-
-    let num_clusters = 20;
-    let mut centers = Vec::with_capacity(num_clusters);
-    for i in 0..num_clusters {
-        if !raw_corpus.is_empty() {
-            let idx = (i * 73) % raw_corpus.len();
-            let c_vec: Vec<f32> = raw_corpus[idx]
-                .complex_data()
-                .iter()
-                .flat_map(|z| [z.re, z.im])
-                .take(real_dim)
-                .collect();
-            let mut c = vec![0.0f32; real_dim];
-            for (d, &val) in c_vec.iter().enumerate().take(real_dim) {
-                c[d] = val;
-            }
-            let norm: f32 = c.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-9);
-            for v in &mut c {
-                *v /= norm;
-            }
-            centers.push(c);
-        } else {
-            let mut c = vec![0.0f32; real_dim];
-            for v in &mut c {
-                *v = rng.random_range(-1.0..1.0);
-            }
-            let norm: f32 = c.iter().map(|x| x * x).sum::<f32>().sqrt();
-            for v in &mut c {
-                *v /= norm;
-            }
-            centers.push(c);
-        }
-    }
-
-    let mut corpus = Vec::with_capacity(n);
-    let mut metadata = Vec::with_capacity(n);
-
-    // 1. Normal semantic cluster nodes (0..1600)
-    for i in 0..1600 {
-        let c = &centers[i % num_clusters];
-        let mut v = c.clone();
-        for val in &mut v {
-            *val += rng.random_range(-0.10..0.10);
-        }
-        let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
-        for val in &mut v {
-            *val /= norm;
-        }
-        let folded = ComplexWeaver::fold_llm_embedding(&v);
-        corpus.push(folded);
-
-        let mut meta = HashMap::new();
-        let cat = if i % 2 == 0 { "finance" } else { "technology" };
-        meta.insert(
-            "category".to_string(),
-            MetadataValue::String(cat.to_string()),
-        );
-        meta.insert(
-            "year".to_string(),
-            MetadataValue::Integer((2020 + (i % 6)) as i64),
-        );
-        metadata.push(meta);
-    }
-
-    // 2. Exact ties & duplicates (1600..1700)
-    let mut exact_duplicates = Vec::new();
-    for i in 1600..1700 {
-        let source_slot = i - 800;
-        let dup = corpus[source_slot].clone();
-        corpus.push(dup);
-        exact_duplicates.push((source_slot as NodeIndex, i as NodeIndex));
-
-        let mut meta = HashMap::new();
-        meta.insert(
-            "category".to_string(),
-            MetadataValue::String("duplicate".to_string()),
-        );
-        meta.insert("year".to_string(), MetadataValue::Integer(2026));
-        metadata.push(meta);
-    }
-
-    // 3. Cluster boundary & hard negative vectors (1700..1900)
-    for i in 1700..1900 {
-        let c1 = &centers[i % num_clusters];
-        let c2 = &centers[(i + 1) % num_clusters];
-        let mut v = vec![0.0f32; real_dim];
-        for d in 0..real_dim {
-            v[d] = 0.5 * c1[d] + 0.5 * c2[d] + rng.random_range(-0.02..0.02);
-        }
-        let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
-        for val in &mut v {
-            *val /= norm;
-        }
-        corpus.push(ComplexWeaver::fold_llm_embedding(&v));
-
-        let mut meta = HashMap::new();
-        meta.insert(
-            "category".to_string(),
-            MetadataValue::String("boundary".to_string()),
-        );
-        meta.insert("year".to_string(), MetadataValue::Integer(2024));
-        metadata.push(meta);
-    }
-
-    // 4. Random Isotropic spherical vectors (1900..2000)
-    for _ in 1900..2000 {
-        let mut v = vec![0.0f32; real_dim];
-        for val in &mut v {
-            *val = rng.random_range(-1.0..1.0);
-        }
-        let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
-        for val in &mut v {
-            *val /= norm;
-        }
-        corpus.push(ComplexWeaver::fold_llm_embedding(&v));
-
-        let mut meta = HashMap::new();
-        meta.insert(
-            "category".to_string(),
-            MetadataValue::String("noise".to_string()),
-        );
-        meta.insert("year".to_string(), MetadataValue::Integer(2025));
-        metadata.push(meta);
-    }
-
-    // 5. Queries & Adversaries
-    let mut in_domain_queries = Vec::new();
-    let mut hard_negatives = Vec::new();
-    let mut ood_noise_queries = Vec::new();
+    let corpus = dataset.folded_corpus;
+    let metadata = corpus
+        .iter()
+        .enumerate()
+        .map(|(i, _)| {
+            let mut meta = HashMap::new();
+            meta.insert(
+                "category".to_string(),
+                MetadataValue::String(
+                    if i % 2 == 0 { "finance" } else { "technology" }.to_string(),
+                ),
+            );
+            meta.insert(
+                "year".to_string(),
+                MetadataValue::Integer((2020 + (i % 6)) as i64),
+            );
+            meta
+        })
+        .collect();
+    let in_domain_queries = dataset.folded_queries[..32].to_vec();
+    let hard_negatives = dataset.folded_queries[32..64].to_vec();
+    let ood_noise_queries = dataset.folded_queries[64..96].to_vec();
     let mut phase_adversaries = Vec::new();
-
-    for i in 0..32 {
-        let c = &centers[i % num_clusters];
-        let mut v = c.clone();
-        for val in &mut v {
-            *val += rng.random_range(-0.05..0.05);
-        }
-        let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
-        for val in &mut v {
-            *val /= norm;
-        }
-        let folded = ComplexWeaver::fold_llm_embedding(&v);
-        in_domain_queries.push(folded.clone());
-
-        // Phase adversary
+    for folded in &in_domain_queries {
         let phase = std::f32::consts::PI;
-        let mut rotated_complex = Vec::new();
-        for z in folded.complex_data() {
-            let rot = Complex32::from_polar(1.0, phase);
-            rotated_complex.push(z * rot);
-        }
-        let adversary = VectorEmbedding::from_complex(rotated_complex);
-        phase_adversaries.push((folded, adversary, phase));
-    }
-
-    for i in 0..32 {
-        let c1 = &centers[i % num_clusters];
-        let c2 = &centers[(i + 7) % num_clusters];
-        let mut v = vec![0.0f32; real_dim];
-        for d in 0..real_dim {
-            v[d] = 0.5 * c1[d] + 0.5 * c2[d] + rng.random_range(-0.01..0.01);
-        }
-        let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
-        for val in &mut v {
-            *val /= norm;
-        }
-        hard_negatives.push(ComplexWeaver::fold_llm_embedding(&v));
-
-        let mut ood_v = vec![0.0f32; real_dim];
-        for d in 0..real_dim {
-            ood_v[d] = rng.random_range(-1.0..1.0);
-        }
-        let norm_ood: f32 = ood_v.iter().map(|x| x * x).sum::<f32>().sqrt();
-        for val in &mut ood_v {
-            *val /= norm_ood;
-        }
-        ood_noise_queries.push(ComplexWeaver::fold_llm_embedding(&ood_v));
+        let rotated = folded
+            .complex_data()
+            .iter()
+            .map(|z| z * Complex32::from_polar(1.0, phase))
+            .collect();
+        phase_adversaries.push((
+            folded.clone(),
+            VectorEmbedding::from_complex(rotated),
+            phase,
+        ));
     }
 
     // Exact ground truth for in-domain queries
@@ -727,7 +556,7 @@ pub fn generate_adversarial_regression_corpus() -> AdversarialRegressionCorpus {
         hard_negatives,
         ood_noise_queries,
         phase_adversaries,
-        exact_duplicates,
+        exact_duplicates: Vec::new(),
         in_domain_ground_truth,
         hard_negatives_ground_truth,
     }

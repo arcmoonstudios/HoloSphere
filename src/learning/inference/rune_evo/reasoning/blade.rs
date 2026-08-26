@@ -11,7 +11,7 @@
  *///•------------------------------------------------------------------------------------‣
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use smallvec::SmallVec;
 use thiserror::Error;
 
 use crate::entity::id::EntityId;
@@ -165,15 +165,22 @@ impl MultivectorCl24Sparse {
     /// discarded here because higher-grade blades encode N-ary relation structure.
     #[must_use]
     pub fn geometric_product(&self, other: &Self) -> Self {
-        let mut accum: HashMap<u32, f32> =
-            HashMap::with_capacity(self.blades.len() * other.blades.len().min(256));
+        // Zero-allocation flat accumulator: linear scan for existing bitmap key,
+        // insert-or-add in place. SmallVec<64> fits on the stack for the common
+        // sparse case (truncate_topk caps inputs to ≤32 blades each in practice).
+        let mut accum: SmallVec<[(u32, f32); 64]> = SmallVec::new();
 
         for ai in &self.blades {
             for bi in &other.blades {
                 let result_bitmap = ai.bitmap ^ bi.bitmap;
                 let sign = blade_product_sign(ai.bitmap, bi.bitmap);
                 let contribution = sign * ai.coeff * bi.coeff;
-                *accum.entry(result_bitmap).or_insert(0.0) += contribution;
+                // Linear scan: fast for small blade counts, avoids heap allocation.
+                if let Some(entry) = accum.iter_mut().find(|(bm, _)| *bm == result_bitmap) {
+                    entry.1 += contribution;
+                } else {
+                    accum.push((result_bitmap, contribution));
+                }
             }
         }
 

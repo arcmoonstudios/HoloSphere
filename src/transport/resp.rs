@@ -373,12 +373,15 @@ impl RespServer {
             if args.len() < 4 || (args.len() - 2) % 2 != 0 {
                 return RespFrame::Error("ERR wrong number of arguments for 'xadd' command".into());
             }
-            let stream_key = String::from_utf8_lossy(args[1]).to_string();
+            // Borrow the stream key as &str without forcing a String allocation.
+            let stream_key = String::from_utf8_lossy(args[1]);
             let mut fields = HashMap::new();
             let mut idx = 2;
             while idx < args.len() {
-                let k = String::from_utf8_lossy(args[idx]).to_string();
-                let v = String::from_utf8_lossy(args[idx + 1]).to_string();
+                // Field keys/values must be owned Strings (HashMap<String,String> API).
+                // Use into_owned() for clarity — avoids the redundant Cow→String→String path.
+                let k = String::from_utf8_lossy(args[idx]).into_owned();
+                let v = String::from_utf8_lossy(args[idx + 1]).into_owned();
                 fields.insert(k, v);
                 idx += 2;
             }
@@ -390,7 +393,8 @@ impl RespServer {
                     "ERR wrong number of arguments for 'xread' command".into(),
                 );
             }
-            let stream_key = String::from_utf8_lossy(args[1]).to_string();
+            // Borrow the stream key as &str without forcing a String allocation.
+            let stream_key = String::from_utf8_lossy(args[1]);
             let count = String::from_utf8_lossy(args[2])
                 .parse::<usize>()
                 .unwrap_or(10);

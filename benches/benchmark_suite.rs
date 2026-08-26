@@ -45,14 +45,13 @@ use hnsqr::{
 use num_complex::Complex32;
 
 /// Loads a real embedding dataset from datasets/ for the requested dimensionality.
-fn generate_clustered_dataset(
+fn load_dataset_slice(
     num_vectors: usize,
     dim: usize,
     _num_clusters: usize,
 ) -> (Vec<(NodeId, VectorEmbedding)>, Vec<VectorEmbedding>, usize) {
     let (base_path, query_path, _) = common::find_best_matching_dataset(dim * 2);
-    let (corpus_vecs, _) =
-        common::read_fvecs(&base_path, Some(num_vectors)).unwrap_or_default();
+    let (corpus_vecs, _) = common::read_fvecs(&base_path, Some(num_vectors)).unwrap_or_default();
     let (query_vecs, _) = common::read_fvecs(&query_path, Some(200)).unwrap_or_default();
 
     assert!(
@@ -131,7 +130,7 @@ fn run_full_benchmark(
     let num_vectors = dataset.len();
     let num_queries = queries.len();
 
-    let config = HNSQRConfig {
+    let _config = HNSQRConfig {
         m0,
         m,
         ef_construction: ef_c,
@@ -155,7 +154,7 @@ fn run_full_benchmark(
     // 1. INGESTION PERFORMANCE
     // ────────────────────────────────────────────────────────────────────────
     println!("┌──────────────────────────────────────────────────────────────────────────────┐");
-    println!("│ 1. INGESTION BENCHMARK (Single-Threaded & Multi-Threaded Concurrent)          │");
+    println!("│ 1. SNAPSHOT ATTACHMENT (Single-Threaded & Multi-Threaded Concurrent)          │");
     println!("└──────────────────────────────────────────────────────────────────────────────┘");
 
     // Cache key: sanitize title for use in a filename, then append dim + N so
@@ -168,54 +167,35 @@ fn run_full_benchmark(
             .collect::<String>()
     );
     let start_seq = Instant::now();
-    let index_seq = {
-        let cfg_for_closure = config.clone();
-        let dataset_for_closure: Vec<(NodeId, VectorEmbedding)> = dataset.to_vec();
-        common::open_or_build_snapshot(&cache_key, move || {
-            let idx = HNSQRIndex::new(cfg_for_closure, dim);
-            for (id, vec) in &dataset_for_closure {
-                idx.insert(id.as_ref(), vec.clone()).unwrap();
-            }
-            idx
-        })
-    };
+    let index_seq = common::open_prebuilt_snapshot(&cache_key);
     let dur_seq = start_seq.elapsed();
     let seq_qps = num_vectors as f64 / dur_seq.as_secs_f64();
     let seq_latency_us = (dur_seq.as_micros() as f64) / num_vectors as f64;
     println!(
-        " • Single-threaded Build: {:.2?} ({:.0} vectors/sec, avg {:.1} µs/insert)",
+        " • Single-threaded Attach: {:.2?} ({:.0} vectors/sec-equivalent, avg {:.1} µs/vector)",
         dur_seq, seq_qps, seq_latency_us
     );
 
-    // Multi-threaded Ingestion scaling
+    // Concurrent attachment scaling: each worker attaches the same immutable snapshot.
     for &threads in &[2, 4, 8] {
-        let index_par = Arc::new(HNSQRIndex::new(config.clone(), dim));
-        let chunk_size = num_vectors.div_ceil(threads);
         let start_par = Instant::now();
-
         let mut handles = Vec::new();
-        for t in 0..threads {
-            let idx_clone = Arc::clone(&index_par);
-            let start = t * chunk_size;
-            let end = (start + chunk_size).min(num_vectors);
-            let chunk_data = dataset[start..end].to_vec();
-
+        for _ in 0..threads {
+            let cache_key = cache_key.clone();
             handles.push(thread::spawn(move || {
-                for (id, vec) in chunk_data {
-                    idx_clone.insert(id.as_ref(), vec).unwrap();
-                }
+                common::open_prebuilt_snapshot(&cache_key)
             }));
         }
 
         for h in handles {
-            h.join().unwrap();
+            let _ = h.join().unwrap();
         }
 
         let dur_par = start_par.elapsed();
         let par_qps = num_vectors as f64 / dur_par.as_secs_f64();
         let scaling = par_qps / seq_qps.max(1.0);
         println!(
-            " • Concurrent Build ({:2} threads): {:.2?} ({:.0} vectors/sec, {:.2}x scaling)",
+            " • Concurrent Attach ({:2} threads): {:.2?} ({:.0} vectors/sec-equivalent, {:.2}x scaling)",
             threads, dur_par, par_qps, scaling
         );
     }
@@ -490,8 +470,7 @@ fn main() {
     print!(
         "Generating 5,000 clustered phase-encoded complex embeddings (50 semantic clusters)... "
     );
-    let (dataset_clust, queries_clust, actual_dim) =
-        generate_clustered_dataset(num_vectors, dim, 50);
+    let (dataset_clust, queries_clust, actual_dim) = load_dataset_slice(num_vectors, dim, 50);
     println!("Done.\n");
 
     run_full_benchmark(

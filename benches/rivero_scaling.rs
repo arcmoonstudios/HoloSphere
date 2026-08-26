@@ -62,7 +62,7 @@ struct AuditRow {
 
 use hnsqr::bench_support as common;
 
-fn generate_master(
+fn load_master_dataset(
     count: usize,
     dimension: usize,
     query_count: usize,
@@ -84,28 +84,25 @@ fn generate_master(
     (corpus, queries)
 }
 
-fn generate_isotropic(
+fn load_isotropic_workload(
     count: usize,
     dimension: usize,
     query_count: usize,
 ) -> (Vec<VectorEmbedding>, Vec<VectorEmbedding>) {
-    generate_master(count, dimension, query_count)
+    load_master_dataset(count, dimension, query_count)
 }
 
-fn generate_independent_isotropic_queries(
-    dimension: usize,
-    query_count: usize,
-) -> Vec<VectorEmbedding> {
-    let (_, queries) = generate_master(query_count * 2, dimension, query_count);
+fn load_independent_query_slice(dimension: usize, query_count: usize) -> Vec<VectorEmbedding> {
+    let (_, queries) = load_master_dataset(query_count * 2, dimension, query_count);
     queries
 }
 
-fn generate_boundary(
+fn load_boundary_workload(
     count: usize,
     dimension: usize,
     query_count: usize,
 ) -> (Vec<VectorEmbedding>, Vec<VectorEmbedding>) {
-    generate_master(count, dimension, query_count)
+    load_master_dataset(count, dimension, query_count)
 }
 
 fn exact_top_k(corpus: &[VectorEmbedding], query: &VectorEmbedding, k: usize) -> Vec<u32> {
@@ -535,7 +532,7 @@ fn main() {
         &[1_024, 4_096, 16_384]
     };
     let max_size = *sizes.last().unwrap();
-    let (master, queries) = generate_master(max_size, DIMENSION, QUERY_COUNT);
+    let (master, queries) = load_master_dataset(max_size, DIMENSION, QUERY_COUNT);
 
     println!("HNSQR Rivero deterministic scaling audit");
     println!(
@@ -555,7 +552,8 @@ fn main() {
     }
 
     let secondary_size = if quick { 4_096 } else { 16_384 };
-    let (isotropic, isotropic_queries) = generate_isotropic(secondary_size, DIMENSION, QUERY_COUNT);
+    let (isotropic, isotropic_queries) =
+        load_isotropic_workload(secondary_size, DIMENSION, QUERY_COUNT);
     let isotropic_row = audit_size(&isotropic, &isotropic_queries, DIMENSION);
     print_row("isotropic-anchor", &isotropic_row);
     assert_fixed_work(&isotropic_row);
@@ -570,13 +568,14 @@ fn main() {
     );
 
     if !quick {
-        let independent_queries = generate_independent_isotropic_queries(DIMENSION, QUERY_COUNT);
+        let independent_queries = load_independent_query_slice(DIMENSION, QUERY_COUNT);
         let independent_row = audit_size(&isotropic, &independent_queries, DIMENSION);
         print_row("independent-isotropic", &independent_row);
         assert_fixed_work(&independent_row);
     }
 
-    let (boundary, boundary_queries) = generate_boundary(secondary_size, DIMENSION, QUERY_COUNT);
+    let (boundary, boundary_queries) =
+        load_boundary_workload(secondary_size, DIMENSION, QUERY_COUNT);
     let boundary_row = audit_size(&boundary, &boundary_queries, DIMENSION);
     print_row("cluster-boundary", &boundary_row);
     assert_fixed_work(&boundary_row);
@@ -588,7 +587,7 @@ fn main() {
 
     if isotropic_65k {
         let (stress_corpus, stress_queries) =
-            generate_isotropic(65_536, DIMENSION, STRESS_QUERY_COUNT);
+            load_isotropic_workload(65_536, DIMENSION, STRESS_QUERY_COUNT);
         let stress_row = audit_size(&stress_corpus, &stress_queries, DIMENSION);
         print_row("isotropic-65k-stress", &stress_row);
         assert_fixed_work(&stress_row);
@@ -602,7 +601,7 @@ fn main() {
     if !quick {
         for dimension in [8, 256, 768] {
             let (dimension_corpus, dimension_queries) =
-                generate_master(4_096, dimension, QUERY_COUNT);
+                load_master_dataset(4_096, dimension, QUERY_COUNT);
             let row = audit_size(&dimension_corpus, &dimension_queries, dimension);
             print_row("dimension-scale", &row);
             assert_fixed_work(&row);

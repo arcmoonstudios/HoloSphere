@@ -63,7 +63,7 @@ fn brute_force_exact(
     scores
 }
 
-fn generate_semantic_manifold_corpus(
+fn load_semantic_corpus(
     n_corpus: usize,
     n_queries: usize,
     d_real: usize,
@@ -97,11 +97,7 @@ fn run_hierarchy_experiment(exp: &HierarchyExperiment) -> HierarchyResult {
     );
     println!("═══════════════════════════════════════════════════════════════════════════════");
 
-    let (corpus, queries) = generate_semantic_manifold_corpus(
-        exp.n_corpus,
-        exp.n_queries,
-        exp.d_real,
-    );
+    let (corpus, queries) = load_semantic_corpus(exp.n_corpus, exp.n_queries, exp.d_real);
     let complex_dim = exp.d_real / 2;
 
     // 1. Build Rivero Index

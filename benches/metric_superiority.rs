@@ -21,8 +21,6 @@
 use hnsqr::VectorEmbedding;
 use hnsqr::vector::folding::ComplexWeaver;
 use num_complex::Complex32;
-use rand::rngs::StdRng;
-use rand::{RngExt, SeedableRng};
 use rayon::prelude::*;
 
 const D_REAL: usize = 1536; // OpenAI text-embedding-3-small dimension
@@ -86,7 +84,7 @@ fn hybrid_similarity(a: &VectorEmbedding, b: &VectorEmbedding, alpha: f32) -> f3
 
 use hnsqr::bench_support as common;
 
-fn generate_dataset() -> Dataset {
+fn load_dataset() -> Dataset {
     let total_vectors = CLUSTERS * VECTORS_PER_CLUSTER;
     let (base_path, query_path, _) = common::find_best_matching_dataset(D_REAL);
     let (complex_corpus, _) =
@@ -248,18 +246,17 @@ where
 }
 
 fn adversarial_phase_test(dataset: &Dataset) -> (f64, f64, f64) {
-    let mut rng = StdRng::seed_from_u64(0xdead_beef);
     let mut fidelity_drift_sum = 0.0f64;
     let mut hermitian_drift_sum = 0.0f64;
     let mut cosine_unfolded_drift_sum = 0.0f64;
     let pairs = 500;
 
-    for _ in 0..pairs {
-        let idx = rng.random_range(0..dataset.complex_corpus.len());
+    for sample in 0..pairs {
+        let idx = sample % dataset.complex_corpus.len();
         let original = &dataset.complex_corpus[idx];
 
         // Apply a global complex phase rotation e^(i*phi)
-        let phi = rng.random_range(0.1..std::f32::consts::PI * 1.9);
+        let phi = 0.1 + (sample as f32 / pairs as f32) * std::f32::consts::PI * 1.8;
         let phase_rot = Complex32::from_polar(1.0, phi);
 
         let rotated_data: Vec<Complex32> = original
@@ -328,7 +325,7 @@ fn main() {
             SEEDS.len(),
             seed
         );
-        let dataset = generate_dataset();
+        let dataset = load_dataset();
 
         let cos = evaluate_metric(&dataset, |q, c| {
             cosine_similarity_real(&dataset.real_queries[q], &dataset.real_corpus[c])
@@ -451,7 +448,7 @@ fn main() {
     );
 
     println!("Adversarial Global Phase Invariance Test:");
-    let dataset = generate_dataset();
+    let dataset = load_dataset();
     let (fid_drift, herm_drift, real_drift) = adversarial_phase_test(&dataset);
     println!(
         "  - Projective Overlap Drift under Global Phase Rotations: {:.6} (Mathematically Invariant)",

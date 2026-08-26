@@ -2,7 +2,7 @@ use hnsqr::bench_support as common;
 
 use std::time::Instant;
 
-use common::generate_realistic_text_corpus;
+use common::load_real_dataset_corpus;
 use hnsqr::proof::lutz::{LutzCertifier, LutzCode, LutzQueryTable};
 use hnsqr::{NodeIndex, SimilarityScore};
 
@@ -44,7 +44,7 @@ fn run_pipeline_benchmark(
 ) -> PipelineResult {
     let k = 10;
     let candidate_pool_size = 512;
-    let dataset = generate_realistic_text_corpus(
+    let dataset = load_real_dataset_corpus(
         candidate_pool_size,
         num_queries,
         real_dim,
@@ -60,26 +60,9 @@ fn run_pipeline_benchmark(
 
     let candidate_slots: Vec<NodeIndex> = (0..candidate_pool_size as NodeIndex).collect();
 
-    // Exact baseline index — cached so the sequential insert loop only pays its
-    // cost on the first run.  Key encodes real_dim, complex_dim, and pool size
-    // so different pipeline configurations get independent snapshots.
-    let exact_index = {
-        let corpus_for_exact = dataset.folded_corpus.clone();
-        common::open_or_build_snapshot(
-            &format!("lutz_cert_d{real_dim}_c{complex_dim}_n{candidate_pool_size}"),
-            move || {
-                let mut cfg = hnsqr::HNSQRConfig::default();
-                cfg.distance_function = hnsqr::DistanceFunction::Cosine;
-                cfg.rivero_enabled = false;
-                let idx = hnsqr::HNSQRIndex::new(cfg, complex_dim);
-                for (i, v) in corpus_for_exact.iter().enumerate() {
-                    idx.insert(format!("doc_{i}"), v.clone())
-                        .expect("exact insert");
-                }
-                idx
-            },
-        )
-    };
+    let exact_index = common::open_prebuilt_snapshot(&format!(
+        "lutz_cert_d{real_dim}_c{complex_dim}_n{candidate_pool_size}"
+    ));
 
     // 1. Measure Baseline: Exhaustive Production Exact SIMD Scan
     let mut base_latencies = Vec::with_capacity(num_queries);

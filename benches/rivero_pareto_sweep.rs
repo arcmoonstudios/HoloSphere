@@ -80,7 +80,7 @@ fn load_real_workload(name: &str, count: usize, dim: usize, query_count: usize) 
     }
 }
 
-fn generate_clustered_workload(
+fn load_clustered_workload(
     count: usize,
     dim: usize,
     query_count: usize,
@@ -90,16 +90,11 @@ fn generate_clustered_workload(
     load_real_workload("Real Clustered Semantic", count, dim, query_count)
 }
 
-fn generate_isotropic_workload(
-    count: usize,
-    dim: usize,
-    query_count: usize,
-    _seed: u64,
-) -> Workload {
+fn load_isotropic_workload(count: usize, dim: usize, query_count: usize, _seed: u64) -> Workload {
     load_real_workload("Real Isotropic Uniform", count, dim, query_count)
 }
 
-fn generate_boundary_workload(
+fn load_boundary_workload(
     count: usize,
     dim: usize,
     query_count: usize,
@@ -232,12 +227,11 @@ fn main() {
         "Building test workloads (N={}, Dim={}, Queries={})...",
         CORPUS_SIZE, DIMENSION, QUERY_COUNT
     );
-    let clustered =
-        generate_clustered_workload(CORPUS_SIZE, DIMENSION, QUERY_COUNT, 32, SWEEP_SEED);
+    let clustered = load_clustered_workload(CORPUS_SIZE, DIMENSION, QUERY_COUNT, 32, SWEEP_SEED);
     let isotropic =
-        generate_isotropic_workload(CORPUS_SIZE, DIMENSION, QUERY_COUNT, SWEEP_SEED ^ 0x1234);
+        load_isotropic_workload(CORPUS_SIZE, DIMENSION, QUERY_COUNT, SWEEP_SEED ^ 0x1234);
     let boundary =
-        generate_boundary_workload(CORPUS_SIZE, DIMENSION, QUERY_COUNT, 32, SWEEP_SEED ^ 0x5678);
+        load_boundary_workload(CORPUS_SIZE, DIMENSION, QUERY_COUNT, 32, SWEEP_SEED ^ 0x5678);
 
     let workloads = vec![clustered, isotropic, boundary];
 

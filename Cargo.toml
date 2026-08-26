@@ -25,6 +25,7 @@ loom = ["dep:loom"]
 # Concurrency & Locking
 parking_lot = "0.12"
 rayon = "1.10"
+crossbeam-channel = "0.5"
 memmap2 = "0.9"
 roaring = { version = "0.11", features = ["serde"] }
 tokio = { version = "1.38", features = ["full"] }

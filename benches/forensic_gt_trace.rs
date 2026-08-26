@@ -2,7 +2,7 @@ use hnsqr::bench_support as common;
 
 use std::time::Instant;
 
-use common::generate_adversarial_regression_corpus;
+use common::load_adversarial_regression_corpus;
 use hnsqr::rivero::bulk::RiveroBulkBuilder;
 use hnsqr::rivero::{AdaptivePolicy, RiveroProfile};
 use hnsqr::{HNSQRConfig, HNSQRIndex, NodeIndex, VectorEmbedding};
@@ -18,7 +18,7 @@ fn main() {
         "╚══════════════════════════════════════════════════════════════════════════════════════╝\n"
     );
 
-    let adv = generate_adversarial_regression_corpus();
+    let adv = load_adversarial_regression_corpus();
     let n = adv.corpus.len();
     let num_queries = adv.in_domain_queries.len();
     println!(

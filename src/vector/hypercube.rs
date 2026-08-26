@@ -114,6 +114,10 @@ impl MortonEncoderND {
 
 /// Fixed hyper-tile edge size for spatial chunking (16^N voxels per chunk max, dynamically packed).
 pub const TILE_EDGE: usize = 16;
+/// Bit-shift equivalent to dividing by TILE_EDGE (2^4 = 16).
+const TILE_SHIFT: usize = 4;
+/// Bitmask equivalent to modulo TILE_EDGE (16 - 1 = 0b1111).
+const TILE_MASK: usize = 15;
 
 /// Contiguous Dense Hyper-Tile containing localized voxels in flat memory.
 #[derive(Clone, Debug)]
@@ -192,8 +196,8 @@ impl HypercubeTensorSpace {
         let mut origin = Vec::with_capacity(self.shape.len());
         let mut local = Vec::with_capacity(self.shape.len());
         for &c in coords {
-            origin.push((c / TILE_EDGE) * TILE_EDGE);
-            local.push(c % TILE_EDGE);
+            origin.push((c >> TILE_SHIFT) << TILE_SHIFT); // (c / 16) * 16
+            local.push(c & TILE_MASK);                    // c % 16
         }
         let local_morton = self.encoder.encode(&local) as u32;
         (origin, local_morton)

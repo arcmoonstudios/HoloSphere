@@ -3,7 +3,7 @@ use hnsqr::bench_support as common;
 use std::sync::Arc;
 use std::time::Instant;
 
-use common::generate_realistic_text_corpus;
+use common::load_real_dataset_corpus;
 use hnsqr::planning::planner::{ExecutionPlan, RetrievalContract, UniversalPlanner};
 use hnsqr::proof::lutz::{LutzCertifier, LutzCode, LutzQueryTable, exact_rerank_locality_sorted};
 use hnsqr::retrieval::hybrid::{HybridFusionEngine, ModalityRankings};
@@ -39,9 +39,8 @@ fn main() {
     let k = 10;
     let num_queries = 128;
 
-    println!(" generating realistic synthetic corpus (N={n}, D={real_dim})...");
-    let dataset =
-        generate_realistic_text_corpus(n, num_queries, real_dim, common::DEFAULT_BENCH_SEED);
+    println!(" loading real dataset corpus (N={n}, D={real_dim})...");
+    let dataset = load_real_dataset_corpus(n, num_queries, real_dim, common::DEFAULT_BENCH_SEED);
 
     // =========================================================================
     // 1. DENSE RETRIEVAL EVALUATION
@@ -63,26 +62,7 @@ fn main() {
         territory_index.insert(&addr, i as NodeIndex);
     }
 
-    let hnsqr_index = {
-        let corpus_for_exact = dataset.folded_corpus.clone();
-        common::open_or_build_snapshot(
-            &format!("scorecard_rivero_d{real_dim}_n{n}"),
-            move || {
-                let mut hnsqr_config = hnsqr::HNSQRConfig::strict_rivero_for_dim(complex_dim);
-                hnsqr_config.max_elements = n + 1000;
-                hnsqr_config.rivero_witness_degree = 16;
-                hnsqr_config.rivero_witness_seeds = 32;
-                hnsqr_config.rivero_witness_second_seeds = 16;
-                hnsqr_config.rivero_cell_budget = 32;
-                let idx = hnsqr::HNSQRIndex::new(hnsqr_config, complex_dim);
-                for (i, v) in corpus_for_exact.iter().enumerate() {
-                    idx.insert(format!("node_{i}"), v.clone()).unwrap();
-                }
-                idx.freeze_rivero_routing();
-                idx
-            },
-        )
-    };
+    let hnsqr_index = common::open_prebuilt_snapshot(&format!("scorecard_rivero_d{real_dim}_n{n}"));
 
     let lutz_codes: Vec<LutzCode> = dataset
         .folded_corpus

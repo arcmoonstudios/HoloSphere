@@ -1,6 +1,6 @@
 use hnsqr::bench_support as common;
 
-use common::generate_realistic_text_corpus;
+use common::load_real_dataset_corpus;
 use hnsqr::VectorEmbedding;
 use num_complex::Complex32;
 
@@ -16,7 +16,7 @@ fn main() {
     );
 
     // Loads real vectors from datasets/; warns (does not panic) if fewer than 5000 are available.
-    let corpus = generate_realistic_text_corpus(5_000, 100, 64, common::DEFAULT_BENCH_SEED);
+    let corpus = load_real_dataset_corpus(5_000, 100, 64, common::DEFAULT_BENCH_SEED);
 
     // ════════════════════════════════════════════════════════════════════════
     // 1. PHASE COLLISION ATTACK SWEEP (z vs e^{i*phi}*z)

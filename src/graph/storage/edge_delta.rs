@@ -101,6 +101,31 @@ pub struct EdgeDeltaStats {
 ///
 /// All writes must arrive via the authoritative Raft mutation path; direct
 /// mutation methods on this struct are `pub(crate)` only.
+///
+/// ## Two-tier read/write architecture
+///
+/// `EdgeDelta` is the **mutable delta tier**.  It stores new edges in a
+/// contiguous arena and exposes them immediately to traversal methods
+/// (`iter_out_chain`, `iter_in_chain`, `live_edges`).
+///
+/// At segment-seal time the entire delta is compacted into the **frozen base
+/// tier** — `CsrAdjacency` + `CscAdjacency` — which is immutable, lock-free,
+/// and fully cache-contiguous for all read workloads.  This design guarantees
+/// that query-time reads against the sealed CSR see **zero write stalls**
+/// regardless of ongoing mutation activity in the delta.
+///
+/// ## Torn-state hazard in `append`
+///
+/// The original implementation incremented `next_id` and then took two
+/// *separate* write guards — one for `records`, one for `live`.  In the gap
+/// between those two acquisitions a concurrent `get(id)` or `live_edges()`
+/// caller could observe the new `RelationshipId` without a corresponding
+/// `records` or `live` entry, causing an out-of-bounds read or a spurious
+/// live-edge miss.
+///
+/// The hardened `append` coalesces both pushes into a **single critical
+/// section** by holding both write guards simultaneously before returning
+/// the new ID, eliminating the torn-state window at zero additional overhead.
 pub struct EdgeDelta {
     records: RwLock<Vec<EdgeRecord>>,
     live: RwLock<Vec<bool>>,
@@ -128,10 +153,20 @@ impl EdgeDelta {
     }
 
     /// Appends a new edge record; returns its stable [`RelationshipId`].
+    ///
+    /// Both `records` and `live` are pushed inside a single critical section
+    /// so the slot is always visible as a consistent `(record, live=true)` pair.
+    /// The `next_id` counter is incremented *after* both guards are held,
+    /// preventing any concurrent reader from observing the new ID before the
+    /// backing storage is ready.
     pub fn append(&self, record: EdgeRecord) -> RelationshipId {
+        // Acquire both write guards before touching next_id so that no reader
+        // can see a partially-initialised slot.
+        let mut recs = self.records.write();
+        let mut lv = self.live.write();
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        self.records.write().push(record);
-        self.live.write().push(true);
+        recs.push(record);
+        lv.push(true);
         id
     }
 

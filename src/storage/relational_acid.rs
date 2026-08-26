@@ -193,12 +193,30 @@ impl TypedColumnVector {
     }
 }
 
+/// Produces a canonical hash key for a `SqlValue` suitable for secondary index lookup.
+/// Returns `None` for `Null` and `Float` — FK constraints are not defined on float columns,
+/// and null FK values are explicitly skipped during validation.
+#[inline]
+fn sql_value_index_key(val: &SqlValue) -> Option<String> {
+    match val {
+        SqlValue::Integer(i) => Some(format!("i:{i}")),
+        SqlValue::Text(s) => Some(format!("t:{s}")),
+        SqlValue::Boolean(b) => Some(format!("b:{b}")),
+        SqlValue::Float(_) | SqlValue::Null => None,
+    }
+}
+
 /// Contiguous Columnar Table holding parallel typed column vectors.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ColumnarTable {
     pub schema: TableSchema,
     pub columns: HashMap<String, TypedColumnVector>,
     pub pk_index: HashMap<String, usize>, // PK -> Row Index
+    /// Secondary value index per column for O(1) FK validation.
+    /// Outer key: column name. Inner key: canonical string encoding of SqlValue.
+    /// Value: list of live row indices that hold that cell value.
+    /// Float and Null are excluded — FK constraints only fire on Integer/Text/Boolean.
+    pub col_indexes: HashMap<String, HashMap<String, Vec<usize>>>,
     pub is_deleted: Vec<bool>,
     pub row_versions: Vec<u64>,
 }
@@ -214,6 +232,7 @@ impl ColumnarTable {
             schema,
             columns,
             pk_index: HashMap::new(),
+            col_indexes: HashMap::new(),
             is_deleted: Vec::new(),
             row_versions: Vec::new(),
         }
@@ -221,22 +240,53 @@ impl ColumnarTable {
 
     pub fn insert_or_update(&mut self, pk: String, row: RelationalRow, version: u64) {
         if let Some(&row_idx) = self.pk_index.get(&pk) {
-            // In-place columnar update
+            // In-place columnar update — remove old index entries, write new values, add new entries.
             for col in &self.schema.columns {
                 if let Some(col_vec) = self.columns.get_mut(&col.name) {
-                    let val = row.values.get(&col.name).unwrap_or(&SqlValue::Null);
-                    col_vec.set_value(row_idx, val);
+                    let old_val = col_vec.get_value(row_idx);
+                    let new_val = row.values.get(&col.name).unwrap_or(&SqlValue::Null);
+
+                    // Remove old index entry if it was indexed.
+                    if let Some(old_key) = sql_value_index_key(&old_val) {
+                        if let Some(idx_map) = self.col_indexes.get_mut(&col.name) {
+                            if let Some(slots) = idx_map.get_mut(&old_key) {
+                                slots.retain(|&s| s != row_idx);
+                            }
+                        }
+                    }
+
+                    col_vec.set_value(row_idx, new_val);
+
+                    // Add new index entry.
+                    if let Some(new_key) = sql_value_index_key(new_val) {
+                        self.col_indexes
+                            .entry(col.name.clone())
+                            .or_default()
+                            .entry(new_key)
+                            .or_default()
+                            .push(row_idx);
+                    }
                 }
             }
             self.is_deleted[row_idx] = false;
             self.row_versions[row_idx] = version;
         } else {
-            // Append row across all column vectors
+            // Append row across all column vectors.
             let row_idx = self.is_deleted.len();
             for col in &self.schema.columns {
                 if let Some(col_vec) = self.columns.get_mut(&col.name) {
                     let val = row.values.get(&col.name).unwrap_or(&SqlValue::Null);
                     col_vec.push_value(val);
+
+                    // Index non-null, non-float values.
+                    if let Some(key) = sql_value_index_key(val) {
+                        self.col_indexes
+                            .entry(col.name.clone())
+                            .or_default()
+                            .entry(key)
+                            .or_default()
+                            .push(row_idx);
+                    }
                 }
             }
             self.is_deleted.push(false);
@@ -248,6 +298,20 @@ impl ColumnarTable {
     pub fn delete(&mut self, pk: &str, _version: u64) {
         if let Some(&row_idx) = self.pk_index.get(pk) {
             self.is_deleted[row_idx] = true;
+
+            // Remove all index entries for this row.
+            for col in &self.schema.columns {
+                if let Some(col_vec) = self.columns.get(&col.name) {
+                    let val = col_vec.get_value(row_idx);
+                    if let Some(key) = sql_value_index_key(&val) {
+                        if let Some(idx_map) = self.col_indexes.get_mut(&col.name) {
+                            if let Some(slots) = idx_map.get_mut(&key) {
+                                slots.retain(|&s| s != row_idx);
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -367,9 +431,25 @@ impl RelationalSqlEngine {
                         };
 
                         let target_table_guard = target_table_arc.read();
-                        let target_exists = target_table_guard
-                            .iter_rows()
-                            .any(|r| r.values.get(target_col) == Some(val));
+                        // O(1) index lookup replacing the former O(N) iter_rows scan.
+                        let target_exists = sql_value_index_key(val)
+                            .and_then(|key| {
+                                target_table_guard
+                                    .col_indexes
+                                    .get(target_col)
+                                    .and_then(|idx_map| idx_map.get(&key))
+                                    .map(|slots| {
+                                        // At least one slot must be a live (non-deleted) row.
+                                        slots.iter().any(|&s| {
+                                            !target_table_guard
+                                                .is_deleted
+                                                .get(s)
+                                                .copied()
+                                                .unwrap_or(true)
+                                        })
+                                    })
+                            })
+                            .unwrap_or(false);
 
                         if !target_exists {
                             return Err(HNSQRError::InvalidRequest(format!(

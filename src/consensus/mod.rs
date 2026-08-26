@@ -9,6 +9,7 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
+pub mod driver;
 pub mod durability_controller;
 pub mod pending;
 pub mod raft;
@@ -21,10 +22,13 @@ pub use pending::{
     ApplyError, CommitReceipt, CommitStatus, DurabilityLevel, MutationId, PendingProposals,
     ProposalId,
 };
+pub use driver::{
+    ClientProposal, ClusterLiveness, DriverEvent, RaftDriver, RaftDriverError,
+};
 pub use raft::{
     AdaptiveMicrobatcher, AppendEntriesArgs, AppendEntriesReply, MembershipMutation, RaftCluster,
-    RaftCommand, RaftLogEntry, RaftNode, RaftPipelineTelemetry, RaftRole, RequestVoteArgs,
-    RequestVoteReply, StorageHealthMetrics, TopologyMutation,
+    RaftCommand, RaftLogEntry, RaftMessage, RaftNode, RaftPipelineTelemetry, RaftRole,
+    RequestVoteArgs, RequestVoteReply, StorageHealthMetrics, TopologyMutation,
 };
 pub use read_index::{
     LinearizableReadMode, ReadConsistency, ReadContextId, ReadIndexConfirmation, ReadIndexEngine,

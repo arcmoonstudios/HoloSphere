@@ -22,7 +22,7 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::AtomicU64;
 use std::time::Instant;
 
@@ -502,6 +502,12 @@ impl RiveroBulkBuilder {
 
                     // STAGE B: Broad Lookup-Family Delta Expansion
                     stage_b_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+                    // Build a HashSet once for O(1) membership tests in the loops below,
+                    // replacing the former O(|candidate_slots|) linear scan per cell resident.
+                    let candidate_set: HashSet<NodeIndex> =
+                        candidate_slots.iter().copied().collect();
+
                     let mut delta_slots: SmallVec<[NodeIndex; 512]> = SmallVec::new();
 
                     for (foundation, coords) in
@@ -515,7 +521,7 @@ impl RiveroBulkBuilder {
                             let cell_slice = flat_table.get_residents(key);
                             if cell_slice.len() <= budget {
                                 for r in cell_slice {
-                                    if r.slot != current_slot && !candidate_slots.contains(&r.slot)
+                                    if r.slot != current_slot && !candidate_set.contains(&r.slot)
                                     {
                                         delta_slots.push(r.slot);
                                     }
@@ -523,7 +529,7 @@ impl RiveroBulkBuilder {
                             } else {
                                 let mut best: SmallVec<[(i16, NodeIndex); 64]> = SmallVec::new();
                                 for r in cell_slice {
-                                    if r.slot != current_slot && !candidate_slots.contains(&r.slot)
+                                    if r.slot != current_slot && !candidate_set.contains(&r.slot)
                                     {
                                         let (dot, _) =
                                             projected_similarity(query_code, r.projected_code());
@@ -549,7 +555,7 @@ impl RiveroBulkBuilder {
                             let key = simhash_cell_key(foundation, probe);
                             let cell_slice = flat_table.get_residents(key);
                             for r in cell_slice.iter().take(budget) {
-                                if r.slot != current_slot && !candidate_slots.contains(&r.slot) {
+                                if r.slot != current_slot && !candidate_set.contains(&r.slot) {
                                     delta_slots.push(r.slot);
                                 }
                             }

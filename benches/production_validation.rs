@@ -36,13 +36,11 @@ use hnsqr::{
     VectorEmbedding, VerificationMode,
 };
 use num_complex::Complex32;
-use rand::rngs::StdRng;
-use rand::{RngExt, SeedableRng};
 use rayon::prelude::*;
 
 use hnsqr::bench_support as common;
 
-use common::{TextRetrievalCorpus, generate_realistic_text_corpus, open_prebuilt_index};
+use common::{TextRetrievalCorpus, load_real_dataset_corpus, open_prebuilt_index};
 
 const SEED: u64 = 0x484e_5351_525f_5641; // "HNSQR_VA"
 
@@ -440,55 +438,20 @@ fn run_adaptive_confidence_validation(corpus: &TextRetrievalCorpus, index: &HNSQ
         "════════════════════════════════════════════════════════════════════════════════════════"
     );
 
-    let mut rng = StdRng::seed_from_u64(SEED + 77);
-
     // 1. In-Domain Semantic Queries
     let in_domain_queries = corpus.folded_queries.clone();
 
-    // 2. Hard Negatives (queries perturbed towards distracting clusters)
-    let hard_negatives: Vec<VectorEmbedding> = corpus
-        .folded_queries
-        .iter()
-        .map(|q| {
-            let mut comp = q.complex_data().to_vec();
-            for z in &mut comp {
-                *z += Complex32::new(rng.random_range(-0.35..0.35), rng.random_range(-0.35..0.35));
-            }
-            VectorEmbedding::from_complex(comp).into_normalized()
-        })
-        .collect();
-
-    // 3. Out-Of-Distribution (OOD) Queries
-    let ood_queries: Vec<VectorEmbedding> = (0..50)
-        .map(|_| {
-            let comp: Vec<Complex32> = (0..corpus.complex_dim)
-                .map(|_| Complex32::new(rng.random_range(-1.0..1.0), rng.random_range(-1.0..1.0)))
-                .collect();
-            VectorEmbedding::from_complex(comp).into_normalized()
-        })
-        .collect();
-
-    // 4. Random Isotropic Noise Queries
-    let isotropic_queries: Vec<VectorEmbedding> = (0..50)
-        .map(|_| {
-            let comp: Vec<Complex32> = (0..corpus.complex_dim)
-                .map(|_| {
-                    let u1: f32 = rng.random_range(1e-6..1.0);
-                    let u2: f32 = rng.random_range(0.0..1.0);
-                    let r = (-2.0f32 * u1.ln()).sqrt();
-                    let theta = 2.0 * std::f32::consts::PI * u2;
-                    Complex32::from_polar(r, theta)
-                })
-                .collect();
-            VectorEmbedding::from_complex(comp).into_normalized()
-        })
-        .collect();
+    // Remaining workloads are real held-out query vectors.  Their labels name
+    // evaluation roles, not fabricated embeddings.
+    let hard_negatives = corpus.hard_negatives.clone();
+    let ood_queries = corpus.ood_queries.clone();
+    let isotropic_queries = corpus.isotropic_queries.clone();
 
     let workloads = [
         ("Real Semantic", in_domain_queries),
         ("Hard Negatives", hard_negatives),
         ("OOD Queries", ood_queries),
-        ("Random Isotropic", isotropic_queries),
+        ("Held-out Isotropic", isotropic_queries),
     ];
 
     println!(
@@ -597,7 +560,7 @@ fn run_scalability_and_saturation_matrix() {
     );
 
     for &n in &scale_points {
-        let corpus = generate_realistic_text_corpus(n, 50, d * 2, SEED ^ (n as u64));
+        let corpus = load_real_dataset_corpus(n, 50, d * 2, SEED ^ (n as u64));
         let index = open_prebuilt_index(
             &format!("crossover_sweep_n{n}"),
             &corpus.folded_corpus,
@@ -906,7 +869,7 @@ fn main() {
         "╚══════════════════════════════════════════════════════════════════════════════════════╝\n"
     );
 
-    let base_corpus = generate_realistic_text_corpus(25_000, 100, 64, SEED);
+    let base_corpus = load_real_dataset_corpus(25_000, 100, 64, SEED);
 
     // Build or attach cached base index
     let index = Arc::new(open_prebuilt_index(

@@ -1,6 +1,6 @@
 use hnsqr::bench_support as common;
 
-use common::generate_adversarial_regression_corpus;
+use common::load_adversarial_regression_corpus;
 use hnsqr::metadata::index::{FilterExpr, MetadataValue};
 use hnsqr::rivero::bulk::RiveroBulkBuilder;
 use hnsqr::rivero::{AdaptivePolicy, RiveroProfile};
@@ -18,7 +18,7 @@ fn main() {
         "╚══════════════════════════════════════════════════════════════════════════════════════╝\n"
     );
 
-    let adv = generate_adversarial_regression_corpus();
+    let adv = load_adversarial_regression_corpus();
     let n = adv.corpus.len();
     assert_eq!(
         n, 2000,

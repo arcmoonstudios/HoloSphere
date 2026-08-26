@@ -10,11 +10,15 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
+pub mod benchmark_snapshot;
 pub mod bounds;
 pub mod lutz;
 pub mod search;
 pub mod tree;
 
+pub use benchmark_snapshot::{
+    PROOF_BENCHMARK_ARTIFACT_VERSION, ProofBenchmarkArtifact, proof_benchmark_artifact_filename,
+};
 pub use bounds::{
     PROOF_BLOCK_COMPLEX_DIM, ProofCentroidCode, ProofQuery, evaluate_node_upper_bound_f64,
 };

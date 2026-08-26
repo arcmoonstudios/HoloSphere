@@ -408,10 +408,14 @@ pub use transport::qir0::{
     HNSQRClient, HNSQRServer, MessageHeader, OpCode, PROTOCOL_MAGIC, Qir0SearchResponse,
 };
 pub use transport::{
-    EmbeddingDescriptor, EvidenceEnvelope, KnowledgeRecord, MCP_PROTOCOL_VERSION, ModelGatewayAuth,
+    ConfiguredProviders, EmbeddingBackend, EmbeddingDescriptor, EmbeddingProviderConfig,
+    EvidenceEnvelope, HoloSphereConfig, KnowledgeRecord, MCP_PROTOCOL_VERSION, ModelGatewayAuth,
     ModelKnowledgeStore, ModelOutcomeRecord, ModelToolService, RecordOutcomeToolRequest,
-    RememberToolRequest, ResolveToolRequest, SearchToolRequest, TraverseToolRequest,
-    create_mcp_router, create_model_api_router, process_mcp_payload,
+    RememberToolRequest, ResolveToolRequest, SearchToolRequest, TextEmbeddingProvider,
+    TraverseToolRequest, WebSearchBackend, WebSearchConfig, WebSearchProvider, WebSearchResponse,
+    WebSearchResult, WebSearchToolRequest, create_mcp_router, create_model_api_router, load_config,
+    process_mcp_payload, provider_from_config, provider_from_file_if_exists,
+    providers_from_file_if_exists,
 };
 pub use vector::folding::{ComplexWeaver, GatewayRouter, create_http_router, run_http_server};
 pub use vector::quantization::PolarQuantizedVector;

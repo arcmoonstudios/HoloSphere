@@ -1,0 +1,22 @@
+# HoloSphere embedding configuration. No credentials belong in this file.
+# Start LM Studio's OpenAI-compatible server with the local BGE-M3 model loaded.
+# Set HNSQR_CONFIG to this file when launching from another working directory.
+[embedding]
+backend = "openai_compatible"
+provider = "bge"
+model = "text-embedding-bge-m3"
+version = "gguf-fp16"
+dimensions = 1024
+normalization = "l2"
+distance_metric = "cosine"
+endpoint = "http://192.168.1.68:1234/v1"
+model_path = "C:/Users/LordX/.lmstudio/models/gpustack/bge-m3-GGUF/bge-m3-FP16.gguf"
+# api_key_env = "HNSQR_EMBEDDING_API_KEY" # Optional, for authenticated endpoints.
+timeout_ms = 30000
+
+# A local, self-hosted SearXNG instance. It is loopback-only by default and requires no API key.
+[web_search]
+backend = "searxng"
+endpoint = "http://127.0.0.1:8888/search"
+timeout_ms = 15000
+max_results = 20

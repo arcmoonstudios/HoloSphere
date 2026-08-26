@@ -42,15 +42,18 @@ use std::sync::OnceLock;
 pub fn fast_atan2_approx(y: f32, x: f32) -> f32 {
     let abs_x = x.abs();
     let abs_y = y.abs();
+    if abs_x == 0.0 && abs_y == 0.0 {
+        return 0.0;
+    }
     let x_dominant = abs_x >= abs_y;
     let (num, den) = if x_dominant {
         (abs_y, abs_x)
     } else {
         (abs_x, abs_y)
     };
-    let r = num / (den + 1e-9);
+    let r = num / den;
     let r2 = r * r;
-    let angle = ((0.080_537 * r2 - 0.316_022) * r2 + 0.999_133) * r;
+    let angle = r * (0.999_977_3 + r2 * (-0.332_623_5 + r2 * (0.193_543_5 + r2 * (-0.116_432_9 + r2 * (0.052_653_3 - 0.011_721_2 * r2)))));
     let base = if x_dominant {
         angle
     } else {

@@ -19,6 +19,9 @@ use std::fs::{self, File};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+use hnsqr::proof::{
+    LutzCode, ProofBenchmarkArtifact, SemanticProofTree, proof_benchmark_artifact_filename,
+};
 use hnsqr::rivero::{RiveroBulkBuilder, RiveroProfile, VectorGeometry};
 use hnsqr::vector::folding::ComplexWeaver;
 use hnsqr::{DistanceFunction, HNSQRConfig, HNSQRIndex, VectorEmbedding};
@@ -29,14 +32,15 @@ const CACHE_VERSION: u32 = 6;
 enum ArtifactKind {
     Snapshot,
     Index,
+    Proof,
 }
 
 fn usage() -> ! {
     eprintln!(
-        "Usage: hnsqr_build_bench_db [--kind snapshot|index] [--algorithm rivero|hnsw] [--tag NAME] [--vectors N] [--queries N] [--source-dim D] [--index-dim D] [--profile fast|balanced|strict] [--geometry real|complex-phase-invariant] [--m M] [--m0 M0] [--ef-construction EFC] [--output DIR]"
+        "Usage: hnsqr_build_bench_db [--kind snapshot|index|proof] [--algorithm rivero|hnsw] [--tag NAME] [--vectors N] [--queries N] [--source-dim D] [--index-dim D] [--profile fast|balanced|strict] [--geometry real|complex-phase-invariant] [--m M] [--m0 M0] [--ef-construction EFC] [--output DIR]"
     );
     eprintln!(
-        "\nExamples:\n  cargo run --release --bin hnsqr_build_bench_db -- --vectors 5000 --queries 64 --source-dim 128 --profile balanced\n  cargo run --release --bin hnsqr_build_bench_db -- --kind index --algorithm hnsw --tag hnsw_sweep --vectors 5000 --source-dim 128 --m 16 --m0 32 --ef-construction 200"
+        "\nExamples:\n  cargo run --release --bin hnsqr_build_bench_db -- --vectors 5000 --queries 64 --source-dim 128 --profile balanced\n  cargo run --release --bin hnsqr_build_bench_db -- --kind index --algorithm hnsw --tag hnsw_sweep --vectors 5000 --source-dim 128 --m 16 --m0 32 --ef-construction 200\n  cargo run --release --bin hnsqr_build_bench_db -- --kind proof --vectors 25000 --source-dim 1536"
     );
     std::process::exit(2);
 }
@@ -123,6 +127,7 @@ fn main() {
                 kind = match value.as_str() {
                     "snapshot" => ArtifactKind::Snapshot,
                     "index" => ArtifactKind::Index,
+                    "proof" => ArtifactKind::Proof,
                     _ => usage(),
                 }
             }
@@ -182,6 +187,31 @@ fn main() {
     }
 
     fs::create_dir_all(&output).expect("failed to create benchmark database directory");
+    if matches!(kind, ArtifactKind::Proof) {
+        let destination = output.join(proof_benchmark_artifact_filename(loaded_dim, vectors));
+        if destination.exists() {
+            panic!(
+                "refusing to overwrite immutable benchmark proof artifact: {}",
+                destination.display()
+            );
+        }
+        let slots = (0..vectors as u32).collect::<Vec<_>>();
+        let tree = SemanticProofTree::build(&corpus, &slots, loaded_dim.div_ceil(2));
+        let lutz_codes = corpus
+            .iter()
+            .map(|vector| LutzCode::encode(vector, true))
+            .collect();
+        ProofBenchmarkArtifact::new(loaded_dim, tree, lutz_codes)
+            .expect("proof benchmark artifact invariant")
+            .save(&destination)
+            .expect("proof benchmark artifact write failed");
+        println!(
+            "Built immutable Gate B proof artifact from {}: {}",
+            source.display(),
+            destination.display()
+        );
+        return;
+    }
     let is_hnsw = algorithm == "hnsw";
     let rivero_enabled = !is_hnsw && matches!(kind, ArtifactKind::Snapshot);
 
@@ -220,6 +250,7 @@ fn main() {
                 )
             }
         }
+        ArtifactKind::Proof => unreachable!("handled before index snapshot construction"),
     };
     let destination = output.join(filename);
     if destination.exists() {

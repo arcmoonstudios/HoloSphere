@@ -1,8 +1,8 @@
 mod common;
 
 use common::{load_adversarial_regression_corpus, open_prebuilt_snapshot};
-use hnsqr::rivero::{AdaptivePolicy, RiveroProfile};
 use hnsqr::NodeIndex;
+use hnsqr::rivero::{AdaptivePolicy, RiveroProfile};
 
 fn main() {
     println!(

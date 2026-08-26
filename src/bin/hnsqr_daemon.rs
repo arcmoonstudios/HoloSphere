@@ -25,7 +25,7 @@ use hnsqr::transport::qir0::HNSQRServer;
 use hnsqr::transport::resp::{RespFrame, RespServer};
 use hnsqr::transport::{
     ModelGatewayAuth, ModelKnowledgeStore, ModelToolService, create_mcp_router,
-    create_model_api_router,
+    create_model_api_router, providers_from_file_if_exists,
 };
 use hnsqr::vector::folding::{GatewayRouter, create_http_router};
 use hnsqr::{AccessRole, AuthRegistry, HNSQRConfig, HNSQRIndex};
@@ -121,11 +121,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model_store = Arc::new(ModelKnowledgeStore::open(
         std::path::Path::new(&data_dir).join("model-knowledge.jsonl"),
     )?);
-    let model_service = Arc::new(ModelToolService::new(
-        Arc::clone(&gateway_router),
-        model_store,
-        Arc::new(ModelGatewayAuth::new(auth_registry, allow_anonymous)),
-    ));
+    let model_auth = Arc::new(ModelGatewayAuth::new(auth_registry, allow_anonymous));
+    let config_path = std::env::var("HNSQR_CONFIG").unwrap_or_else(|_| "Config.toml".to_string());
+    let model_service = match providers_from_file_if_exists(&config_path)? {
+        Some(providers) => {
+            let descriptor = providers.embedding.descriptor().clone();
+            println!(
+                "🧠 Text embeddings: {}/{}/{} ({} dimensions)",
+                descriptor.provider, descriptor.model, descriptor.version, descriptor.dimensions
+            );
+            if providers.web_search.is_some() {
+                println!("🌐 Live web search: configured");
+            }
+            Arc::new(ModelToolService::with_providers(
+                Arc::clone(&gateway_router),
+                model_store,
+                model_auth,
+                providers.embedding,
+                providers.web_search,
+            ))
+        }
+        None => Arc::new(ModelToolService::new(
+            Arc::clone(&gateway_router),
+            model_store,
+            model_auth,
+        )),
+    };
     let app = create_http_router(gateway_router)
         .merge(create_model_api_router(Arc::clone(&model_service)))
         .merge(create_mcp_router(model_service));

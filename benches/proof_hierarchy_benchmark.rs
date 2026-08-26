@@ -98,7 +98,7 @@ fn run_hierarchy_experiment(exp: &HierarchyExperiment) -> HierarchyResult {
     println!("═══════════════════════════════════════════════════════════════════════════════");
 
     let (corpus, queries) = load_semantic_corpus(exp.n_corpus, exp.n_queries, exp.d_real);
-    let complex_dim = exp.d_real / 2;
+    let complex_dim = corpus.first().map_or(exp.d_real / 2, |v| v.dimension());
 
     // 1. Build Rivero Index
     print!("   ⚙️ Building Rivero Coarse Index...");
@@ -116,7 +116,8 @@ fn run_hierarchy_experiment(exp: &HierarchyExperiment) -> HierarchyResult {
 
     // 3. Build Semantic Proof Tree
     print!("   ⚙️ Building Flattened Semantic Proof Hierarchy...");
-    let slots: Vec<NodeIndex> = (0..exp.n_corpus as NodeIndex).collect();
+    let actual_n = corpus.len();
+    let slots: Vec<NodeIndex> = (0..actual_n as NodeIndex).collect();
     let build_start = Instant::now();
     let proof_tree = SemanticProofTree::build(&corpus, &slots, complex_dim);
     let build_time_ms = build_start.elapsed().as_secs_f64() * 1000.0;
@@ -132,7 +133,7 @@ fn run_hierarchy_experiment(exp: &HierarchyExperiment) -> HierarchyResult {
     let mut l1_slacks: Vec<f32> = Vec::new();
     for q in queries.iter().take(5) {
         let q_lut = LutzQueryTable::build(q);
-        for doc_idx in 0..exp.n_corpus.min(500) {
+        for doc_idx in 0..actual_n.min(500) {
             let exact = cosine_sim(q, &corpus[doc_idx]);
             let code = &lutz_codes[doc_idx];
             let approx = q_lut.score_candidate_l0(code);
@@ -222,7 +223,7 @@ fn run_hierarchy_experiment(exp: &HierarchyExperiment) -> HierarchyResult {
         );
     }
 
-    let n_f64 = exp.n_corpus as f64;
+    let n_f64 = corpus.len() as f64;
     let avg_region_pruned = proofs
         .iter()
         .map(|p| p.vectors_pruned_by_region)

@@ -31,6 +31,9 @@ use crate::security::{AccessRole, AuthRegistry, AuthenticatedSubject};
 use crate::vector::folding::GatewayRouter;
 use crate::{HNSQRError, HNSQRResult};
 
+use super::embedding_provider::{LexicalHashProvider, TextEmbeddingProvider};
+use super::web_search::{WebSearchProvider, WebSearchResponse, WebSearchToolRequest};
+
 const DEFAULT_EMBEDDING_DIMENSIONS: usize = 384;
 const MAX_VECTOR_DIMENSIONS: usize = 65_536;
 const MAX_CONTENT_BYTES: usize = 1_048_576;
@@ -63,7 +66,7 @@ impl Default for EmbeddingDescriptor {
 }
 
 impl EmbeddingDescriptor {
-    fn validate(&self) -> HNSQRResult<()> {
+    pub(crate) fn validate(&self) -> HNSQRResult<()> {
         if self.provider.trim().is_empty()
             || self.model.trim().is_empty()
             || self.version.trim().is_empty()
@@ -264,6 +267,67 @@ pub struct RecordOutcomeToolRequest {
     pub metrics: BTreeMap<String, f64>,
     #[serde(default)]
     pub provenance: Vec<ProvenanceReference>,
+}
+
+/// Starts a durable, provider-neutral engineering case and retrieves prior evidence.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TaskBeginToolRequest {
+    pub idempotency_key: String,
+    pub case_id: String,
+    pub problem: String,
+    #[serde(default = "default_collection")]
+    pub collection: String,
+    #[serde(default = "default_hypotheses")]
+    pub max_hypotheses: usize,
+    #[serde(default)]
+    pub provenance: Vec<ProvenanceReference>,
+}
+
+/// Rehydrates a case's related evidence and graph context at a pinned snapshot.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TaskContextToolRequest {
+    pub case_id: String,
+    #[serde(default)]
+    pub snapshot_lsn: Option<u64>,
+}
+
+/// Records measured evidence and promotes a successful case to a durable resolution.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TaskCompleteToolRequest {
+    pub idempotency_key: String,
+    pub case_id: String,
+    pub summary: String,
+    pub successful: bool,
+    #[serde(default)]
+    pub evidence_ids: Vec<String>,
+    #[serde(default)]
+    pub metrics: BTreeMap<String, f64>,
+    pub provenance: Vec<ProvenanceReference>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct TaskBeginResult {
+    pub case: KnowledgeRecord,
+    pub related_cases: Vec<SearchEvidence>,
+    pub candidate_resolutions: Vec<ResolutionHypothesis>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct TaskContextResult {
+    pub case: KnowledgeRecord,
+    pub related_cases: Vec<SearchEvidence>,
+    pub relations: Vec<TraversalEvidence>,
+    pub candidate_resolutions: Vec<ResolutionHypothesis>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct TaskCompleteResult {
+    pub outcome: ModelOutcomeRecord,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolution: Option<KnowledgeRecord>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -642,6 +706,8 @@ pub struct ModelToolService {
     vectors: Arc<GatewayRouter>,
     store: Arc<ModelKnowledgeStore>,
     auth: Arc<ModelGatewayAuth>,
+    embedder: Arc<dyn TextEmbeddingProvider>,
+    web_search: Option<Arc<dyn WebSearchProvider>>,
 }
 
 impl ModelToolService {
@@ -650,10 +716,40 @@ impl ModelToolService {
         store: Arc<ModelKnowledgeStore>,
         auth: Arc<ModelGatewayAuth>,
     ) -> Self {
+        Self::with_embedding_provider(
+            vectors,
+            store,
+            auth,
+            Arc::new(LexicalHashProvider {
+                descriptor: EmbeddingDescriptor::default(),
+            }),
+        )
+    }
+
+    /// Creates a service whose text-only requests use the configured embedding provider.
+    pub fn with_embedding_provider(
+        vectors: Arc<GatewayRouter>,
+        store: Arc<ModelKnowledgeStore>,
+        auth: Arc<ModelGatewayAuth>,
+        embedder: Arc<dyn TextEmbeddingProvider>,
+    ) -> Self {
+        Self::with_providers(vectors, store, auth, embedder, None)
+    }
+
+    /// Creates a service with independently configured embedding and live-web providers.
+    pub fn with_providers(
+        vectors: Arc<GatewayRouter>,
+        store: Arc<ModelKnowledgeStore>,
+        auth: Arc<ModelGatewayAuth>,
+        embedder: Arc<dyn TextEmbeddingProvider>,
+        web_search: Option<Arc<dyn WebSearchProvider>>,
+    ) -> Self {
         let service = Self {
             vectors,
             store,
             auth,
+            embedder,
+            web_search,
         };
         for (record, vector) in service.store.persisted_vectors() {
             let mut metadata = std::collections::HashMap::new();
@@ -688,18 +784,46 @@ impl ModelToolService {
         self.store.current_lsn()
     }
 
+    /// Searches current public-web evidence through the configured provider.
+    pub fn web_search(
+        &self,
+        subject: &AuthenticatedSubject,
+        request: WebSearchToolRequest,
+    ) -> HNSQRResult<EvidenceEnvelope<WebSearchResponse>> {
+        let provider = self.web_search.as_ref().ok_or_else(|| {
+            HNSQRError::InvalidRequest(
+                "live web search is not configured; configure [web_search] in Config.toml"
+                    .to_string(),
+            )
+        })?;
+        let response = provider.search(&request)?;
+        Ok(EvidenceEnvelope {
+            tenant_id: subject.tenant_id.clone(),
+            snapshot_lsn: self.store.current_lsn(),
+            retrieval_contract: format!("live_web_search:{}", provider.name()),
+            certified: false,
+            proof_upper_bound: None,
+            content_is_untrusted: true,
+            results: response,
+            contradictions: Vec::new(),
+        })
+    }
+
     fn snapshot_lsn(&self, requested: Option<u64>) -> HNSQRResult<u64> {
         let current = self.store.current_lsn();
         match requested {
+            // Several MCP clients serialize an omitted optional integer as zero. LSN zero has
+            // no useful knowledge records, so reserve it as the portable "latest" sentinel.
+            Some(0) | None => Ok(current),
             Some(lsn) if lsn > current => Err(HNSQRError::InvalidRequest(format!(
                 "snapshot_lsn {lsn} is ahead of current LSN {current}"
             ))),
             Some(lsn) => Ok(lsn),
-            None => Ok(current),
         }
     }
 
     fn resolve_embedding(
+        &self,
         text: Option<&str>,
         vector: Option<Vec<f32>>,
         descriptor: Option<EmbeddingDescriptor>,
@@ -709,19 +833,32 @@ impl ModelToolService {
                 "an explicit embedding descriptor is required with query_vector/vector".to_string(),
             ));
         }
-        let descriptor = descriptor.unwrap_or_default();
+        let descriptor = descriptor.unwrap_or_else(|| self.embedder.descriptor().clone());
         descriptor.validate()?;
         let vector = match vector {
             Some(vector) => vector,
-            None => local_text_embedding(
-                text.filter(|value| !value.trim().is_empty())
-                    .ok_or_else(|| {
-                        HNSQRError::InvalidRequest(
-                            "query_text or query_vector must be supplied".to_string(),
-                        )
-                    })?,
-                descriptor.dimensions,
-            ),
+            None => {
+                if descriptor != *self.embedder.descriptor() {
+                    return Err(HNSQRError::InvalidRequest(format!(
+                        "query_text uses configured {}/{}/{}; submit a query_vector for {}/{}/{}",
+                        self.embedder.descriptor().provider,
+                        self.embedder.descriptor().model,
+                        self.embedder.descriptor().version,
+                        descriptor.provider,
+                        descriptor.model,
+                        descriptor.version,
+                    )));
+                }
+                self.embedder
+                    .embed(
+                        text.filter(|value| !value.trim().is_empty())
+                            .ok_or_else(|| {
+                                HNSQRError::InvalidRequest(
+                                    "query_text or query_vector must be supplied".to_string(),
+                                )
+                            })?,
+                    )?
+            }
         };
         if vector.len() != descriptor.dimensions {
             return Err(HNSQRError::DimensionMismatch {
@@ -735,6 +872,44 @@ impl ModelToolService {
             ));
         }
         Ok((vector, descriptor))
+    }
+
+    /// Resolves text in the collection's established embedding space when possible.
+    ///
+    /// Collections are immutable with respect to their embedding descriptor.  The
+    /// original local `knowledge` collection used the built-in lexical 384-D space;
+    /// preserve its searchability after an operator configures BGE (or any other
+    /// external provider) for newly created collections.  We deliberately support
+    /// only this built-in legacy space here: an arbitrary historical remote model
+    /// must be configured explicitly rather than silently substituting embeddings.
+    fn resolve_collection_embedding(
+        &self,
+        tenant: &str,
+        collection: &str,
+        text: Option<&str>,
+        vector: Option<Vec<f32>>,
+        descriptor: Option<EmbeddingDescriptor>,
+    ) -> HNSQRResult<(Vec<f32>, EmbeddingDescriptor)> {
+        if vector.is_none()
+            && descriptor.is_none()
+            && let Some(existing) = self.store.collection_spec(tenant, collection)
+            && existing == EmbeddingDescriptor::default()
+            && existing != *self.embedder.descriptor()
+        {
+            let text = text
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| {
+                    HNSQRError::InvalidRequest(
+                        "query_text or query_vector must be supplied".to_string(),
+                    )
+                })?;
+            let vector = LexicalHashProvider {
+                descriptor: existing.clone(),
+            }
+            .embed(text)?;
+            return Ok((vector, existing));
+        }
+        self.resolve_embedding(text, vector, descriptor)
     }
 
     fn validate_collection_spec(
@@ -793,8 +968,13 @@ impl ModelToolService {
                 contradictions: Vec::new(),
             });
         }
-        let (vector, embedding) =
-            Self::resolve_embedding(Some(&request.content), request.vector, request.embedding)?;
+        let (vector, embedding) = self.resolve_collection_embedding(
+            &subject.tenant_id,
+            &request.collection,
+            Some(&request.content),
+            request.vector,
+            request.embedding,
+        )?;
         self.validate_collection_spec(&subject.tenant_id, &request.collection, &embedding)?;
         let internal_collection = tenant_collection(&subject.tenant_id, &request.collection);
         let mut indexed_metadata = BTreeMap::from([
@@ -872,7 +1052,9 @@ impl ModelToolService {
             )));
         }
         let snapshot_lsn = self.snapshot_lsn(request.snapshot_lsn)?;
-        let (vector, embedding) = Self::resolve_embedding(
+        let (vector, embedding) = self.resolve_collection_embedding(
+            &subject.tenant_id,
+            &request.collection,
             request.query_text.as_deref(),
             request.query_vector,
             request.embedding,
@@ -1117,6 +1299,291 @@ impl ModelToolService {
             contradictions: Vec::new(),
         })
     }
+
+    /// Begins an agent case. Retrieval happens before the new issue is indexed, so
+    /// the response contains only prior evidence rather than a self-match.
+    pub fn task_begin(
+        &self,
+        subject: &AuthenticatedSubject,
+        request: TaskBeginToolRequest,
+    ) -> HNSQRResult<EvidenceEnvelope<TaskBeginResult>> {
+        validate_identifier("idempotency_key", &request.idempotency_key)?;
+        validate_identifier("case_id", &request.case_id)?;
+        validate_identifier("collection", &request.collection)?;
+        validate_provenance(&request.provenance)?;
+        if request.problem.trim().is_empty() {
+            return Err(HNSQRError::InvalidRequest(
+                "problem is required".to_string(),
+            ));
+        }
+        if request.max_hypotheses == 0 || request.max_hypotheses > 20 {
+            return Err(HNSQRError::InvalidRequest(
+                "max_hypotheses must be between 1 and 20".to_string(),
+            ));
+        }
+
+        let has_collection = self
+            .store
+            .collection_spec(&subject.tenant_id, &request.collection)
+            .is_some();
+        let related_cases = if has_collection {
+            self.search(
+                subject,
+                SearchToolRequest {
+                    query_text: Some(request.problem.clone()),
+                    query_vector: None,
+                    embedding: None,
+                    collection: request.collection.clone(),
+                    k: request.max_hypotheses.min(MAX_K),
+                    filter: None,
+                    retrieval_contract: Some("exact".to_string()),
+                    certified_exact: None,
+                    snapshot_lsn: None,
+                },
+            )?
+            .results
+        } else {
+            Vec::new()
+        };
+        let candidate_resolutions = if has_collection {
+            self.resolve(
+                subject,
+                ResolveToolRequest {
+                    problem: request.problem.clone(),
+                    query_vector: None,
+                    embedding: None,
+                    collection: request.collection.clone(),
+                    max_hypotheses: request.max_hypotheses,
+                    snapshot_lsn: None,
+                },
+            )?
+            .results
+        } else {
+            Vec::new()
+        };
+
+        let case = self
+            .remember(
+                subject,
+                RememberToolRequest {
+                    idempotency_key: request.idempotency_key.clone(),
+                    id: request.case_id.clone(),
+                    collection: request.collection.clone(),
+                    kind: "issue".to_string(),
+                    content: request.problem.clone(),
+                    vector: None,
+                    embedding: None,
+                    members: Vec::new(),
+                    roles: BTreeMap::new(),
+                    metadata: BTreeMap::new(),
+                    provenance: request.provenance.clone(),
+                },
+            )?
+            .results;
+
+        for related in &related_cases {
+            let relation_id = format!("{}:similar:{}", request.case_id, related.id);
+            let _ = self.remember(
+                subject,
+                RememberToolRequest {
+                    idempotency_key: format!("{}:similar:{}", request.idempotency_key, related.id),
+                    id: relation_id,
+                    collection: request.collection.clone(),
+                    kind: "similar_to".to_string(),
+                    content: "Automatically linked by evidence retrieval; validate before reuse."
+                        .to_string(),
+                    vector: None,
+                    embedding: None,
+                    members: vec![request.case_id.clone(), related.id.clone()],
+                    roles: BTreeMap::from([
+                        (request.case_id.clone(), "new_issue".to_string()),
+                        (related.id.clone(), "prior_evidence".to_string()),
+                    ]),
+                    metadata: BTreeMap::new(),
+                    provenance: request.provenance.clone(),
+                },
+            )?;
+        }
+
+        Ok(EvidenceEnvelope {
+            tenant_id: subject.tenant_id.clone(),
+            snapshot_lsn: self.store.current_lsn(),
+            retrieval_contract: "agent_case_begin".to_string(),
+            certified: true,
+            proof_upper_bound: None,
+            content_is_untrusted: true,
+            results: TaskBeginResult {
+                case,
+                related_cases,
+                candidate_resolutions,
+            },
+            contradictions: Vec::new(),
+        })
+    }
+
+    /// Rehydrates an existing case for another model or a later session.
+    pub fn task_context(
+        &self,
+        subject: &AuthenticatedSubject,
+        request: TaskContextToolRequest,
+    ) -> HNSQRResult<EvidenceEnvelope<TaskContextResult>> {
+        validate_identifier("case_id", &request.case_id)?;
+        let snapshot_lsn = self.snapshot_lsn(request.snapshot_lsn)?;
+        let case = self
+            .store
+            .record_at(&subject.tenant_id, &request.case_id, snapshot_lsn)
+            .ok_or_else(|| HNSQRError::InvalidRequest("case_id does not exist".to_string()))?;
+        let related_cases = self
+            .search(
+                subject,
+                SearchToolRequest {
+                    query_text: Some(case.content.clone()),
+                    query_vector: None,
+                    embedding: None,
+                    collection: case.collection.clone(),
+                    k: default_hypotheses(),
+                    filter: None,
+                    retrieval_contract: Some("exact".to_string()),
+                    certified_exact: None,
+                    snapshot_lsn: Some(snapshot_lsn),
+                },
+            )?
+            .results
+            .into_iter()
+            .filter(|item| item.id != case.id)
+            .collect();
+        let relations = self
+            .traverse(
+                subject,
+                TraverseToolRequest {
+                    seed_ids: vec![case.id.clone()],
+                    relation_kinds: Vec::new(),
+                    max_depth: 3,
+                    max_results: 100,
+                    snapshot_lsn: Some(snapshot_lsn),
+                },
+            )?
+            .results;
+        let candidate_resolutions = self
+            .resolve(
+                subject,
+                ResolveToolRequest {
+                    problem: case.content.clone(),
+                    query_vector: None,
+                    embedding: None,
+                    collection: case.collection.clone(),
+                    max_hypotheses: default_hypotheses(),
+                    snapshot_lsn: Some(snapshot_lsn),
+                },
+            )?
+            .results;
+        Ok(EvidenceEnvelope {
+            tenant_id: subject.tenant_id.clone(),
+            snapshot_lsn,
+            retrieval_contract: "agent_case_context".to_string(),
+            certified: true,
+            proof_upper_bound: None,
+            content_is_untrusted: true,
+            results: TaskContextResult {
+                case,
+                related_cases,
+                relations,
+                candidate_resolutions,
+            },
+            contradictions: Vec::new(),
+        })
+    }
+
+    /// Records the measured outcome and promotes successful work to a resolution.
+    pub fn task_complete(
+        &self,
+        subject: &AuthenticatedSubject,
+        request: TaskCompleteToolRequest,
+    ) -> HNSQRResult<EvidenceEnvelope<TaskCompleteResult>> {
+        validate_identifier("idempotency_key", &request.idempotency_key)?;
+        validate_identifier("case_id", &request.case_id)?;
+        validate_provenance(&request.provenance)?;
+        let case = self
+            .store
+            .record_at(
+                &subject.tenant_id,
+                &request.case_id,
+                self.store.current_lsn(),
+            )
+            .ok_or_else(|| HNSQRError::InvalidRequest("case_id does not exist".to_string()))?;
+        let mut evidence_ids = request.evidence_ids.clone();
+        if !evidence_ids.contains(&case.id) {
+            evidence_ids.push(case.id.clone());
+        }
+        let outcome = self
+            .record_outcome(
+                subject,
+                RecordOutcomeToolRequest {
+                    idempotency_key: request.idempotency_key.clone(),
+                    attempt_id: request.case_id.clone(),
+                    summary: request.summary.clone(),
+                    successful: request.successful,
+                    evidence_ids,
+                    metrics: request.metrics,
+                    provenance: request.provenance.clone(),
+                },
+            )?
+            .results;
+        let resolution = if request.successful {
+            let resolution_id = format!("{}:resolution", request.case_id);
+            let resolution = self
+                .remember(
+                    subject,
+                    RememberToolRequest {
+                        idempotency_key: format!("{}:resolution", request.idempotency_key),
+                        id: resolution_id.clone(),
+                        collection: case.collection.clone(),
+                        kind: "resolution".to_string(),
+                        content: request.summary,
+                        vector: None,
+                        embedding: None,
+                        members: vec![case.id.clone()],
+                        roles: BTreeMap::from([(case.id.clone(), "resolves".to_string())]),
+                        metadata: BTreeMap::new(),
+                        provenance: request.provenance.clone(),
+                    },
+                )?
+                .results;
+            let _ = self.remember(
+                subject,
+                RememberToolRequest {
+                    idempotency_key: format!("{}:fixed-by", request.idempotency_key),
+                    id: format!("{}:fixed-by", request.case_id),
+                    collection: case.collection,
+                    kind: "fixed_by".to_string(),
+                    content: "Measured successful outcome links the issue to its resolution."
+                        .to_string(),
+                    vector: None,
+                    embedding: None,
+                    members: vec![case.id, resolution_id],
+                    roles: BTreeMap::new(),
+                    metadata: BTreeMap::new(),
+                    provenance: request.provenance,
+                },
+            )?;
+            Some(resolution)
+        } else {
+            None
+        };
+        Ok(EvidenceEnvelope {
+            tenant_id: subject.tenant_id.clone(),
+            snapshot_lsn: self.store.current_lsn(),
+            retrieval_contract: "agent_case_complete".to_string(),
+            certified: true,
+            proof_upper_bound: None,
+            content_is_untrusted: true,
+            results: TaskCompleteResult {
+                outcome,
+                resolution,
+            },
+            contradictions: Vec::new(),
+        })
+    }
 }
 
 fn default_collection() -> String {
@@ -1339,6 +1806,20 @@ pub(crate) fn decode_arguments<T: DeserializeOwned>(value: serde_json::Value) ->
 mod tests {
     use super::*;
 
+    struct FixedEmbeddingProvider {
+        descriptor: EmbeddingDescriptor,
+    }
+
+    impl TextEmbeddingProvider for FixedEmbeddingProvider {
+        fn descriptor(&self) -> &EmbeddingDescriptor {
+            &self.descriptor
+        }
+
+        fn embed(&self, _text: &str) -> HNSQRResult<Vec<f32>> {
+            Ok(vec![0.6, 0.8])
+        }
+    }
+
     fn subject(tenant: &str, role: AccessRole) -> AuthenticatedSubject {
         AuthenticatedSubject {
             tenant_id: tenant.to_string(),
@@ -1422,6 +1903,89 @@ mod tests {
                 .results
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn configured_provider_pins_text_only_writes_to_its_embedding_space() {
+        let descriptor = EmbeddingDescriptor {
+            provider: "test-local".to_string(),
+            model: "bge-compatible".to_string(),
+            version: "1".to_string(),
+            dimensions: 2,
+            normalization: "l2".to_string(),
+            distance_metric: "cosine".to_string(),
+        };
+        let service = ModelToolService::with_embedding_provider(
+            Arc::new(GatewayRouter::new("unused", false)),
+            Arc::new(ModelKnowledgeStore::in_memory()),
+            Arc::new(ModelGatewayAuth::development_anonymous()),
+            Arc::new(FixedEmbeddingProvider {
+                descriptor: descriptor.clone(),
+            }),
+        );
+        let stored = service
+            .remember(
+                &subject("alpha", AccessRole::ReadWrite),
+                remember_request("configured", "configured-key", "semantic text"),
+            )
+            .unwrap();
+        assert_eq!(stored.results.embedding, descriptor);
+    }
+
+    #[test]
+    fn configured_provider_preserves_text_access_to_legacy_lexical_collection() {
+        let store = Arc::new(ModelKnowledgeStore::in_memory());
+        let writer = service(Arc::clone(&store));
+        let actor = subject("alpha", AccessRole::ReadWrite);
+        writer
+            .remember(
+                &actor,
+                remember_request("legacy", "legacy-key", "legacy thermal evidence"),
+            )
+            .unwrap();
+
+        let bge_descriptor = EmbeddingDescriptor {
+            provider: "test-local".to_string(),
+            model: "bge-compatible".to_string(),
+            version: "1".to_string(),
+            dimensions: 2,
+            normalization: "l2".to_string(),
+            distance_metric: "cosine".to_string(),
+        };
+        let upgraded = ModelToolService::with_embedding_provider(
+            Arc::new(GatewayRouter::new("unused", false)),
+            store,
+            Arc::new(ModelGatewayAuth::development_anonymous()),
+            Arc::new(FixedEmbeddingProvider {
+                descriptor: bge_descriptor,
+            }),
+        );
+
+        let found = upgraded
+            .search(
+                &actor,
+                SearchToolRequest {
+                    query_text: Some("legacy thermal evidence".to_string()),
+                    query_vector: None,
+                    embedding: None,
+                    collection: "knowledge".to_string(),
+                    k: 1,
+                    filter: None,
+                    retrieval_contract: Some("exact".to_string()),
+                    certified_exact: None,
+                    snapshot_lsn: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(found.results[0].id, "legacy");
+
+        let appended = upgraded
+            .remember(
+                &actor,
+                remember_request("legacy-next", "legacy-next-key", "new legacy evidence"),
+            )
+            .unwrap();
+        assert_eq!(appended.results.embedding, EmbeddingDescriptor::default());
     }
 
     #[test]
@@ -1529,6 +2093,36 @@ mod tests {
             .unwrap();
         assert_eq!(historical.results.len(), 1);
         assert_eq!(historical.results[0].id, "early");
+    }
+
+    #[test]
+    fn zero_snapshot_lsn_is_a_latest_snapshot_compatibility_sentinel() {
+        let service = service(Arc::new(ModelKnowledgeStore::in_memory()));
+        let actor = subject("alpha", AccessRole::ReadWrite);
+        service
+            .remember(
+                &actor,
+                remember_request("latest", "latest-key", "durable current evidence"),
+            )
+            .unwrap();
+        let results = service
+            .search(
+                &actor,
+                SearchToolRequest {
+                    query_text: Some("current evidence".to_string()),
+                    query_vector: None,
+                    embedding: None,
+                    collection: "knowledge".to_string(),
+                    k: 1,
+                    filter: None,
+                    retrieval_contract: None,
+                    certified_exact: None,
+                    snapshot_lsn: Some(0),
+                },
+            )
+            .unwrap();
+        assert_eq!(results.results[0].id, "latest");
+        assert_eq!(results.snapshot_lsn, service.current_lsn());
     }
 
     #[test]

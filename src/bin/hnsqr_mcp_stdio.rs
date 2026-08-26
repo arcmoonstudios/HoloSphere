@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use hnsqr::{
     AccessRole, AuthenticatedSubject, GatewayRouter, ModelGatewayAuth, ModelKnowledgeStore,
-    ModelToolService, process_mcp_payload,
+    ModelToolService, process_mcp_payload, providers_from_file_if_exists,
 };
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
@@ -24,13 +24,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         role,
         key_id: format!("stdio:{tenant_id}"),
     };
-    let service = ModelToolService::new(
-        Arc::new(GatewayRouter::new(&data_dir.to_string_lossy(), false)),
-        Arc::new(ModelKnowledgeStore::open(
-            data_dir.join("model-knowledge.jsonl"),
-        )?),
-        Arc::new(ModelGatewayAuth::development_anonymous()),
-    );
+    let vectors = Arc::new(GatewayRouter::new(&data_dir.to_string_lossy(), false));
+    let store = Arc::new(ModelKnowledgeStore::open(
+        data_dir.join("model-knowledge.jsonl"),
+    )?);
+    let auth = Arc::new(ModelGatewayAuth::development_anonymous());
+    let config_path = std::env::var("HNSQR_CONFIG").unwrap_or_else(|_| "Config.toml".to_string());
+    let service = match providers_from_file_if_exists(&config_path)? {
+        Some(providers) => ModelToolService::with_providers(
+            vectors,
+            store,
+            auth,
+            providers.embedding,
+            providers.web_search,
+        ),
+        None => ModelToolService::new(vectors, store, auth),
+    };
 
     let stdin = tokio::io::stdin();
     let mut lines = BufReader::new(stdin).lines();

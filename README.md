@@ -324,6 +324,24 @@ Before any non-brute-force indexing path can qualify for production routing, it 
 cargo bench --bench public_dataset_benchmark
 ```
 
+### Gate B proof artifacts
+
+`gate_b_hierarchical_proof` measures query execution only. It never builds an
+index, Rivero state, a proof tree, or LUTz codes at runtime. Materialize its
+immutable real-dataset artifacts once, then run the gate:
+
+```bash
+# Example: 25k OpenAI-1536 vectors (768 complex dimensions).
+cargo run --release --bin hnsqr_build_bench_db -- --kind index --tag gate_b_exact_d1536 --vectors 25000 --source-dim 1536 --index-dim 768 --profile balanced
+cargo run --release --bin hnsqr_build_bench_db -- --kind proof --vectors 25000 --source-dim 1536
+cargo bench --bench gate_b_hierarchical_proof
+```
+
+Use the missing-artifact message from Gate B for the exact source dimension and
+cardinality of each matrix row. Gate B admits a proof path only at 100% exact
+recall **and** when it is faster than the Exact SIMD baseline; otherwise the
+production path remains Exact SIMD.
+
 ```
 Dataset Manifold                 Dim (Real) Corpus N   Ground Truth    Proof Recall          Latency (p50)
 ----------------------------------------------------------------------------------------------------------
@@ -457,10 +475,10 @@ Client ACK ◄── CommitReceipt ◄── ShardStateMachine Apply ◄── Q
 ## Wire Protocols, Web Console & API Docs
 
 * **QIR0 Binary TCP Protocol (`:9090`)**: High-throughput async protocol supporting `OpCode::Ping`, `Insert`, `Search`, `BatchSearch`, `Stats`, and `OpCode::GraphQuery`.
-* **Model Context Protocol (`POST :8080/mcp`)**: Stateless MCP `2025-06-18` Streamable HTTP server for OpenAI, Gemini, Claude, and compatible agents. The `holosphere` server exposes tenant-isolated `search`, `traverse`, `resolve`, `remember`, and `record_outcome` tools with role checks and closed JSON schemas.
+* **Model Context Protocol (`POST :8080/mcp`)**: MCP `2025-06-18` Streamable HTTP server for OpenAI, Gemini, Claude, and compatible agents. It exposes tenant-isolated evidence primitives (`search`, `traverse`, `resolve`, `remember`, `record_outcome`), live public-web retrieval (`web.search`), and a native model-agnostic case workflow (`task.begin`, `task.context`, `task.complete`) with role checks and closed JSON schemas.
 * **Redis RESP Protocol (`:6379`)**: Native RESP2/RESP3 server with `PING`, `SET`, `GET`, `INCR`, `DEL`, `PUBLISH`, `SUBSCRIBE`, `XADD`, and `XREAD`.
 * **Arrow-shaped batch socket (`:50051`)**: Project-local `ARROW1`-framed schema and batch payload; full gRPC Arrow Flight SQL compatibility is not yet claimed.
-* **HTTP REST Gateway (`:8080`)**: Axum-based JSON REST API for vector collections plus `/v1/knowledge/search`, `/traverse`, `/resolve`, `/remember`, and `/outcomes`. Collection search accepts exactly one of a raw `query`/`vector` or `query_text`; text uses the built-in deterministic hash embedder at the existing collection's dimension and never creates a guessed-dimension collection. For semantic compatibility with an external embedding model, clients must submit vectors from that pinned model space. Human-readable metadata accepts natural JSON string, integer, float, and Boolean scalars. Model responses carry a pinned LSN, proof status, and an explicit untrusted-content marker.
+* **HTTP REST Gateway (`:8080`)**: Axum-based JSON REST API for vector collections plus `/v1/knowledge/search`, `/traverse`, `/resolve`, `/remember`, and `/outcomes`. Collection search accepts exactly one of a raw `query`/`vector` or `query_text`; text-only operations use the configured embedding provider and collections pin its model identity. Human-readable metadata accepts natural JSON string, integer, float, and Boolean scalars. Model responses carry a pinned LSN, proof status, and an explicit untrusted-content marker.
 * **Embedded Web Console (`/dashboard` & `/ui`)**: Zero-dependency interactive single-page dashboard for visual graph exploration, live cluster metrics, and interactive query building.
 * **Interactive OpenAPI 3.1 & Swagger UI (`/docs` & `/swagger`)**: In-browser API exploration and testing at `http://127.0.0.1:8080/docs`.
 * **Multi-Language Client Libraries**:
@@ -477,10 +495,82 @@ explicit development-only `HNSQR_MODEL_ALLOW_ANONYMOUS=true` setting. Knowledge 
 outcome writes are idempotent, require provenance, and are fsynced to
 `HNSQR_DATA_DIR/model-knowledge.jsonl`, which is replayed at startup.
 
-Text-only calls use the dependency-free local lexical embedding. Production semantic
-retrieval should supply embeddings with a pinned provider/model/version descriptor;
-HoloSphere rejects incompatible vectors in the same collection. Provider API keys remain
-in the calling application.
+Text-only calls use the configured embedding provider. Production semantic retrieval
+pins provider, model, version, dimensions, normalization, and metric to every collection;
+HoloSphere rejects incompatible vectors in the same collection. A dependency-free lexical
+hash provider remains available as an explicit offline fallback.
+
+For MCP reads, omit `snapshot_lsn` (or use `0`, for clients that serialize absent numeric
+fields as zero) to read the latest committed knowledge. A positive `snapshot_lsn` is a
+strict historical pin.
+
+### Configurable Local and Hosted Embeddings
+
+[`Config.toml`](Config.toml) configures the default text embedding provider for both the
+daemon and the STDIO MCP server. The checked-in default uses the locally installed
+**BGE-M3 FP16 GGUF** through LM Studio's OpenAI-compatible server:
+
+```toml
+[embedding]
+backend = "openai_compatible"
+provider = "bge"
+model = "text-embedding-bge-m3" # Must match the API model identifier exposed by your server.
+version = "gguf-fp16"
+dimensions = 1024
+normalization = "l2"
+distance_metric = "cosine"
+endpoint = "http://192.168.1.68:1234/v1"
+model_path = "C:/Users/LordX/.lmstudio/models/gpustack/bge-m3-GGUF/bge-m3-FP16.gguf"
+timeout_ms = 30000
+```
+
+Load `bge-m3-FP16.gguf` in LM Studio and start its local server. HoloSphere then sends
+standard `POST /v1/embeddings` requests, so the same configuration shape works with
+llama.cpp servers and any OpenAI-compatible local or hosted embedding service. For a
+hosted service, change `endpoint`, identity fields, and optionally set `api_key_env` to
+the name of an environment variable; never put a credential in `Config.toml`.
+
+The `model_path` is provenance and operator guidance—the external serving runtime loads
+the model artifact. HoloSphere deliberately does not embed a GGUF, Python, CUDA, or model
+runtime into its daemon. This keeps the engine portable while allowing any model whose
+server implements the embeddings contract. Use `HNSQR_CONFIG=/absolute/path/Config.toml`
+when the daemon or MCP client starts outside the repository directory. Changing any
+identity or dimensionality field creates a different embedding space: create/reindex a
+new collection rather than mixing vectors.
+
+### Free, Self-Hosted Live Web Search
+
+HoloSphere includes a native, read-only `web.search` MCP tool. The included
+[`deploy/searxng/docker-compose.yml`](deploy/searxng/docker-compose.yml) starts a free
+self-hosted [SearXNG](https://docs.searxng.org/) metasearch service and binds it only to
+`127.0.0.1:8888`; it needs no search API key:
+
+```powershell
+docker compose -f deploy\searxng\docker-compose.yml up -d
+```
+
+The checked-in [`Config.toml`](Config.toml) connects HoloSphere to that JSON endpoint:
+
+```toml
+[web_search]
+backend = "searxng"
+endpoint = "http://127.0.0.1:8888/search"
+timeout_ms = 15000
+max_results = 8
+```
+
+Any MCP client can then call `web.search` with `query`, optional `language`, optional
+`time_range` (`day`, `month`, or `year`), and bounded `k`. Each result carries its title,
+URL, snippet, participating engines, retrieval timestamp, and content hash. Results are
+explicitly untrusted evidence, are not silently persisted into model memory, and are never
+treated as instructions. This first surface deliberately does **not** offer arbitrary URL
+fetching, avoiding an SSRF-capable proxy. SearXNG itself sends the upstream queries, so
+there is no paid API dependency; normal internet, hardware, and upstream search-engine rate
+limits still apply.
+
+Use `search` for durable tenant-scoped HoloSphere knowledge and `web.search` for facts that
+need current public-web evidence. If a web result is later verified and worth retaining, an
+agent must store it deliberately with `remember` and provenance.
 
 See [OpenAI, Gemini, and Claude Integration](docs/MODEL_API_INTEGRATION.md) for setup,
 MCP initialization, provider configuration, authorization, and embedding-space rules.
@@ -498,6 +588,8 @@ All three clients then launch the same binary, use tenant `local-agents`, and sh
 durable journal at `%LOCALAPPDATA%\HoloSphere\model-agent\model-knowledge.jsonl`. MCP
 registration uses an immutable content-hashed snapshot under `target\agent-integrations`,
 so a running client cannot lock Cargo's normal `target\release` output during upgrades.
+The installer also passes `HNSQR_CONFIG` to every registered client, so text-only tool calls
+use the configured embedding provider rather than silently falling back to lexical hashing.
 
 MCP initialization instructions tell each model to search for relevant prior knowledge and patterns,
 traverse relations, request evidence-backed resolutions, remember conclusions verified
@@ -507,11 +599,34 @@ the narrow `mcp(holosphere/*)` allow rule; Claude pre-approves only
 Antigravity, and Claude sessions that were already running must reload MCP servers or
 start a new session before the new tools appear.
 
-This registration makes the five HoloSphere tools available for autonomous selection by
-each model client within its approval policy. HoloSphere does not bypass the client or
-secretly inject itself into every prompt: the model decides when a tool is relevant, and
-the server independently enforces tenant, role, provenance, snapshot, and idempotency
-rules. Remote API applications can use the same operations through HTTPS MCP or REST.
+### Native Agent Case Memory
+
+HoloSphere does not leave cross-agent learning to client prompt discipline. Any MCP
+client can use the native task workflow, which is backed by the same tenant-scoped,
+durable knowledge graph as the five evidence primitives:
+
+```text
+task.begin(problem)
+  → retrieve prior similar cases and evidence-backed candidate resolutions
+  → persist the new Issue case and `similar_to` links
+task.context(case_id)
+  → rehydrate the case, graph relations, and pinned evidence for any later agent
+task.complete(case_id, measured evidence)
+  → persist the empirical outcome
+  → on success, promote a Resolution and link it with `fixed_by`
+```
+
+`task.begin` and `task.complete` require read-write authorization and non-empty
+provenance. `task.context` is read-only. All writes use caller-supplied idempotency keys;
+retrieved content remains explicitly untrusted evidence and never becomes executable
+instruction. This makes the memory loop provider-neutral: any agent or model using the
+MCP can resume a solved case without relying on Codex-specific behavior or CI hooks.
+
+The primitive tools remain available for advanced clients. HoloSphere does not bypass
+the client or secretly inject itself into prompts; the server instead provides a durable,
+safe workflow surface and independently enforces tenant, role, provenance, snapshot, and
+idempotency rules. Remote API applications can use this workflow through HTTPS MCP;
+the REST gateway continues to expose the underlying evidence primitives.
 
 The configuration follows the official [Google Antigravity MCP](https://antigravity.google/docs/mcp/)
 and [CLI permission](https://antigravity.google/docs/cli/permissions) formats. If

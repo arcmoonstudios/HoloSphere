@@ -6,7 +6,7 @@ license = "Apache-2.0 OR MIT"
 description = "HoloSphere is a Hierarchical Navigable Semantic Query Resolver (HNSQR) — high-performance multimodal retrieval engine with bounded hierarchical routing, complex-valued geometry, certified block bounds, and adaptive cost-based planning."
 readme = "README.md"
 repository = "https://github.com/arcmoonstudios/holosphere"
-keywords = ["hnsw", "vector-search", "similarity-search", "graph", "embedding", "database", "retrieval"]
+keywords = ["hnsqr", "vector-search", "similarity-search", "graph", "embedding", "database", "retrieval"]
 categories = ["algorithms", "data-structures", "database-implementations", "science"]
 authors = ["Lord Xyn <lordxyn@proton.me>"]
 
@@ -47,6 +47,8 @@ thiserror = "2.0"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 bincode = "1.3"
+toml = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 
 # Complex-Valued Linear Algebra
 num-complex = { version = "0.4", features = ["serde"] }
@@ -69,72 +71,12 @@ harness = false
 test = false
 
 [[bench]]
-name = "rivero_bulk_build"
-harness = false
-test = false
-
-[[bench]]
-name = "rivero_search_scaling"
-harness = false
-test = false
-
-[[bench]]
-name = "forensic_gt_trace"
-harness = false
-test = false
-
-[[bench]]
-name = "rivero_adaptive_quality"
-harness = false
-test = false
-
-[[bench]]
-name = "rivero_concurrency"
-harness = false
-test = false
-
-[[bench]]
-name = "metric_semantics"
-harness = false
-test = false
-
-[[bench]]
-name = "snapshot_open"
-harness = false
-test = false
-
-[[bench]]
-name = "production_validation"
+name = "ann_benchmarks_runner"
 harness = false
 test = false
 
 [[bench]]
 name = "benchmark_suite"
-harness = false
-test = false
-
-[[bench]]
-name = "rivero_scaling"
-harness = false
-test = false
-
-[[bench]]
-name = "metric_superiority"
-harness = false
-test = false
-
-[[bench]]
-name = "rivero_pareto_sweep"
-harness = false
-test = false
-
-[[bench]]
-name = "rivero_adaptive_benchmark"
-harness = false
-test = false
-
-[[bench]]
-name = "rivero_persistence_v2"
 harness = false
 test = false
 
@@ -149,22 +91,12 @@ harness = false
 test = false
 
 [[bench]]
-name = "lutz_certification_benchmark"
+name = "forensic_gt_trace"
 harness = false
 test = false
 
 [[bench]]
-name = "scattered_residency_benchmark"
-harness = false
-test = false
-
-[[bench]]
-name = "ann_benchmarks_runner"
-harness = false
-test = false
-
-[[bench]]
-name = "universal_scorecard_benchmark"
+name = "full_scale_public_dataset_benchmark"
 harness = false
 test = false
 
@@ -179,7 +111,109 @@ harness = false
 test = false
 
 [[bench]]
+name = "infrastructure_overhead_benchmark"
+harness = false
+
+[[bench]]
+name = "lutz_certification_benchmark"
+harness = false
+test = false
+
+[[bench]]
+name = "metric_semantics"
+harness = false
+test = false
+
+[[bench]]
+name = "metric_superiority"
+harness = false
+test = false
+
+[[bench]]
+name = "million_scale_path_comparison"
+harness = false
+test = false
+
+[[bench]]
+name = "performance_track_p0"
+harness = false
+test = false
+
+[[bench]]
+name = "phase4_cloud_scale_benchmark"
+harness = false
+
+[[bench]]
+name = "phase5_reference_architecture_benchmark"
+harness = false
+
+[[bench]]
+name = "production_validation"
+harness = false
+test = false
+
+[[bench]]
 name = "proof_hierarchy_benchmark"
+harness = false
+test = false
+
+[[bench]]
+name = "public_dataset_benchmark"
+harness = false
+test = false
+
+[[bench]]
+name = "rivero_adaptive_benchmark"
+harness = false
+test = false
+
+[[bench]]
+name = "rivero_adaptive_quality"
+harness = false
+test = false
+
+[[bench]]
+name = "rivero_bulk_build"
+harness = false
+test = false
+
+[[bench]]
+name = "rivero_concurrency"
+harness = false
+test = false
+
+[[bench]]
+name = "rivero_pareto_sweep"
+harness = false
+test = false
+
+[[bench]]
+name = "rivero_persistence_v2"
+harness = false
+test = false
+
+[[bench]]
+name = "rivero_scaling"
+harness = false
+test = false
+
+[[bench]]
+name = "rivero_search_scaling"
+harness = false
+test = false
+
+[[bench]]
+name = "scattered_residency_benchmark"
+harness = false
+test = false
+
+[[bench]]
+name = "snapshot_open"
+harness = false
+test = false
+
+[[bench]]
+name = "universal_scorecard_benchmark"
 harness = false
 test = false
 
@@ -206,44 +240,6 @@ path = "src/bin/hnsqr_plan.rs"
 [[bin]]
 name = "hnsqr_build_bench_db"
 path = "src/bin/hnsqr_build_bench_db.rs"
-
-[[bench]]
-name = "phase4_cloud_scale_benchmark"
-harness = false
-
-[[bench]]
-name = "infrastructure_overhead_benchmark"
-harness = false
-
-[[bench]]
-name = "phase5_reference_architecture_benchmark"
-harness = false
-
-[[bench]]
-name = "public_dataset_benchmark"
-harness = false
-test = false
-
-[[bench]]
-name = "full_scale_public_dataset_benchmark"
-harness = false
-test = false
-
-[[bench]]
-name = "million_scale_path_comparison"
-harness = false
-test = false
-
-[[bench]]
-name = "performance_track_p0"
-harness = false
-test = false
-
-[[bench]]
-name = "hnsw_matrix_benchmark"
-harness = false
-test = false
-
 
 [profile.dev]
 incremental = false

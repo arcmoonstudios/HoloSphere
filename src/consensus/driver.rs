@@ -146,8 +146,8 @@ struct WalFlushBatch {
 /// ```no_run
 /// # use std::path::PathBuf;
 /// # use std::time::Duration;
-/// # use holosphere::consensus::raft::RaftCluster;
-/// # use holosphere::consensus::driver::RaftDriver;
+/// # use hnsqr::consensus::raft::RaftCluster;
+/// # use hnsqr::consensus::driver::RaftDriver;
 /// let cluster = RaftCluster::new(&[1, 2, 3]);
 /// let driver = RaftDriver::new(
 ///     cluster,

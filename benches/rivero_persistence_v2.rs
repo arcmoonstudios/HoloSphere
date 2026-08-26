@@ -85,21 +85,9 @@ fn benchmark_cold_start_and_recovery(n: usize) {
     let original_fp = index.structural_fingerprint();
 
     // 2. Save Snapshot V2
-    let snap_path = common::bench_cache_dir().join(format!("bench_snap_{n}.hnsqr"));
-    let save_stats = if !snap_path.exists() {
-        index.save_snapshot_v2(&snap_path).unwrap()
-    } else {
-        hnsqr::storage::snapshot::SnapshotStats {
-            file_size_bytes: std::fs::metadata(&snap_path).map(|m| m.len()).unwrap_or(0),
-            vector_count: n as u64,
-            live_count: n as u64,
-            section_count: 6,
-            time_total_ms: 0.0,
-            time_validation_ms: 0.0,
-            throughput_mb_per_sec: 0.0,
-            structural_hash: [0u8; 32],
-        }
-    };
+    let snap_path =
+        std::env::temp_dir().join(format!("bench_snap_{n}_{}.hnsqr", std::process::id()));
+    let save_stats = index.save_snapshot_v2(&snap_path).unwrap();
 
     println!(
         "  * Snapshot File Size:       {:.2} MB ({} bytes)",
@@ -212,6 +200,7 @@ fn benchmark_cold_start_and_recovery(n: usize) {
     } else {
         panic!("Structural fingerprint check failed after snapshot reload!");
     }
+    let _ = std::fs::remove_file(&snap_path);
 }
 
 fn benchmark_snapshot_scaling() {
@@ -236,45 +225,33 @@ fn benchmark_snapshot_scaling() {
     );
 
     for &n in &sizes {
-        let snap_path = common::bench_cache_dir().join(format!("bench_scaling_{n}.hnsqr"));
-        let stats = if !snap_path.exists() {
-            let vectors = load_dataset_slice(n, D);
-            let d = vectors.first().map_or(D / 2, |v| v.dimension());
-            let mut config = HNSQRConfig::strict_rivero_for_dim(d);
-            config.max_elements = n + 1000;
-            let mut addr_cfg = config.rivero_address_config;
-            addr_cfg.geometry = hnsqr::rivero::VectorGeometry::Real;
-            let builder = RiveroBulkBuilder::with_profile(RiveroProfile::Balanced)
-                .with_address_config(addr_cfg)
-                .with_witness_params(16, 8, 4);
-            let built = builder.build(&vectors).unwrap();
+        let snap_path =
+            std::env::temp_dir().join(format!("bench_scaling_{n}_{}.hnsqr", std::process::id()));
+        let vectors = load_dataset_slice(n, D);
+        let d = vectors.first().map_or(D / 2, |v| v.dimension());
+        let mut config = HNSQRConfig::strict_rivero_for_dim(d);
+        config.max_elements = n + 1000;
+        let mut addr_cfg = config.rivero_address_config;
+        addr_cfg.geometry = hnsqr::rivero::VectorGeometry::Real;
+        let builder = RiveroBulkBuilder::with_profile(RiveroProfile::Balanced)
+            .with_address_config(addr_cfg)
+            .with_witness_params(16, 8, 4);
+        let built = builder.build(&vectors).unwrap();
 
-            let mut insert_cfg = HNSQRConfig::default();
-            insert_cfg.rivero_enabled = false;
-            insert_cfg.m = 0;
-            insert_cfg.m0 = 0;
-            insert_cfg.ef_construction = 0;
-            insert_cfg.max_elements = n + 1000;
-            insert_cfg.rivero_address_config = addr_cfg;
-            let index = HNSQRIndex::new(insert_cfg, d);
-            for (i, v) in vectors.iter().enumerate() {
-                index.insert(format!("doc-{i}"), v.clone()).unwrap();
-            }
-            index.install_rivero_state(built).unwrap();
-            index.freeze_rivero_routing();
-            index.save_snapshot_v2(&snap_path).unwrap()
-        } else {
-            hnsqr::storage::snapshot::SnapshotStats {
-                file_size_bytes: std::fs::metadata(&snap_path).map(|m| m.len()).unwrap_or(0),
-                vector_count: n as u64,
-                live_count: n as u64,
-                section_count: 6,
-                time_total_ms: 0.0,
-                time_validation_ms: 0.0,
-                throughput_mb_per_sec: 0.0,
-                structural_hash: [0u8; 32],
-            }
-        };
+        let mut insert_cfg = HNSQRConfig::default();
+        insert_cfg.rivero_enabled = false;
+        insert_cfg.m = 0;
+        insert_cfg.m0 = 0;
+        insert_cfg.ef_construction = 0;
+        insert_cfg.max_elements = n + 1000;
+        insert_cfg.rivero_address_config = addr_cfg;
+        let index = HNSQRIndex::new(insert_cfg, d);
+        for (i, v) in vectors.iter().enumerate() {
+            index.insert(format!("doc-{i}"), v.clone()).unwrap();
+        }
+        index.install_rivero_state(built).unwrap();
+        index.freeze_rivero_routing();
+        let stats = index.save_snapshot_v2(&snap_path).unwrap();
 
         let t_attach = Instant::now();
         let _ = HNSQRIndex::open_snapshot_v2(&snap_path, SnapshotOpenOptions::default()).unwrap();
@@ -290,6 +267,7 @@ fn benchmark_snapshot_scaling() {
         )
         .unwrap();
         let val_ms = t_val.elapsed().as_secs_f64() * 1000.0;
+        let _ = std::fs::remove_file(&snap_path);
 
         let mb = stats.file_size_bytes as f64 / (1024.0 * 1024.0);
         println!(

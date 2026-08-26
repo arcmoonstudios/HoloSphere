@@ -1,5 +1,11 @@
 # Rust build products and native debug symbols
 /target/
+/target-*/
+/target-embedding-validation/
+/target-gate-b-validation/
+/target-web-release/
+/target-web-release-fix/
+/target-web-validation/
 *.pdb
 *.dSYM/
 

@@ -9,9 +9,9 @@ use hnsqr::proof::lutz::{LutzCertifier, LutzCode, LutzQueryTable, exact_rerank_l
 use hnsqr::retrieval::hybrid::{HybridFusionEngine, ModalityRankings};
 use hnsqr::retrieval::multivector::{MultiVectorEmbedding, MultiVectorIndex};
 use hnsqr::retrieval::sparse::{SparseInvertedIndex, SparseVector};
-use hnsqr::rivero::{RiveroCompiler, RiveroTerritoryIndex};
+use hnsqr::rivero::{RiveroBulkBuilder, RiveroCompiler, RiveroProfile, RiveroTerritoryIndex};
 use hnsqr::storage::segment::SegmentedEngine;
-use hnsqr::{NodeIndex, SimilarityScore, VectorEmbedding};
+use hnsqr::{HNSQRConfig, HNSQRIndex, NodeIndex, SimilarityScore, VectorEmbedding};
 
 fn percentile(mut latencies: Vec<f64>, p: f64) -> f64 {
     if latencies.is_empty() {
@@ -35,12 +35,13 @@ fn main() {
 
     let n = 50_000;
     let real_dim = 1536;
-    let complex_dim = 768;
     let k = 10;
     let num_queries = 128;
 
-    println!(" loading real dataset corpus (N={n}, D={real_dim})...");
     let dataset = load_real_dataset_corpus(n, num_queries, real_dim, common::DEFAULT_BENCH_SEED);
+    let n = dataset.folded_corpus.len();
+    let num_queries = dataset.folded_queries.len();
+    let complex_dim = dataset.complex_dim;
 
     // =========================================================================
     // 1. DENSE RETRIEVAL EVALUATION
@@ -56,13 +57,19 @@ fn main() {
     println!(" building parallel HNSQR Rivero index across all foundations...");
     let compiler = RiveroCompiler::new(complex_dim);
     let territory_index = RiveroTerritoryIndex::new();
-
     for (i, v) in dataset.folded_corpus.iter().enumerate() {
         let addr = compiler.compile(v.complex_data());
         territory_index.insert(&addr, i as NodeIndex);
     }
 
-    let hnsqr_index = common::open_prebuilt_snapshot(&format!("scorecard_rivero_d{real_dim}_n{n}"));
+    let builder = RiveroBulkBuilder::with_profile(RiveroProfile::Strict);
+    let built = builder.build(&dataset.folded_corpus).unwrap();
+    let hnsqr_index = HNSQRIndex::new(HNSQRConfig::strict_rivero_for_dim(complex_dim), complex_dim);
+    for (i, v) in dataset.folded_corpus.iter().enumerate() {
+        hnsqr_index.insert(format!("doc-{i}"), v.clone()).unwrap();
+    }
+    hnsqr_index.install_rivero_state(built).unwrap();
+    hnsqr_index.freeze_rivero_routing();
 
     let lutz_codes: Vec<LutzCode> = dataset
         .folded_corpus
@@ -228,10 +235,10 @@ fn main() {
     );
 
     let selectivities = [
-        ("100.0% (unfiltered)", 50_000),
-        (" 10.0% (tenant filter)", 5_000),
-        ("  1.0% (tag filter)", 500),
-        ("  0.1% (rare filter)", 50),
+        ("100.0% (unfiltered)", n),
+        (" 10.0% (tenant filter)", (n / 10).max(1)),
+        ("  1.0% (tag filter)", (n / 100).max(1)),
+        ("  0.1% (rare filter)", (n / 1000).max(1)),
     ];
 
     println!(

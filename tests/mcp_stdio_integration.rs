@@ -70,7 +70,7 @@ fn stdio_server_initializes_persists_and_retrieves_shared_agent_knowledge() {
     let tools = server.request(serde_json::json!({
         "jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}
     }));
-    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 5);
+    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 9);
 
     let remembered = server.request(serde_json::json!({
         "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {

@@ -1,5 +1,9 @@
 //! Gate B: Corpus-Global Exact Hierarchical Proof Engine Scorecard
 //!
+//! This is an admission benchmark, not a success banner: exactness is necessary
+//! but insufficient. A certified proof path that does not beat the Exact SIMD
+//! baseline is explicitly rejected for production use.
+//!
 //! Measures:
 //!   1. 100.000% Exact Recall Verification against Brute-Force Ground Truth (hard assert)
 //!   2. Hierarchical region pruning efficiency (% regions and vectors pruned by UB < tau)
@@ -11,10 +15,11 @@ mod common;
 
 use std::time::Instant;
 
-use hnsqr::proof::{DenseExactProof, GlobalExactProofSearch, SegmentProofView, SemanticProofTree};
-use hnsqr::rivero::bulk::RiveroBulkBuilder;
-use hnsqr::rivero::{RiveroAddressConfig, RiveroCompiler, RiveroConfig, RiveroProjectionMode};
-use hnsqr::{DistanceFunction, NodeIndex};
+use hnsqr::proof::{
+    DenseExactProof, GlobalExactProofSearch, ProofBenchmarkArtifact, SegmentProofView,
+    proof_benchmark_artifact_filename,
+};
+use hnsqr::rivero::RiveroProfile;
 
 #[derive(Debug, Clone)]
 struct ExperimentConfig {
@@ -37,16 +42,8 @@ struct BenchmarkResult {
 }
 
 fn run_experiment(exp: &ExperimentConfig) -> BenchmarkResult {
-    let complex_dim = exp.d_real / 2;
-    println!("\n═══════════════════════════════════════════════════════════════════════════════");
-    println!(
-        " 🔬 Running Gate B Benchmark: D_real = {} ({} complex), N = {}, K = {}",
-        exp.d_real, complex_dim, exp.n_corpus, exp.k
-    );
-    println!("═══════════════════════════════════════════════════════════════════════════════");
-
     // 1. Load real corpus & queries from datasets/
-    let (base_path, query_path, _) = common::find_best_matching_dataset(exp.d_real);
+    let (base_path, query_path, source_real_dim) = common::find_best_matching_dataset(exp.d_real);
     let (corpus, _) = common::read_fvecs(&base_path, Some(exp.n_corpus))
         .unwrap_or_else(|_| panic!("failed to load {}", base_path.display()));
     let (queries, _) = common::read_fvecs(&query_path, Some(exp.n_queries))
@@ -57,50 +54,47 @@ fn run_experiment(exp: &ExperimentConfig) -> BenchmarkResult {
         base_path.display()
     );
 
-    // 2. Build Rivero Index (64 Foundations GlobalMix)
-    println!("   ⚙️ Building Rivero Coarse Index...");
-    let rivero_cfg = RiveroConfig {
-        foundations: 64,
-        simhash_query_probes: 32,
-        cell_capacity: 64,
-        affinity_elites: 24,
-        cell_budget: 16,
-        query_candidate_cap: 8800,
-    };
-    let addr_cfg = RiveroAddressConfig {
-        foundations: 64,
-        projection: RiveroProjectionMode::GlobalMix,
-        geometry: hnsqr::rivero::VectorGeometry::Real,
-    };
-    let compiler = RiveroCompiler::with_config(complex_dim, addr_cfg);
-    let builder = RiveroBulkBuilder::new(rivero_cfg)
-        .with_address_config(addr_cfg)
-        .with_distance_function(DistanceFunction::Cosine);
-    let built = builder.build(&corpus).expect("Bulk build must succeed");
-    let territory = &built.territory;
-
-    // 3. Build LUTz Codes
-    println!("   ⚙️ Encoding LUTz E8 Quantization Codes...");
-    let _lutz_codes: Vec<hnsqr::proof::lutz::LutzCode> = corpus
-        .iter()
-        .map(|v| hnsqr::proof::lutz::LutzCode::encode(v, true))
-        .collect();
-
-    // 4. Build Canonical Corpus-Covering Proof Tree & Exact Index Baseline
-    println!("   ⚙️ Building Canonical Semantic Proof Hierarchy & Exact Baseline...");
-    let slots: Vec<NodeIndex> = (0..exp.n_corpus as NodeIndex).collect();
-    let proof_tree_start = Instant::now();
-    let proof_tree = SemanticProofTree::build(&corpus, &slots, complex_dim);
-    let proof_tree_build_ms = proof_tree_start.elapsed().as_secs_f64() * 1000.0;
+    let complex_dim = corpus.first().map_or(exp.d_real / 2, |v| v.dimension());
+    println!("\n═══════════════════════════════════════════════════════════════════════════════");
     println!(
-        "      ✓ Proof Tree Built in {:.2} ms (Total vectors: {})",
-        proof_tree_build_ms,
-        proof_tree.total_vectors()
+        " 🔬 Running Gate B Benchmark: D_real = {} ({} complex), N = {}, K = {}",
+        complex_dim * 2,
+        complex_dim,
+        corpus.len(),
+        exp.k
     );
+    println!("═══════════════════════════════════════════════════════════════════════════════");
 
-    // Exact baseline is a prebuilt snapshot over the same real dataset slice.
-    let exact_cache_key = format!("gate_b_exact_d{}_n{}", exp.d_real, exp.n_corpus);
-    let exact_index = common::open_prebuilt_snapshot(&exact_cache_key);
+    // 2. Attach immutable proof and exact-index snapshots. Benchmark processes
+    // deliberately perform no Rivero construction, LUTz encoding, tree building,
+    // or index insertion; those are indexing operations performed by
+    // `hnsqr_build_bench_db` once per artifact.
+    let actual_n = corpus.len();
+    let proof_path = common::bench_cache_dir()
+        .join(proof_benchmark_artifact_filename(source_real_dim, actual_n));
+    assert!(
+        proof_path.is_file(),
+        "prebuilt Gate B proof artifact is missing: {}\n\
+         Build it once from the real dataset with:\n\
+           cargo run --release --bin hnsqr_build_bench_db -- --kind proof --vectors {actual_n} --source-dim {source_real_dim}\n\
+         Benchmark processes never build proof state.",
+        proof_path.display()
+    );
+    let proof_artifact = ProofBenchmarkArtifact::load(&proof_path, source_real_dim, actual_n)
+        .unwrap_or_else(|error| {
+            panic!(
+                "invalid Gate B proof artifact {}: {error}",
+                proof_path.display()
+            )
+        });
+    println!(
+        "   ✓ Attached immutable proof artifact ({} vectors, {} nodes)",
+        proof_artifact.vector_count,
+        proof_artifact.tree.nodes.len()
+    );
+    let exact_tag = format!("gate_b_exact_d{source_real_dim}");
+    let exact_index =
+        common::open_prebuilt_index(&exact_tag, &corpus, complex_dim, RiveroProfile::Balanced);
 
     // 5. Execute Evaluation
     let mut total_gt_matches = 0usize;
@@ -118,23 +112,18 @@ fn run_experiment(exp: &ExperimentConfig) -> BenchmarkResult {
         let bf_dur = bf_start.elapsed().as_secs_f64() * 1_000_000.0;
         bf_latencies_us.push(bf_dur);
 
-        // Rivero Seed Discovery (~8,800 raw candidates)
-        let q_addr = compiler.compile(q.complex_data());
-        let mut rivero_cands = Vec::new();
-        territory.with_candidates_config(&q_addr, &rivero_cfg, |cands, _| {
-            rivero_cands.extend_from_slice(cands);
-        });
-
         // Hierarchical Exact Proof Search
         let seg_view = SegmentProofView {
-            tree: &proof_tree,
+            tree: &proof_artifact.tree,
             vectors: &corpus,
-            lutz_codes: None,
+            // Gate B must exercise the progressive L0/L1 cascade it reports.
+            // Passing `None` silently converted every leaf into an exact scan.
+            lutz_codes: Some(&proof_artifact.lutz_codes),
             tombstones: None,
         };
         let proof_start = Instant::now();
         let (certified, proof) =
-            GlobalExactProofSearch::search(q, exp.k, &[seg_view], &[], &rivero_cands, None);
+            GlobalExactProofSearch::search(q, exp.k, &[seg_view], &[], &[], None);
         let proof_dur = proof_start.elapsed().as_secs_f64() * 1_000_000.0;
         proof_latencies_us.push(proof_dur);
         proofs.push(proof);
@@ -161,7 +150,7 @@ fn run_experiment(exp: &ExperimentConfig) -> BenchmarkResult {
     );
 
     // Compute Summary Telemetry
-    let n_f64 = exp.n_corpus as f64;
+    let n_f64 = corpus.len() as f64;
     let avg_regions_pruned =
         proofs.iter().map(|p| p.proof_regions_pruned).sum::<usize>() as f64 / exp.n_queries as f64;
     let avg_regions_expanded = proofs
@@ -235,7 +224,7 @@ fn run_experiment(exp: &ExperimentConfig) -> BenchmarkResult {
     );
     println!(
         "      • Exact SIMD Evaluations:       {:.2}% ({:.0} vectors vs {} total)",
-        exact_simd_evals_pct, avg_exact_evals, exp.n_corpus
+        exact_simd_evals_pct, avg_exact_evals, actual_n
     );
     println!("      • Brute Force Latency (p50):    {:.2} µs", bf_lat_p50);
     println!(
@@ -245,8 +234,8 @@ fn run_experiment(exp: &ExperimentConfig) -> BenchmarkResult {
     println!("      • Speedup Factor vs Brute Force: {:.2}x", speedup);
 
     BenchmarkResult {
-        d_real: exp.d_real,
-        n_corpus: exp.n_corpus,
+        d_real: complex_dim * 2,
+        n_corpus: actual_n,
         exact_recall,
         vectors_pruned_by_region_pct,
         lutz_l0_pruned_pct,
@@ -297,12 +286,12 @@ fn main() {
     println!(
         "\n═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════"
     );
-    println!("🏆 GATE B GRAND SCORECARD (100.000% EXACT TOP-K)");
+    println!("🔬 GATE B ADMISSION SCORECARD (100.000% EXACT TOP-K REQUIRED)");
     println!(
         "═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════"
     );
     println!(
-        "{:<8} | {:<8} | {:<10} | {:<12} | {:<12} | {:<12} | {:<12} | {:<10}",
+        "{:<8} | {:<8} | {:<10} | {:<12} | {:<12} | {:<12} | {:<12} | {:<10} | Status",
         "D_real",
         "N",
         "Recall@10",
@@ -315,9 +304,12 @@ fn main() {
     println!(
         "---------------------------------------------------------------------------------------------------------------"
     );
+    let mut admitted = 0usize;
     for r in results {
+        let admission = r.exact_recall == 100.0 && r.speedup > 1.0;
+        admitted += admission as usize;
         println!(
-            "{:<8} | {:<8} | {:<9.3}% | {:<11.2}% | {:<11.2}% | {:<11.2}% | {:<9.1} µs | {:.2}x",
+            "{:<8} | {:<8} | {:<9.3}% | {:<11.2}% | {:<11.2}% | {:<11.2}% | {:<9.1} µs | {:.2}x {}",
             r.d_real,
             r.n_corpus,
             r.exact_recall,
@@ -325,10 +317,18 @@ fn main() {
             r.lutz_l0_pruned_pct,
             r.exact_simd_evals_pct,
             r.proof_lat_us,
-            r.speedup
+            r.speedup,
+            if admission { "ADMITTED" } else { "REJECTED" }
         );
     }
     println!(
         "═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════\n"
     );
+    if admitted == 0 {
+        eprintln!(
+            "Gate B rejected every configuration: exact proof search did not beat Exact SIMD. \\
+             Keep Exact SIMD as the production retrieval path."
+        );
+        std::process::exit(1);
+    }
 }

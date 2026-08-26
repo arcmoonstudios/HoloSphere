@@ -1,0 +1,25 @@
+use_default_settings: true
+
+general:
+  instance_name: "HoloSphere Private Search"
+
+search:
+  formats:
+    - html
+    - json
+  safe_search: 1
+
+server:
+  bind_address: "0.0.0.0"
+  port: 8080
+  secret_key: "change-this-before-exposing-searxng-beyond-loopback"
+  limiter: false
+  image_proxy: false
+
+engines:
+  - name: wikidata
+    inactive: true
+  - name: ahmia
+    inactive: true
+  - name: torch
+    inactive: true

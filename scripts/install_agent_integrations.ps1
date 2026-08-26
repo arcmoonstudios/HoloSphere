@@ -2,6 +2,7 @@
 param(
     [string]$BinaryPath = (Join-Path $PSScriptRoot "..\target\release\hnsqr_mcp_stdio.exe"),
     [string]$DataDirectory = (Join-Path $env:LOCALAPPDATA "HoloSphere\model-agent"),
+    [string]$ConfigPath = (Join-Path $PSScriptRoot "..\Config.toml"),
     [string]$Tenant = "local-agents",
     [ValidateSet("readonly", "readwrite", "admin")]
     [string]$Role = "readwrite"
@@ -11,6 +12,7 @@ $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 
 $sourceBinary = (Resolve-Path -LiteralPath $BinaryPath).Path
+$configPath = (Resolve-Path -LiteralPath $ConfigPath).Path
 $binaryDigest = (Get-FileHash -LiteralPath $sourceBinary -Algorithm SHA256).Hash.ToLowerInvariant()
 $snapshotDirectory = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\target')).Path
 $snapshotDirectory = Join-Path $snapshotDirectory 'agent-integrations'
@@ -24,7 +26,8 @@ if (-not (Test-Path -LiteralPath $binary)) {
 $environment = @(
     "HNSQR_DATA_DIR=$DataDirectory",
     "HNSQR_MCP_TENANT=$Tenant",
-    "HNSQR_MCP_ROLE=$Role"
+    "HNSQR_MCP_ROLE=$Role",
+    "HNSQR_CONFIG=$configPath"
 )
 
 # Codex versions that accept only `fast` or `flex` reject the legacy
@@ -82,6 +85,7 @@ function Set-AntigravityMcpServer {
             HNSQR_DATA_DIR = $DataDirectory
             HNSQR_MCP_TENANT = $Tenant
             HNSQR_MCP_ROLE = $Role
+            HNSQR_CONFIG = $configPath
         }
         disabled = $false
     }
@@ -111,6 +115,7 @@ foreach ($client in @("codex", "claude")) {
     --env $environment[0] `
     --env $environment[1] `
     --env $environment[2] `
+    --env $environment[3] `
     holosphere -- $binary
 
 # Gemini's supported local agent surface is Google Antigravity. Current builds
@@ -173,6 +178,7 @@ $claudeDefinition = @{
         HNSQR_DATA_DIR = $DataDirectory
         HNSQR_MCP_TENANT = $Tenant
         HNSQR_MCP_ROLE = $Role
+        HNSQR_CONFIG = $configPath
     }
 } | ConvertTo-Json -Depth 8 -Compress
 & $claudeCommand mcp add-json --scope user holosphere $claudeDefinition
@@ -210,6 +216,7 @@ $serializedSettings = $settings | ConvertTo-Json -Depth 100
     DataDirectory = $DataDirectory
     Tenant = $Tenant
     Role = $Role
+    ConfigPath = $configPath
     Codex = "configured"
     Gemini = "configured through Google Antigravity"
     Claude = "configured; mcp__holosphere__* pre-approved"

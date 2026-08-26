@@ -352,11 +352,20 @@ fn test_gpu_tensor_accelerator_complex_gemm() {
 #[test]
 fn test_resp_server_graph_and_search_commands() {
     use hnsqr::ecosystem::MemoryKvStore;
+    use hnsqr::graph::mutation::GraphMutationApplier;
+    use hnsqr::graph::storage::generation::GraphGeneration;
     use hnsqr::transport::resp::{RespFrame, RespServer};
+    use hnsqr::{LabelCatalog, RelTypeCatalog};
+    use parking_lot::RwLock;
     use std::sync::Arc;
 
     let kv = Arc::new(MemoryKvStore::new());
-    let server = RespServer::new(kv);
+    let index = Arc::new(hnsqr::HNSQRIndex::new(hnsqr::HNSQRConfig::default(), 32));
+    let graph_gen = Arc::new(RwLock::new(GraphGeneration::new_mutable(1)));
+    let label_cat = Arc::new(LabelCatalog::default());
+    let rel_cat = Arc::new(RelTypeCatalog::default());
+    let graph = Arc::new(GraphMutationApplier::new(graph_gen, label_cat, rel_cat));
+    let server = RespServer::with_index_and_graph(kv, Some(index), Some(graph));
 
     let graph_res = server.handle_command(&[
         "GRAPH.QUERY".to_string(),

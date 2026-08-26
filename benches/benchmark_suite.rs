@@ -7,7 +7,7 @@ mod common;
 
 use std::time::Instant;
 
-use common::{open_prebuilt_snapshot_v2, BenchScale, DEFAULT_BENCH_SEED};
+use common::{BenchScale, DEFAULT_BENCH_SEED, open_prebuilt_snapshot_v2};
 use hnsqr::rivero::RiveroProfile;
 use hnsqr::storage::snapshot::SnapshotOpenOptions;
 use hnsqr::vector::quantization::PolarQuantizedVector;
@@ -20,7 +20,10 @@ fn exact_top_k(corpus: &[VectorEmbedding], query: &VectorEmbedding, k: usize) ->
         .map(|(slot, vector)| (slot as NodeIndex, query.dot_product_complex(vector).re))
         .collect();
     scored.sort_unstable_by(|left, right| {
-        right.1.total_cmp(&left.1).then_with(|| left.0.cmp(&right.0))
+        right
+            .1
+            .total_cmp(&left.1)
+            .then_with(|| left.0.cmp(&right.0))
     });
     scored.into_iter().take(k).map(|(slot, _)| slot).collect()
 }
@@ -29,13 +32,18 @@ fn main() {
     const K: usize = 10;
     let (snapshot_path, dataset) =
         open_prebuilt_snapshot_v2(BenchScale::Dev, RiveroProfile::Balanced, DEFAULT_BENCH_SEED);
-    assert!(!dataset.folded_queries.is_empty(), "real benchmark query set is empty");
+    assert!(
+        !dataset.folded_queries.is_empty(),
+        "real benchmark query set is empty"
+    );
 
     println!("HoloSphere snapshot-backed real-dataset benchmark");
     println!("  snapshot: {}", snapshot_path.display());
     println!(
         "  corpus: {} SIFT vectors ({} real / {} complex dimensions)",
-        dataset.folded_corpus.len(), dataset.real_dim, dataset.complex_dim
+        dataset.folded_corpus.len(),
+        dataset.real_dim,
+        dataset.complex_dim
     );
 
     let attach_started = Instant::now();
@@ -54,7 +62,11 @@ fn main() {
         let results = index
             .search_indices_strict(query, K, None)
             .expect("snapshot query must succeed");
-        let found = results.0.iter().filter(|(slot, _)| expected.contains(slot)).count();
+        let found = results
+            .0
+            .iter()
+            .filter(|(slot, _)| expected.contains(slot))
+            .count();
         recall_sum += found as f64 / K as f64;
     }
     let elapsed = started.elapsed();
@@ -73,7 +85,9 @@ fn main() {
         let quantized = PolarQuantizedVector::quantize(query.complex_data());
         for vector in dataset.folded_corpus.iter().take(128) {
             let exact = query.projective_overlap(vector);
-            let approximate = quantized.asymmetric_dot_product(vector.complex_data()).norm_sqr()
+            let approximate = quantized
+                .asymmetric_dot_product(vector.complex_data())
+                .norm_sqr()
                 / (query.norm_squared() * vector.norm_squared()).max(1e-12);
             mean_error += (exact - approximate.clamp(0.0, 1.0)).abs() as f64;
             comparisons += 1;

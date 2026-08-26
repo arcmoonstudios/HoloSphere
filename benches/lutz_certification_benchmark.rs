@@ -39,7 +39,7 @@ struct PipelineResult {
 
 fn run_pipeline_benchmark(
     real_dim: usize,
-    complex_dim: usize,
+    _complex_dim: usize,
     num_queries: usize,
 ) -> PipelineResult {
     let k = 10;
@@ -51,6 +51,10 @@ fn run_pipeline_benchmark(
         common::DEFAULT_BENCH_SEED,
     );
 
+    let real_dim = dataset.real_dim;
+    let complex_dim = dataset.complex_dim;
+    let candidate_pool_size = dataset.folded_corpus.len();
+
     // Pre-encode corpus in LUTz-v2 format with L1 enabled
     let codes: Vec<LutzCode> = dataset
         .folded_corpus
@@ -60,9 +64,13 @@ fn run_pipeline_benchmark(
 
     let candidate_slots: Vec<NodeIndex> = (0..candidate_pool_size as NodeIndex).collect();
 
-    let exact_index = common::open_prebuilt_snapshot(&format!(
-        "lutz_cert_d{real_dim}_c{complex_dim}_n{candidate_pool_size}"
-    ));
+    let exact_index = {
+        let idx = hnsqr::HNSQRIndex::new(hnsqr::HNSQRConfig::default(), complex_dim);
+        for (i, v) in dataset.folded_corpus.iter().enumerate() {
+            idx.insert(format!("d{i}"), v.clone()).unwrap();
+        }
+        idx
+    };
 
     // 1. Measure Baseline: Exhaustive Production Exact SIMD Scan
     let mut base_latencies = Vec::with_capacity(num_queries);

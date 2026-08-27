@@ -66,6 +66,64 @@ class HypercubeSliceResult:
     values: List[float]
     total_voxels: int
 
+@dataclass
+class ProvenanceReference:
+    source_id: str
+    content_hash: str
+    uri: Optional[str] = None
+    observed_at_lsn: Optional[int] = None
+
+@dataclass
+class EvidenceEnvelope:
+    tenant_id: str
+    snapshot_lsn: int
+    retrieval_contract: str
+    certified: bool
+    content_is_untrusted: bool
+    results: Any
+    proof_upper_bound: Optional[float] = None
+    contradictions: Optional[List[Any]] = None
+
+@dataclass
+class KnowledgeRecord:
+    id: str
+    collection: str
+    kind: str
+    content: str
+    commit_lsn: int
+    tenant_id: str
+    members: List[str]
+    roles: Dict[str, str]
+    metadata: Dict[str, Any]
+    provenance: List[Dict[str, Any]]
+
+@dataclass
+class CandidateResolution:
+    hypothesis: str
+    confidence: float
+    evidence_ids: List[str]
+    successful_outcomes: int
+    failed_outcomes: int
+    status: str
+
+@dataclass
+class ModelOutcomeRecord:
+    attempt_id: str
+    summary: str
+    successful: bool
+    commit_lsn: int
+    tenant_id: str
+    evidence_ids: List[str]
+    metrics: Dict[str, float]
+    provenance: List[Dict[str, Any]]
+
+@dataclass
+class TaskCompleteResult:
+    outcome: ModelOutcomeRecord
+    resolution: Optional[KnowledgeRecord] = None
+    resolution_status: Optional[str] = None
+    verification_level: Optional[str] = None
+
 class _CircuitBreaker:
     def __init__(self, failure_threshold: int = 5, recovery_timeout_s: float = 10.0):
         self.failure_threshold = failure_threshold
@@ -350,21 +408,272 @@ class AsyncHNSQRClient:
         """Call a provider-neutral HoloSphere knowledge operation."""
         paths = {
             "search": "/v1/knowledge/search",
+            "web_search": "/v1/knowledge/web/search",
+            "websearch": "/v1/knowledge/web/search",
             "traverse": "/v1/knowledge/traverse",
             "resolve": "/v1/knowledge/resolve",
             "remember": "/v1/knowledge/remember",
             "record_outcome": "/v1/knowledge/outcomes",
+            "recordoutcome": "/v1/knowledge/outcomes",
+            "task_begin": "/v1/knowledge/tasks/begin",
+            "taskbegin": "/v1/knowledge/tasks/begin",
+            "task_context": "/v1/knowledge/tasks/context",
+            "taskcontext": "/v1/knowledge/tasks/context",
+            "task_complete": "/v1/knowledge/tasks/complete",
+            "taskcomplete": "/v1/knowledge/tasks/complete",
+            "explore": "/v1/knowledge/explore",
+            "status": "/v1/knowledge/status",
+            "run_case": "/v1/knowledge/cases/run",
+            "runcase": "/v1/knowledge/cases/run",
         }
-        if operation not in paths:
+        normalized = operation.lower().replace("-", "_").replace(".", "_")
+        if normalized not in paths:
             raise ValueError(f"Unknown model tool operation: {operation}")
-        endpoint = self._select_endpoint(is_write=operation in {"remember", "record_outcome"})
+        is_write = normalized in {
+            "remember",
+            "record_outcome",
+            "recordoutcome",
+            "task_begin",
+            "taskbegin",
+            "task_complete",
+            "taskcomplete",
+        }
+        endpoint = self._select_endpoint(is_write=is_write)
         response = await self._client.post(
-            f"{endpoint.rstrip('/')}{paths[operation]}",
+            f"{endpoint.rstrip('/')}{paths[normalized]}",
             json=payload,
             headers=self._headers(),
         )
         response.raise_for_status()
         return response.json()
+
+    async def task_begin(
+        self,
+        problem: str,
+        case_id: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+        collection: str = "knowledge",
+        max_hypotheses: int = 5,
+        provenance: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """Starts a durable agent problem case with prior evidence linking."""
+        payload: Dict[str, Any] = {
+            "problem": problem,
+            "collection": collection,
+            "max_hypotheses": max_hypotheses,
+        }
+        if case_id:
+            payload["case_id"] = case_id
+        if idempotency_key:
+            payload["idempotency_key"] = idempotency_key
+        if provenance:
+            payload["provenance"] = provenance
+        return await self.call_model_tool("task_begin", payload)
+
+    async def task_context(self, case_id: str, snapshot_lsn: Optional[int] = None) -> Dict[str, Any]:
+        """Rehydrates a case's related evidence and graph context at a pinned snapshot."""
+        payload: Dict[str, Any] = {"case_id": case_id}
+        if snapshot_lsn is not None:
+            payload["snapshot_lsn"] = snapshot_lsn
+        return await self.call_model_tool("task_context", payload)
+
+    async def web_search(
+        self,
+        query: str,
+        k: int = 8,
+        time_range: Optional[str] = None,
+        language: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Queries live public-web results returning untrusted evidence records."""
+        payload: Dict[str, Any] = {"query": query, "k": k}
+        if time_range:
+            payload["time_range"] = time_range
+        if language:
+            payload["language"] = language
+        return await self.call_model_tool("web_search", payload)
+
+    async def remember(
+        self,
+        content: str,
+        doc_id: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+        collection: str = "knowledge",
+        kind: str = "knowledge",
+        evidence_class: Optional[str] = None,
+        members: Optional[List[str]] = None,
+        roles: Optional[Dict[str, str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        provenance: Optional[List[Dict[str, Any]]] = None,
+        vector: Optional[List[float]] = None,
+    ) -> Dict[str, Any]:
+        """Durably remembers tenant-scoped knowledge, entities, or relations."""
+        payload: Dict[str, Any] = {
+            "content": content,
+            "collection": collection,
+            "kind": kind,
+        }
+        if doc_id:
+            payload["id"] = doc_id
+        if idempotency_key:
+            payload["idempotency_key"] = idempotency_key
+        if evidence_class:
+            payload["evidence_class"] = evidence_class
+        if members:
+            payload["members"] = members
+        if roles:
+            payload["roles"] = roles
+        if metadata:
+            payload["metadata"] = metadata
+        if provenance:
+            payload["provenance"] = provenance
+        if vector:
+            payload["vector"] = vector
+        return await self.call_model_tool("remember", payload)
+
+    async def search_knowledge(
+        self,
+        query_text: Optional[str] = None,
+        query_vector: Optional[List[float]] = None,
+        collection: str = "knowledge",
+        k: int = 10,
+        kinds: Optional[List[str]] = None,
+        retrieval_contract: str = "exact",
+        snapshot_lsn: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Searches tenant-isolated HoloSphere knowledge at one snapshot."""
+        payload: Dict[str, Any] = {
+            "collection": collection,
+            "k": k,
+            "retrieval_contract": retrieval_contract,
+        }
+        if query_text:
+            payload["query_text"] = query_text
+        if query_vector:
+            payload["query_vector"] = query_vector
+        if kinds:
+            payload["kinds"] = kinds
+        if snapshot_lsn is not None:
+            payload["snapshot_lsn"] = snapshot_lsn
+        return await self.call_model_tool("search", payload)
+
+    async def traverse(
+        self,
+        seed_ids: List[str],
+        max_depth: int = 3,
+        max_results: int = 100,
+        relation_kinds: Optional[List[str]] = None,
+        snapshot_lsn: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Traverses provenance-bearing N-ary knowledge relations from seed IDs."""
+        payload: Dict[str, Any] = {
+            "seed_ids": seed_ids,
+            "max_depth": max_depth,
+            "max_results": max_results,
+        }
+        if relation_kinds:
+            payload["relation_kinds"] = relation_kinds
+        if snapshot_lsn is not None:
+            payload["snapshot_lsn"] = snapshot_lsn
+        return await self.call_model_tool("traverse", payload)
+
+    async def resolve(
+        self,
+        problem: str,
+        collection: str = "knowledge",
+        max_hypotheses: int = 5,
+        snapshot_lsn: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Returns evidence-backed candidate resolutions and hypotheses."""
+        payload: Dict[str, Any] = {
+            "problem": problem,
+            "collection": collection,
+            "max_hypotheses": max_hypotheses,
+        }
+        if snapshot_lsn is not None:
+            payload["snapshot_lsn"] = snapshot_lsn
+        return await self.call_model_tool("resolve", payload)
+
+    async def record_outcome(
+        self,
+        summary: str,
+        successful: bool,
+        attempt_id: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+        evidence_ids: Optional[List[str]] = None,
+        metrics: Optional[Dict[str, float]] = None,
+        provenance: Optional[List[Dict[str, Any]]] = None,
+        evidence_class: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Durably attaches measured outcomes and provenance to an attempted resolution."""
+        payload: Dict[str, Any] = {
+            "summary": summary,
+            "successful": successful,
+        }
+        if attempt_id:
+            payload["attempt_id"] = attempt_id
+        if idempotency_key:
+            payload["idempotency_key"] = idempotency_key
+        if evidence_ids:
+            payload["evidence_ids"] = evidence_ids
+        if metrics:
+            payload["metrics"] = metrics
+        if provenance:
+            payload["provenance"] = provenance
+        if evidence_class:
+            payload["evidence_class"] = evidence_class
+        return await self.call_model_tool("record_outcome", payload)
+
+    async def task_complete(
+        self,
+        case_id: str,
+        summary: str,
+        successful: bool,
+        idempotency_key: Optional[str] = None,
+        resolution_status: Optional[str] = None,
+        evidence_ids: Optional[List[str]] = None,
+        metrics: Optional[Dict[str, float]] = None,
+        provenance: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """Promotes a resolved case to a durable resolution linked by fixed_by."""
+        payload: Dict[str, Any] = {
+            "case_id": case_id,
+            "summary": summary,
+            "successful": successful,
+        }
+        if idempotency_key:
+            payload["idempotency_key"] = idempotency_key
+        if resolution_status:
+            payload["resolution_status"] = resolution_status
+        if evidence_ids:
+            payload["evidence_ids"] = evidence_ids
+        if metrics:
+            payload["metrics"] = metrics
+        if provenance:
+            payload["provenance"] = provenance
+        return await self.call_model_tool("task_complete", payload)
+
+    async def explore(
+        self,
+        target: str = "stats",
+        limit: int = 10,
+        seed_id: Optional[str] = None,
+        snapshot_lsn: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Explores memory topology stats, recent cases, or entity neighborhoods."""
+        payload: Dict[str, Any] = {"target": target, "limit": limit}
+        if seed_id:
+            payload["seed_id"] = seed_id
+        if snapshot_lsn is not None:
+            payload["snapshot_lsn"] = snapshot_lsn
+        return await self.call_model_tool("explore", payload)
+
+    async def status(self) -> Dict[str, Any]:
+        """Returns the runtime preflight contract before selecting a workflow."""
+        return await self.call_model_tool("status", {})
+
+    async def run_case(self, objective: str, **options: Any) -> Dict[str, Any]:
+        """Prepares a bounded, evidence-first case without executing external actions."""
+        return await self.call_model_tool("run_case", {"objective": objective, **options})
 
 
 class HNSQRClient:
@@ -607,18 +916,362 @@ class HNSQRClient:
         """Call a provider-neutral HoloSphere knowledge operation."""
         paths = {
             "search": "/v1/knowledge/search",
+            "web_search": "/v1/knowledge/web/search",
+            "websearch": "/v1/knowledge/web/search",
             "traverse": "/v1/knowledge/traverse",
             "resolve": "/v1/knowledge/resolve",
             "remember": "/v1/knowledge/remember",
             "record_outcome": "/v1/knowledge/outcomes",
+            "recordoutcome": "/v1/knowledge/outcomes",
+            "task_begin": "/v1/knowledge/tasks/begin",
+            "taskbegin": "/v1/knowledge/tasks/begin",
+            "task_context": "/v1/knowledge/tasks/context",
+            "taskcontext": "/v1/knowledge/tasks/context",
+            "task_complete": "/v1/knowledge/tasks/complete",
+            "taskcomplete": "/v1/knowledge/tasks/complete",
+            "explore": "/v1/knowledge/explore",
+            "status": "/v1/knowledge/status",
+            "run_case": "/v1/knowledge/cases/run",
+            "runcase": "/v1/knowledge/cases/run",
         }
-        if operation not in paths:
+        normalized = operation.lower().replace("-", "_").replace(".", "_")
+        if normalized not in paths:
             raise ValueError(f"Unknown model tool operation: {operation}")
-        endpoint = self._select_endpoint(is_write=operation in {"remember", "record_outcome"})
+        is_write = normalized in {
+            "remember",
+            "record_outcome",
+            "recordoutcome",
+            "task_begin",
+            "taskbegin",
+            "task_complete",
+            "taskcomplete",
+        }
+        endpoint = self._select_endpoint(is_write=is_write)
         response = self._client.post(
-            f"{endpoint.rstrip('/')}{paths[operation]}",
+            f"{endpoint.rstrip('/')}{paths[normalized]}",
             json=payload,
             headers=self._headers(),
         )
         response.raise_for_status()
         return response.json()
+
+    def task_begin(
+        self,
+        problem: str,
+        case_id: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+        collection: str = "knowledge",
+        max_hypotheses: int = 5,
+        provenance: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """Starts a durable agent problem case with prior evidence linking."""
+        payload: Dict[str, Any] = {
+            "problem": problem,
+            "collection": collection,
+            "max_hypotheses": max_hypotheses,
+        }
+        if case_id:
+            payload["case_id"] = case_id
+        if idempotency_key:
+            payload["idempotency_key"] = idempotency_key
+        if provenance:
+            payload["provenance"] = provenance
+        return self.call_model_tool("task_begin", payload)
+
+    def task_context(self, case_id: str, snapshot_lsn: Optional[int] = None) -> Dict[str, Any]:
+        """Rehydrates a case's related evidence and graph context at a pinned snapshot."""
+        payload: Dict[str, Any] = {"case_id": case_id}
+        if snapshot_lsn is not None:
+            payload["snapshot_lsn"] = snapshot_lsn
+        return self.call_model_tool("task_context", payload)
+
+    def web_search(
+        self,
+        query: str,
+        k: int = 8,
+        time_range: Optional[str] = None,
+        language: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Queries live public-web results returning untrusted evidence records."""
+        payload: Dict[str, Any] = {"query": query, "k": k}
+        if time_range:
+            payload["time_range"] = time_range
+        if language:
+            payload["language"] = language
+        return self.call_model_tool("web_search", payload)
+
+    def remember(
+        self,
+        content: str,
+        doc_id: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+        collection: str = "knowledge",
+        kind: str = "knowledge",
+        evidence_class: Optional[str] = None,
+        members: Optional[List[str]] = None,
+        roles: Optional[Dict[str, str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        provenance: Optional[List[Dict[str, Any]]] = None,
+        vector: Optional[List[float]] = None,
+    ) -> Dict[str, Any]:
+        """Durably remembers tenant-scoped knowledge, entities, or relations."""
+        payload: Dict[str, Any] = {
+            "content": content,
+            "collection": collection,
+            "kind": kind,
+        }
+        if doc_id:
+            payload["id"] = doc_id
+        if idempotency_key:
+            payload["idempotency_key"] = idempotency_key
+        if evidence_class:
+            payload["evidence_class"] = evidence_class
+        if members:
+            payload["members"] = members
+        if roles:
+            payload["roles"] = roles
+        if metadata:
+            payload["metadata"] = metadata
+        if provenance:
+            payload["provenance"] = provenance
+        if vector:
+            payload["vector"] = vector
+        return self.call_model_tool("remember", payload)
+
+    def search_knowledge(
+        self,
+        query_text: Optional[str] = None,
+        query_vector: Optional[List[float]] = None,
+        collection: str = "knowledge",
+        k: int = 10,
+        kinds: Optional[List[str]] = None,
+        retrieval_contract: str = "exact",
+        snapshot_lsn: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Searches tenant-isolated HoloSphere knowledge at one snapshot."""
+        payload: Dict[str, Any] = {
+            "collection": collection,
+            "k": k,
+            "retrieval_contract": retrieval_contract,
+        }
+        if query_text:
+            payload["query_text"] = query_text
+        if query_vector:
+            payload["query_vector"] = query_vector
+        if kinds:
+            payload["kinds"] = kinds
+        if snapshot_lsn is not None:
+            payload["snapshot_lsn"] = snapshot_lsn
+        return self.call_model_tool("search", payload)
+
+    def traverse(
+        self,
+        seed_ids: List[str],
+        max_depth: int = 3,
+        max_results: int = 100,
+        relation_kinds: Optional[List[str]] = None,
+        snapshot_lsn: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Traverses provenance-bearing N-ary knowledge relations from seed IDs."""
+        payload: Dict[str, Any] = {
+            "seed_ids": seed_ids,
+            "max_depth": max_depth,
+            "max_results": max_results,
+        }
+        if relation_kinds:
+            payload["relation_kinds"] = relation_kinds
+        if snapshot_lsn is not None:
+            payload["snapshot_lsn"] = snapshot_lsn
+        return self.call_model_tool("traverse", payload)
+
+    def resolve(
+        self,
+        problem: str,
+        collection: str = "knowledge",
+        max_hypotheses: int = 5,
+        snapshot_lsn: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Returns evidence-backed candidate resolutions and hypotheses."""
+        payload: Dict[str, Any] = {
+            "problem": problem,
+            "collection": collection,
+            "max_hypotheses": max_hypotheses,
+        }
+        if snapshot_lsn is not None:
+            payload["snapshot_lsn"] = snapshot_lsn
+        return self.call_model_tool("resolve", payload)
+
+    def record_outcome(
+        self,
+        summary: str,
+        successful: bool,
+        attempt_id: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+        evidence_ids: Optional[List[str]] = None,
+        metrics: Optional[Dict[str, float]] = None,
+        provenance: Optional[List[Dict[str, Any]]] = None,
+        evidence_class: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Durably attaches measured outcomes and provenance to an attempted resolution."""
+        payload: Dict[str, Any] = {
+            "summary": summary,
+            "successful": successful,
+        }
+        if attempt_id:
+            payload["attempt_id"] = attempt_id
+        if idempotency_key:
+            payload["idempotency_key"] = idempotency_key
+        if evidence_ids:
+            payload["evidence_ids"] = evidence_ids
+        if metrics:
+            payload["metrics"] = metrics
+        if provenance:
+            payload["provenance"] = provenance
+        if evidence_class:
+            payload["evidence_class"] = evidence_class
+        return self.call_model_tool("record_outcome", payload)
+
+    def task_complete(
+        self,
+        case_id: str,
+        summary: str,
+        successful: bool,
+        idempotency_key: Optional[str] = None,
+        resolution_status: Optional[str] = None,
+        evidence_ids: Optional[List[str]] = None,
+        metrics: Optional[Dict[str, float]] = None,
+        provenance: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """Promotes a resolved case to a durable resolution linked by fixed_by."""
+        payload: Dict[str, Any] = {
+            "case_id": case_id,
+            "summary": summary,
+            "successful": successful,
+        }
+        if idempotency_key:
+            payload["idempotency_key"] = idempotency_key
+        if resolution_status:
+            payload["resolution_status"] = resolution_status
+        if evidence_ids:
+            payload["evidence_ids"] = evidence_ids
+        if metrics:
+            payload["metrics"] = metrics
+        if provenance:
+            payload["provenance"] = provenance
+        return self.call_model_tool("task_complete", payload)
+
+    def explore(
+        self,
+        target: str = "stats",
+        limit: int = 10,
+        seed_id: Optional[str] = None,
+        snapshot_lsn: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Explores memory topology stats, recent cases, or entity neighborhoods."""
+        payload: Dict[str, Any] = {"target": target, "limit": limit}
+        if seed_id:
+            payload["seed_id"] = seed_id
+        if snapshot_lsn is not None:
+            payload["snapshot_lsn"] = snapshot_lsn
+        return self.call_model_tool("explore", payload)
+
+    def status(self) -> Dict[str, Any]:
+        """Returns the runtime preflight contract before selecting a workflow."""
+        return self.call_model_tool("status", {})
+
+    def run_case(self, objective: str, **options: Any) -> Dict[str, Any]:
+        """Prepares a bounded, evidence-first case without executing external actions."""
+        return self.call_model_tool("run_case", {"objective": objective, **options})
+
+
+import hashlib
+
+def _sha256_hex(content: str) -> str:
+    return f"sha256:{hashlib.sha256(content.encode('utf-8')).hexdigest()}"
+
+
+def execute_universal_epistemic_pipeline(
+    client: HNSQRClient,
+    domain: str,
+    problem_statement: str,
+    search_query: Optional[str] = None,
+    synthesize_evidence: Optional[Any] = None,
+    evaluate_candidate: Optional[Any] = None,
+) -> Dict[str, Any]:
+    """
+    Executes the 5-phase HoloSphere Universal Epistemic Pipeline:
+    1. Epistemic Inception & Context Rehydration
+    2. External Ground Truth & Empirical Entropy Injection
+    3. High-Dimensional Hypergraph Topology Synthesis
+    4. Deduction, Traversal & Constraint Resolution
+    5. Empirical Verification & Durable Resolution Promotion
+    """
+    clean_domain = domain.lower().replace("-", "_").replace(".", "_")
+    case_id = f"case:{clean_domain}:{int(time.time() * 1000)}"
+    init_hash = _sha256_hex(problem_statement)
+
+    # Phase 1: Inception & Context Hydration
+    client.task_begin(
+        case_id=case_id,
+        problem=problem_statement,
+        idempotency_key=f"idemp:{case_id}",
+        provenance=[{"source_id": "agent_orchestrator", "content_hash": init_hash}],
+    )
+    context_data = client.task_context(case_id=case_id)
+    evidence_ids: List[str] = []
+
+    # Phase 2: External Entropy Injection
+    if search_query:
+        web_data = client.web_search(query=search_query, k=8)
+        raw_items = web_data.get("results", {}).get("results", [])
+        if synthesize_evidence and raw_items:
+            synthesized = synthesize_evidence(raw_items)
+            # Phase 3: Graph Synthesis
+            for item in synthesized:
+                eid = item["id"]
+                content = item["content"]
+                evidence_ids.append(eid)
+                client.remember(
+                    doc_id=eid,
+                    content=content,
+                    kind=item.get("kind", "domain_evidence"),
+                    members=[case_id, eid],
+                    roles=item.get("roles", {case_id: "target_scope"}),
+                    provenance=[{"source_id": "epistemic_synthesizer", "content_hash": _sha256_hex(content)}],
+                )
+
+    # Phase 4: Deduction, Traversal & Resolution
+    client.traverse(seed_ids=[case_id], max_depth=3)
+    resolutions = client.resolve(problem=problem_statement, max_hypotheses=5)
+
+    # Phase 5: Empirical Verification & Durable Promotion
+    if evaluate_candidate is None:
+        raise ValueError(
+            "evaluate_candidate is required: the pipeline never fabricates a successful or verified outcome"
+        )
+    eval_result = evaluate_candidate(resolutions.get("results", []), context_data.get("results", {}))
+
+    summary = eval_result["summary"]
+    is_success = eval_result["is_success"]
+    metrics = eval_result.get("metrics", {})
+    eval_hash = _sha256_hex(summary)
+
+    client.record_outcome(
+        attempt_id=f"attempt:{case_id}",
+        evidence_ids=evidence_ids,
+        metrics=metrics,
+        successful=is_success,
+        summary=summary,
+        provenance=[{"source_id": "evaluation_runner", "content_hash": eval_hash}],
+    )
+
+    return client.task_complete(
+        case_id=case_id,
+        evidence_ids=evidence_ids,
+        metrics=metrics,
+        successful=is_success,
+        summary=summary,
+        # Metrics without an admissible measurement are a reported claim, not empirical verification.
+        resolution_status="speculative_synthesis" if is_success else "hypothesis",
+        provenance=[{"source_id": "evaluation_runner", "content_hash": eval_hash}],
+    )

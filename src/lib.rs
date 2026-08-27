@@ -61,8 +61,12 @@ use tracing::{info, instrument, trace, warn};
 pub mod capacity;
 /// Distributed Cluster Control Plane & Partition Sharding.
 pub mod cluster;
+/// Deterministic Codebase Compiler, AST Extractor & Repository Graph Subsystem.
+pub mod codegraph;
 /// Distributed Consensus & Raft State Machine.
 pub mod consensus;
+/// Universal Context Compiler & Graph Reasoning Substrate.
+pub mod contextgraph;
 /// AI Ecosystem & Framework Integrations.
 pub mod ecosystem;
 /// Geo-Distributed Federation Subsystem.

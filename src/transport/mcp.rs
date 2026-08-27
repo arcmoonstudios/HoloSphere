@@ -19,8 +19,8 @@ use serde::{Deserialize, Serialize};
 use crate::security::{AccessRole, AuthenticatedSubject};
 use crate::transport::model_gateway::{
     ModelToolService, RecordOutcomeToolRequest, RememberToolRequest, ResolveToolRequest,
-    SearchToolRequest, TaskBeginToolRequest, TaskCompleteToolRequest, TaskContextToolRequest,
-    TraverseToolRequest, decode_arguments, error_response,
+    RunCaseToolRequest, SearchToolRequest, TaskBeginToolRequest, TaskCompleteToolRequest,
+    TaskContextToolRequest, TraverseToolRequest, decode_arguments, error_response,
 };
 use crate::{HNSQRError, HNSQRResult};
 
@@ -120,6 +120,7 @@ fn tool_definitions() -> serde_json::Value {
                         "query": {"type": "string", "minLength": 1},
                         "query_text": {"type": "string", "minLength": 1, "description": "Compatibility alias for query."},
                         "k": {"type": "integer", "minimum": 1, "maximum": 20, "default": 8},
+                        "max_results": {"type": "integer", "minimum": 1, "maximum": 20, "description": "Compatibility alias for k."},
                         "language": {"type": "string"},
                         "time_range": {"type": "string", "enum": ["day", "month", "year"]}
                     },
@@ -147,20 +148,17 @@ fn tool_definitions() -> serde_json::Value {
             },
             {
                 "name": "resolve",
-                "description": "Return evidence-backed candidate resolutions. Results are hypotheses requiring external validation and never execute actions.",
+                "description": "Resolve a natural-language problem into evidence-backed candidate hypotheses. Supply the problem text only: HoloSphere embeds it in the collection's configured embedding space. Results require external validation and never execute actions.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "problem": {"type": "string", "minLength": 1},
-                        "query_vector": {"type": "array", "items": {"type": "number"}},
-                        "embedding": {"$ref": "#/$defs/embedding"},
                         "collection": {"type": "string", "default": "knowledge"},
                         "max_hypotheses": {"type": "integer", "minimum": 1, "maximum": 20, "default": 5},
                         "snapshot_lsn": {"type": "integer", "minimum": 0, "description": "Optional historical snapshot. Omit or use 0 for the latest committed snapshot."}
                     },
                     "required": ["problem"],
-                    "additionalProperties": false,
-                    "$defs": {"embedding": embedding_schema()}
+                    "additionalProperties": false
                 },
                 "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
             },
@@ -317,6 +315,81 @@ fn tool_definitions() -> serde_json::Value {
                     "additionalProperties": false
                 },
                 "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
+            },
+            {
+                "name": "status",
+                "description": "Return a preflight capability snapshot: authorization, configured web search, collection embedding identities, and runtime limits.",
+                "inputSchema": {"type": "object", "properties": {}, "additionalProperties": false},
+                "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
+            },
+            {
+                "name": "ingest",
+                "description": "Ingest and compile external material (repositories, code directories, markdown docs, or URLs) into HoloSphere ContextGraph.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string", "description": "Filesystem path to repository or directory to crawl and compile."},
+                        "text": {"type": "string", "description": "Raw text or document content."},
+                        "url": {"type": "string", "description": "Source URL or locator identifier."},
+                        "source_type": {"type": "string", "enum": ["filesystem", "directory", "rust", "markdown", "text"], "default": "filesystem"},
+                        "namespace": {"type": "string", "description": "Target logical namespace (e.g. 'workspace:holosphere')."}
+                    },
+                    "additionalProperties": false
+                },
+                "annotations": {"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
+            },
+            {
+                "name": "path",
+                "description": "Find the shortest semantic relation path between two entities in ContextGraph.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "from": {"type": "string", "description": "Starting entity identifier or symbol label."},
+                        "to": {"type": "string", "description": "Target entity identifier or symbol label."},
+                        "strategy": {"type": "string", "enum": ["shortest", "shortest_semantic", "calls_only"], "default": "shortest_semantic"},
+                        "max_depth": {"type": "integer", "minimum": 1, "maximum": 12, "default": 6},
+                        "snapshot_lsn": {"type": "integer", "minimum": 0}
+                    },
+                    "required": ["from", "to"],
+                    "additionalProperties": false
+                },
+                "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
+            },
+            {
+                "name": "diff",
+                "description": "Compare ContextGraph snapshots or workspace revisions across LSN publication points.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "from_snapshot": {"type": "integer", "minimum": 0},
+                        "to_snapshot": {"type": "integer", "minimum": 0},
+                        "scope": {"type": "string"}
+                    },
+                    "additionalProperties": false
+                },
+                "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
+            },
+            {
+                "name": "run_case",
+                "description": "Prepare a universal evidence-first case using a recipe, bounded retrieval, and an explicit action gate. This tool never executes external actions.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "objective": {"type": "string", "minLength": 1},
+                        "recipe": {"type": "string", "enum": ["research_and_synthesize", "diagnose_and_fix", "implement_and_test", "compare_options", "incident_response", "analyze_dataset", "evaluate_strategy"], "default": "research_and_synthesize"},
+                        "collection": {"type": "string", "default": "knowledge"},
+                        "web_query": {"type": "string"},
+                        "evidence_policy": {"type": "string", "enum": ["none", "knowledge_only", "web_if_needed", "web_required"], "default": "web_if_needed"},
+                        "execution_policy": {"type": "string", "enum": ["propose_only", "tests_only", "authorized_executor"], "default": "propose_only"},
+                        "success_criteria": {"type": "array", "items": {"type": "string"}},
+                        "budgets": {"type": "object", "properties": {"tool_calls": {"type": "integer", "minimum": 1, "maximum": 100}, "retrieval_results": {"type": "integer", "minimum": 1, "maximum": 100}}, "additionalProperties": false},
+                        "case_id": {"type": "string"},
+                        "idempotency_key": {"type": "string"}
+                    },
+                    "required": ["objective"],
+                    "additionalProperties": false
+                },
+                "annotations": {"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}
             }
         ]
     });
@@ -593,7 +666,9 @@ fn render_markdown(val: &serde_json::Value) -> String {
                     .and_then(|v| v.as_str())
                     .unwrap_or("unverified");
                 let lsn = obj.get("commit_lsn").and_then(|l| l.as_u64()).unwrap_or(0);
-                return format!("✅ **Remembered `{id}`** (`{kind}` | `{ev_class}` | `{v_state}`) at commit LSN {lsn}.");
+                return format!(
+                    "✅ **Remembered `{id}`** (`{kind}` | `{ev_class}` | `{v_state}`) at commit LSN {lsn}."
+                );
             }
         }
     }
@@ -699,6 +774,25 @@ fn call_tool(
             decode_arguments::<crate::transport::model_gateway::ExploreToolRequest>(
                 params.arguments,
             )?,
+        )?),
+        "ingest" => tool_result(service.ingest(
+            subject,
+            decode_arguments::<crate::transport::model_gateway::IngestToolRequest>(
+                params.arguments,
+            )?,
+        )?),
+        "path" => tool_result(service.path(
+            subject,
+            decode_arguments::<crate::transport::model_gateway::PathToolRequest>(params.arguments)?,
+        )?),
+        "diff" => tool_result(service.diff(
+            subject,
+            decode_arguments::<crate::transport::model_gateway::DiffToolRequest>(params.arguments)?,
+        )?),
+        "status" => tool_result(service.status(subject)),
+        "run_case" | "runcase" => tool_result(service.run_case(
+            subject,
+            decode_arguments::<RunCaseToolRequest>(params.arguments)?,
         )?),
         _ => Err(HNSQRError::InvalidRequest(format!(
             "unknown tool '{}'",
@@ -849,28 +943,34 @@ mod tests {
     fn lists_primitive_and_native_agent_workflow_tools_with_closed_schemas() {
         let definitions = tool_definitions();
         let tools = definitions["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 10);
-        assert_eq!(
-            tools
-                .iter()
-                .map(|tool| tool["name"].as_str().unwrap())
-                .collect::<Vec<_>>(),
-            [
-                "search",
-                "web_search",
-                "traverse",
-                "resolve",
-                "task_begin",
-                "task_context",
-                "remember",
-                "task_complete",
-                "record_outcome",
-                "explore"
-            ]
-        );
+        let names: Vec<_> = tools
+            .iter()
+            .map(|tool| tool["name"].as_str().unwrap())
+            .collect();
+        for required in [
+            "search", "web_search", "traverse", "resolve", "task_begin", "task_context",
+            "remember", "task_complete", "record_outcome", "explore", "status", "run_case",
+        ] {
+            assert!(names.contains(&required), "missing required tool {required}");
+        }
         assert!(tools.iter().all(|tool| {
             tool["inputSchema"]["additionalProperties"] == serde_json::Value::Bool(false)
         }));
+        let resolve = tools.iter().find(|tool| tool["name"] == "resolve").unwrap();
+        assert_eq!(
+            resolve["inputSchema"]["required"],
+            serde_json::json!(["problem"])
+        );
+        assert!(
+            resolve["inputSchema"]["properties"]
+                .get("query_vector")
+                .is_none()
+        );
+        assert!(
+            resolve["inputSchema"]["properties"]
+                .get("embedding")
+                .is_none()
+        );
         assert!(
             tools
                 .iter()
@@ -946,9 +1046,39 @@ mod tests {
         let responses = response.as_array().unwrap();
         assert_eq!(responses.len(), 2);
         assert_eq!(responses[0]["id"], 1);
+        assert!(responses[1]["result"]["tools"].as_array().unwrap().len() >= 12);
+    }
+
+    #[test]
+    fn universal_runtime_preflights_and_returns_an_action_gate() {
+        let service = service();
+        let response = process_request(
+            &service,
+            &subject(AccessRole::ReadWrite),
+            JsonRpcRequest {
+                jsonrpc: "2.0".to_string(),
+                id: Some(serde_json::json!(1)),
+                method: "tools/call".to_string(),
+                params: serde_json::json!({
+                    "name": "run_case",
+                    "arguments": {
+                        "objective": "diagnose a reproducible timeout",
+                        "recipe": "diagnose_and_fix",
+                        "evidence_policy": "knowledge_only",
+                        "success_criteria": ["a regression test passes"]
+                    }
+                }),
+            },
+        )
+        .unwrap();
+        let result = response.result.unwrap();
         assert_eq!(
-            responses[1]["result"]["tools"].as_array().unwrap().len(),
-            10
+            result["structuredContent"]["results"]["action_gate"]["external_execution_performed"],
+            false
+        );
+        assert_eq!(
+            result["structuredContent"]["results"]["status"]["read_write_authorized"],
+            true
         );
     }
 

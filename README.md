@@ -2,7 +2,7 @@
 
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 [![Rust: 2024](https://img.shields.io/badge/Rust-2024%20Edition-orange.svg)](https://www.rust-lang.org/)
-[![Verification](https://img.shields.io/badge/Verification-cargo%20holo--test-brightgreen.svg)](#verification--testing)
+[![Verification](https://img.shields.io/badge/Verification-cargo%20test-brightgreen.svg)](#verification--testing)
 [![Clippy](https://img.shields.io/badge/Clippy%20-D%20warnings-clean-brightgreen.svg)]()
 [![PGO: Optimized](https://img.shields.io/badge/PGO-LLVM%20Profile%20Guided-purple.svg)](docs/PROFILE_GUIDED_OPTIMIZATION.md)
 
@@ -21,9 +21,10 @@ HoloSphere is designed around explicit contract-driven retrieval and unified all
 > **Production retrieval baseline:** `RetrievalContract::Exact` is the default and executes
 > exhaustive contiguous SIMD scoring over the eligible pinned snapshot.
 >
-> **Empirical admission gates:** Rivero routing, Lutz proof-tree traversal, and graph ANN are
-> evaluated against Exact retrieval. A result is never called globally exact unless its proof
-> completes; deadline-aware APIs expose an incomplete proof explicitly.
+> **Empirical admission gates:** Exact SIMD is the authoritative baseline. Rivero and graph
+> routes require regime-specific quality and performance evidence before they can be treated as
+> production candidates. Proof-tree search remains explicit research functionality; the planner
+> currently resolves `Certified` to Exact SIMD rather than selecting an unadmitted proof path.
 >
 > **Atomic operational state:** a committed `DataMutation::Batch` stages vector, property-graph,
 > relational, agent-memory, and hypercube mutations at one Raft LSN. Physical universal
@@ -289,8 +290,8 @@ HoloSphere anchors all vector retrieval to an exhaustive, cache-aligned AVX2/AVX
                  ┌────────────────┴────────────────┐
                  ▼                                 ▼
     [EXACT CONTIGUOUS SIMD SCAN]       [EXPERIMENTAL INDEXING CANDIDATES]
-    • Production Default Standard      • Rivero E8 Territorial Routing
-    • 100.000% Recall@10 Guaranteed    • Lutz Proof Tree Bounding
+    • Production Default Standard      • Rivero Territorial Routing
+    • Metric-consistent exact Top-K    • Graph ANN / ProofTree research
     • Measured by repository benches   • HNSW Graph Traversal
     • Zero Indexing Memory Overhead    • Must pass strict admission gates
                  │                                 │
@@ -313,11 +314,11 @@ Before any non-brute-force indexing path can qualify for production routing, it 
 | **Exact SIMD Scan** | **100.0% Recall@10** | **100.0% Recall@10** | Baseline ($1.0\times$) — Authoritative Production Standard |
 | **Rivero $E_8$ Candidate Routing** | $\ge 95.0\%$ Recall@10 | $\ge 99.0\%$ Recall@10 | Must be materially faster than Exact SIMD ($> 2.0\times$ speedup) |
 | **HNSW Graph ANN** | $\ge 95.0\%$ Recall@10 | $\ge 99.0\%$ Recall@10 | Must be materially faster than Exact SIMD ($> 2.0\times$ speedup) |
-| **Lutz Proof Tree (`Certified`)** | **100.0% Exact Recall** | **100.0% Exact Recall** | Must beat Exact SIMD latency ($< 1.0\times$ Exact SIMD time) |
+| **ProofTree (`Certified`, research)** | **100.0% Exact Recall** | Complete proof required | Not Auto-eligible until it beats Exact SIMD on an admitted regime |
 
 ---
 
-## Public Dataset Benchmark Empirical Scorecard
+## Public Dataset Benchmark Workflow
 
 ```bash
 # Run the public dataset benchmark suite
@@ -327,8 +328,8 @@ cargo bench --bench public_dataset_benchmark
 ### Gate B proof artifacts
 
 `gate_b_hierarchical_proof` measures query execution only. It never builds an
-index, Rivero state, a proof tree, or LUTz codes at runtime. Materialize its
-immutable real-dataset artifacts once, then run the gate:
+index, Rivero state, or proof tree at runtime. Materialize immutable
+real-dataset artifacts once, then run the research gate:
 
 ```bash
 # Example: 25k OpenAI-1536 vectors (768 complex dimensions).
@@ -338,47 +339,20 @@ cargo bench --bench gate_b_hierarchical_proof
 ```
 
 Use the missing-artifact message from Gate B for the exact source dimension and
-cardinality of each matrix row. Gate B admits a proof path only at 100% exact
-recall **and** when it is faster than the Exact SIMD baseline; otherwise the
-production path remains Exact SIMD.
-
-```
-Dataset Manifold                 Dim (Real) Corpus N   Ground Truth    Proof Recall          Latency (p50)
-----------------------------------------------------------------------------------------------------------
-Cohere-1M Embedding Spec         768        1000       0.1393          100.000% (Exact)      1.79ms      
-OpenAI text-embedding-3-large    1536       1000       0.0761          100.000% (Exact)      1.34ms      
-LAION-400M Multi-Modal CLIP      512        1000       0.1284          100.000% (Exact)      264.50µs    
-```
+cardinality of each matrix row. A proof path is admitted only at 100% exact
+recall **and** when it is faster than Exact SIMD. Until then, production routing
+remains Exact SIMD. Current benchmark output—not a checked-in scorecard—is the
+authority for timing and admission evidence.
 
 ---
 
 ## The Universal Cost-Based Crossover Model
 
-Exact SIMD linear scans on modern AVX2/AVX-512 hardware process tens of millions of dot products per second. Index routing has non-zero overhead (hashing, pointer traversals, deduplication). HoloSphere's `UniversalPlanner` uses a hybrid, gated crossover decision engine:
-
-1. **Direct Measured Table (`MEASURED`):** Benchmark-derived crossover points are used directly for known dimensions.
-2. **Empirical Bias Correction ($1.576\times$):** The raw two-parameter power-law fit ($577,169.2 / D^{0.770}$) systematically underestimates empirical crossover points by $26\%\text{--}43\%$ across 10 of 11 measured dimensions. For unlisted dimensions, the planner applies a mean $1.576\times$ bias-correction factor ($[\text{fit}] \times 1.576$) with an empirical residual band of $\sim [-14\%, +11\%]$.
-3. **Anomalous Dimension Quarantine ($D_{\text{cmplx}}=192$):** The sweep flags $D_{\text{cmplx}}=192$ ($384\text{D}$ real) as an unvalidated boundary artifact. Rather than applying an uncalibrated power law or distorted bias multiplier, the planner logs a `tracing::warn!` and uses the admitted Exact SIMD path. The proof-tree path remains experimental until it passes its admission gate.
-
-```
-  ┌────────┬─────────┬──────────────┬──────────────────┬──────────────┬───────────────────────────────────────────┐
-  │ Real D │ Cmplx D │ Measured N   │ Raw Power-Law    │ Underestimate│ Planner Execution Decision                │
-  ├────────┼─────────┼──────────────┼──────────────────┼──────────────┼───────────────────────────────────────────┤
-  │     64 │      32 │      60293 N │          40026 N │       33.61% │ Linear SIMD Scan for N < 60.3K (Exact)    │
-  │    128 │      64 │      40000 N │          23472 N │       41.32% │ Linear SIMD Scan for N < 40.0K (Exact)    │
-  │    256 │     128 │      24000 N │          13764 N │       42.65% │ Linear SIMD Scan for N < 24.0K (Exact)    │
-  │    384 │     192 │     5413 N * │          10073 N │    (Anomaly) │ Quarantined → Certified Proof Search      │
-  │    512 │     256 │      13000 N │           8072 N │       37.91% │ Linear SIMD Scan for N < 13.0K (Exact)    │
-  │    768 │     384 │       7996 N │           5907 N │       26.13% │ Linear SIMD Scan for N < 8.0K (Exact)     │
-  │   1024 │     512 │       6674 N │           4733 N │       29.08% │ Linear SIMD Scan for N < 6.7K (Exact)     │
-  │   1536 │     768 │       5500 N │           3464 N │       37.02% │ Linear SIMD Scan for N < 5.5K (Exact)     │
-  │   2048 │    1024 │       4500 N │           2776 N │       38.31% │ Linear SIMD Scan for N < 4.5K (Exact)     │
-  │   3072 │    1536 │       3050 N │           2031 N │       33.41% │ Linear SIMD Scan for N < 3.1K (Exact)     │
-  │   4096 │    2048 │       2800 N │           1628 N │       41.86% │ Linear SIMD Scan for N < 2.8K (Exact)     │
-  │  Other │       D │   Extrapol.  │ 577,169.2/D^0.77 │   ×1.576 adj │ Linear SIMD Scan for N < N_cross(D)       │
-  └────────┴─────────┴──────────────┴──────────────────┴──────────────┴───────────────────────────────────────────┘
-  * Note: D_cmplx=192 is flagged as an empirical clustering anomaly under the sweep harness and quarantined.
-```
+Exact SIMD and index routing have different fixed and per-vector costs. The
+`UniversalPlanner` owns one crossover primitive, consumed by both `SearchPlan::Auto`
+and planner APIs. Its embedded measured table is hardware- and corpus-sensitive; use
+`cargo bench --bench dimension_crossover_sweep` to calibrate or review it on a target
+machine. The fitted fallback is an interpolation aid, not a quality guarantee.
 
 When effective corpus cardinality $N < N_{\text{cross}}$, HoloSphere automatically executes an exact SIMD scan, eliminating all routing overhead.
 
@@ -394,10 +368,10 @@ to a particular model provider:
   `0.0i`, preserving the represented real coordinates, norms, and inner products.
 - **Embedding-space isolation:** model-facing collections pin provider, model, version,
   dimension, normalization, and distance metric. Incompatible writes are rejected.
-- **Exact by default:** `Exact` exhaustively scores every eligible vector. `Certified`
-  may use dimensional candidate widening and the `SemanticProofTree`, but an exact claim
-  requires `DenseExactProof::globally_exact == true`; deadline-aborted proof searches are
-  explicitly non-exact.
+- **Exact by default:** `Exact` exhaustively scores every eligible vector under the
+  collection's configured metric. `Certified` currently resolves to that admitted exact
+  path in the planner. Explicit proof APIs remain research functionality; a completed
+  proof requires `DenseExactProof::globally_exact == true`.
 
 ---
 
@@ -423,7 +397,7 @@ Single-pass graph traversal checks vector similarity bounds without secondary ta
 | Contract | Default | Guarantees |
 | :--- | :---: | :--- |
 | `Exact` | **YES (Default)** | Exhaustive ground-truth scan across all eligible candidates in the pinned snapshot. |
-| `Certified` | No | Proof-tree retrieval that is exact only when all unresolved threats are resolved and the returned proof is globally exact. |
+| `Certified` | No | Planner-routed to Exact SIMD today. Explicit proof APIs are research-only and require a complete globally exact proof before making an exact claim. |
 | `PacRelaxed { epsilon, delta }` | No | $(\epsilon, \delta)$-PAC bounded relaxation under isotropic noise: $(1 - \epsilon)\text{UB}_{\text{cap}} < \tau$. |
 | `HighRecall(recall)` | No | Statistical target recall guarantee (e.g., $0.995$) with adaptive candidate expansion. |
 | `Budget(Duration)` | No | Peak throughput execution bounded by a strict timeout deadline. |
@@ -719,11 +693,17 @@ See [docs/PROFILE_GUIDED_OPTIMIZATION.md](docs/PROFILE_GUIDED_OPTIMIZATION.md) f
 ## Verification & Testing
 
 ```bash
-# Read-only format, compile, lint, test, and benchmark-build gates
+# Format, compile, lint, and test gates
 cargo holo-fmt-check
 cargo holo-check
 cargo holo-clippy
 cargo holo-test
+
+# `cargo bench` does not execute ordinary #[test] functions. Run this
+# separately before treating benchmark output as correctness evidence.
+cargo test --release --workspace --all-features
+
+# Compile every benchmark target without executing the fleet.
 cargo holo-bench
 
 # Run doc-tests
@@ -738,9 +718,9 @@ cargo test --test mcp_stdio_integration
 cargo bench --bench public_dataset_benchmark
 ```
 
-The aliases live in [`.cargo/config.toml`](.cargo/config.toml). Test counts and
-benchmark timings are intentionally not hard-coded; current command output is the
-authority as the suite and target hardware evolve.
+The aliases live in [`.cargo/config.toml`](.cargo/config.toml). Benchmark output is
+not a substitute for the test gate, and timings are intentionally not hard-coded:
+the current result on the target hardware is the authority.
 
 ---
 

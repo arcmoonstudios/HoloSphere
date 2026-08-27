@@ -347,6 +347,9 @@ pub struct TraversalEvidence {
 #[serde(deny_unknown_fields)]
 pub struct ResolveToolRequest {
     pub problem: String,
+    /// Legacy REST fields retained for wire compatibility.  Resolve is deliberately text-first:
+    /// its required `problem` is embedded in the collection's configured space, so an agent cannot
+    /// accidentally supply an untyped or placeholder vector and query the wrong space.
     #[serde(default)]
     pub query_vector: Option<Vec<f32>>,
     #[serde(default)]
@@ -363,6 +366,9 @@ pub struct ResolveToolRequest {
 pub struct ResolutionHypothesis {
     pub hypothesis: String,
     pub confidence: f32,
+    /// Explainable factors used to rank precedent; callers can audit why one prior
+    /// result outranked another instead of treating retrieval as a black box.
+    pub ranking_components: BTreeMap<String, f32>,
     pub evidence_ids: Vec<String>,
     pub successful_outcomes: usize,
     pub failed_outcomes: usize,
@@ -464,6 +470,9 @@ pub struct ExploreTopologyStats {
     pub total_outcomes: usize,
     pub current_lsn: u64,
     pub collections: Vec<String>,
+    /// Effective embedding identity for every visible collection; use this as a
+    /// preflight check before submitting collection-scoped work.
+    pub collection_embeddings: BTreeMap<String, EmbeddingDescriptor>,
     pub kinds: BTreeMap<String, usize>,
 }
 
@@ -478,6 +487,161 @@ pub struct ExploreResult {
     pub recent_memories: Option<Vec<KnowledgeRecord>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub neighborhood: Option<Vec<TraversalEvidence>>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct IngestToolRequest {
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub text: Option<String>,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default = "default_ingest_source_type")]
+    pub source_type: String,
+    #[serde(default)]
+    pub namespace: Option<String>,
+}
+
+fn default_ingest_source_type() -> String {
+    "filesystem".to_string()
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct IngestResult {
+    pub namespace: String,
+    pub entities_count: usize,
+    pub relations_count: usize,
+    pub canonical_fingerprint: String,
+    pub commit_lsn: u64,
+    pub duration_ms: u64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PathToolRequest {
+    pub from: String,
+    pub to: String,
+    #[serde(default)]
+    pub strategy: Option<String>,
+    #[serde(default = "default_depth")]
+    pub max_depth: usize,
+    #[serde(default)]
+    pub snapshot_lsn: Option<u64>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DiffToolRequest {
+    #[serde(default)]
+    pub from_snapshot: Option<u64>,
+    #[serde(default)]
+    pub to_snapshot: Option<u64>,
+    #[serde(default)]
+    pub scope: Option<String>,
+}
+
+/// Read-only preflight snapshot used by universal runtimes before they select a workflow.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct RuntimeStatus {
+    pub ready: bool,
+    pub read_write_authorized: bool,
+    pub web_search_available: bool,
+    pub embedding_provider: EmbeddingDescriptor,
+    pub collection_embeddings: BTreeMap<String, EmbeddingDescriptor>,
+    pub limits: RuntimeLimits,
+    pub degradations: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct RuntimeLimits {
+    pub max_search_results: usize,
+    pub max_web_results: usize,
+    pub max_hypotheses: usize,
+    pub max_traversal_depth: usize,
+}
+
+/// Explicit budget contract for universal case preparation. Execution is intentionally
+/// proposed, never performed, by the MCP server.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CaseBudget {
+    #[serde(default = "default_case_tool_calls")]
+    pub tool_calls: usize,
+    #[serde(default = "default_case_results")]
+    pub retrieval_results: usize,
+}
+
+fn default_case_tool_calls() -> usize {
+    20
+}
+fn default_case_results() -> usize {
+    10
+}
+
+impl Default for CaseBudget {
+    fn default() -> Self {
+        Self {
+            tool_calls: default_case_tool_calls(),
+            retrieval_results: default_case_results(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RunCaseToolRequest {
+    pub objective: String,
+    #[serde(default = "default_recipe")]
+    pub recipe: String,
+    #[serde(default = "default_collection")]
+    pub collection: String,
+    #[serde(default)]
+    pub web_query: Option<String>,
+    #[serde(default = "default_evidence_policy")]
+    pub evidence_policy: String,
+    #[serde(default = "default_execution_policy")]
+    pub execution_policy: String,
+    #[serde(default)]
+    pub success_criteria: Vec<String>,
+    #[serde(default)]
+    pub budgets: CaseBudget,
+    #[serde(default)]
+    pub case_id: String,
+    #[serde(default)]
+    pub idempotency_key: String,
+}
+
+fn default_recipe() -> String {
+    "research_and_synthesize".to_string()
+}
+fn default_evidence_policy() -> String {
+    "web_if_needed".to_string()
+}
+fn default_execution_policy() -> String {
+    "propose_only".to_string()
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct ActionGate {
+    pub execution_policy: String,
+    pub external_execution_performed: bool,
+    pub approval_required: bool,
+    pub next_action: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct RunCaseResult {
+    pub status: RuntimeStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub case: Option<KnowledgeRecord>,
+    pub evidence_ids: Vec<String>,
+    pub candidate_resolutions: Vec<ResolutionHypothesis>,
+    pub plan: Vec<String>,
+    pub tool_calls_used: usize,
+    pub tool_calls_remaining: usize,
+    pub action_gate: ActionGate,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -520,16 +684,6 @@ impl KnowledgeJournalEntry {
     fn new(event: KnowledgeEvent) -> HNSQRResult<Self> {
         let checksum = event_checksum(&event)?;
         Ok(Self { event, checksum })
-    }
-
-    fn verify(self) -> HNSQRResult<KnowledgeEvent> {
-        let actual = event_checksum(&self.event)?;
-        if actual != self.checksum {
-            return Err(HNSQRError::CorruptedSnapshot(
-                "model knowledge journal checksum mismatch".to_string(),
-            ));
-        }
-        Ok(self.event)
     }
 }
 
@@ -601,45 +755,54 @@ impl ModelKnowledgeStore {
                 if line.trim().is_empty() {
                     continue;
                 }
-                let raw: serde_json::Value =
-                    serde_json::from_str(&line).map_err(|error| {
-                        HNSQRError::CorruptedSnapshot(format!(
-                            "model knowledge journal line {} is invalid: {error}",
-                            line_number + 1
-                        ))
-                    })?;
-                let checksum = raw.get("checksum").and_then(|c| c.as_str()).ok_or_else(|| {
+                let raw: serde_json::Value = serde_json::from_str(&line).map_err(|error| {
                     HNSQRError::CorruptedSnapshot(format!(
-                        "model knowledge journal line {} missing checksum",
+                        "model knowledge journal line {} is invalid: {error}",
                         line_number + 1
                     ))
                 })?;
+                let checksum = raw
+                    .get("checksum")
+                    .and_then(|c| c.as_str())
+                    .ok_or_else(|| {
+                        HNSQRError::CorruptedSnapshot(format!(
+                            "model knowledge journal line {} missing checksum",
+                            line_number + 1
+                        ))
+                    })?;
                 let raw_event = raw.get("event").ok_or_else(|| {
                     HNSQRError::CorruptedSnapshot(format!(
                         "model knowledge journal line {} missing event",
                         line_number + 1
                     ))
                 })?;
-                let encoded = serde_json::to_vec(raw_event)
-                    .map_err(|error| HNSQRError::SerializationError(error.to_string()))?;
-                let mut hasher = Sha256::new();
-                hasher.update(b"HOLOSPHERE_MODEL_KNOWLEDGE_JOURNAL_V1");
-                hasher.update(encoded);
-                let actual: String = hasher
-                    .finalize()
-                    .iter()
-                    .map(|byte| format!("{byte:02x}"))
-                    .collect();
 
-                let event: KnowledgeEvent = serde_json::from_value(raw_event.clone()).map_err(|error| {
-                    HNSQRError::CorruptedSnapshot(format!(
-                        "model knowledge journal line {} is invalid: {error}",
-                        line_number + 1
-                    ))
-                })?;
+                let event_slice_hash = if let (Some(ev_start), Some(cs_start)) =
+                    (line.find("\"event\":"), line.rfind(",\"checksum\":\""))
+                {
+                    let slice = &line[ev_start + 8..cs_start];
+                    let mut hasher = Sha256::new();
+                    hasher.update(b"HOLOSPHERE_MODEL_KNOWLEDGE_JOURNAL_V1");
+                    hasher.update(slice.as_bytes());
+                    hasher
+                        .finalize()
+                        .iter()
+                        .map(|b| format!("{b:02x}"))
+                        .collect::<String>()
+                } else {
+                    String::new()
+                };
+
+                let event: KnowledgeEvent =
+                    serde_json::from_value(raw_event.clone()).map_err(|error| {
+                        HNSQRError::CorruptedSnapshot(format!(
+                            "model knowledge journal line {} is invalid: {error}",
+                            line_number + 1
+                        ))
+                    })?;
 
                 let computed_from_event = event_checksum(&event)?;
-                if actual != checksum && computed_from_event != checksum {
+                if event_slice_hash != checksum && computed_from_event != checksum {
                     return Err(HNSQRError::CorruptedSnapshot(format!(
                         "model knowledge journal line {} failed verification: checksum mismatch",
                         line_number + 1
@@ -684,6 +847,18 @@ impl ModelKnowledgeStore {
             .collection_specs
             .get(&(tenant.to_string(), collection.to_string()))
             .cloned()
+    }
+
+    fn collection_specs(&self, tenant: &str) -> BTreeMap<String, EmbeddingDescriptor> {
+        self.inner
+            .lock()
+            .state
+            .collection_specs
+            .iter()
+            .filter_map(|((record_tenant, collection), descriptor)| {
+                (record_tenant == tenant).then(|| (collection.clone(), descriptor.clone()))
+            })
+            .collect()
     }
 
     fn remember(
@@ -745,11 +920,8 @@ impl ModelKnowledgeStore {
             return Ok((outcome, true));
         }
         let outcome_key = (tenant.to_string(), outcome.attempt_id.clone());
-        if inner.state.outcomes.contains_key(&outcome_key) {
-            return Err(HNSQRError::InvalidRequest(format!(
-                "outcome attempt '{}' already exists",
-                outcome.attempt_id
-            )));
+        if let Some(existing) = inner.state.outcomes.get(&outcome_key) {
+            return Ok((existing.clone(), true));
         }
         outcome.commit_lsn = Self::next_lsn(&inner.state);
         let event = KnowledgeEvent::Outcome(outcome.clone(), format!("outcome:{idempotency_key}"));
@@ -923,6 +1095,7 @@ pub struct ModelToolService {
     auth: Arc<ModelGatewayAuth>,
     embedder: Arc<dyn TextEmbeddingProvider>,
     web_search: Option<Arc<dyn WebSearchProvider>>,
+    contextgraph: Arc<crate::contextgraph::ContextGraphStore>,
 }
 
 impl ModelToolService {
@@ -965,6 +1138,7 @@ impl ModelToolService {
             auth,
             embedder,
             web_search,
+            contextgraph: Arc::new(crate::contextgraph::ContextGraphStore::new()),
         };
         for (record, vector) in service.store.persisted_vectors() {
             let mut metadata = std::collections::HashMap::new();
@@ -1279,25 +1453,33 @@ impl ModelToolService {
         ])
         .into_iter()
         .collect();
-        self.vectors.ingest_llm_vector_with_metadata(
+        match self.vectors.ingest_llm_vector_with_metadata(
             &internal_collection,
             &request.id,
             &vector,
             std::mem::take(&mut indexed_metadata),
-        )?;
+        ) {
+            Ok(_) | Err(HNSQRError::NodeAlreadyExists(_)) => {}
+            Err(err) => return Err(err),
+        }
         let record_id = request.id.clone();
-        let evidence_class = request.evidence_class.unwrap_or_else(|| match request.kind.as_str() {
-            "external_source" | "web_source" | "external_web_source" => EvidenceClass::ExternalSource,
-            "observation" => EvidenceClass::Observation,
-            "measurement" => EvidenceClass::Measurement,
-            "simulation" => EvidenceClass::Simulation,
-            "experiment" => EvidenceClass::Experiment,
-            "agent_inference" => EvidenceClass::AgentInference,
-            "user_assertion" => EvidenceClass::UserAssertion,
-            "derived_statistic" => EvidenceClass::DerivedStatistic,
-            "reported_claim" => EvidenceClass::ReportedClaim,
-            _ => EvidenceClass::AgentSynthesis,
-        });
+        let evidence_class =
+            request
+                .evidence_class
+                .unwrap_or_else(|| match request.kind.as_str() {
+                    "external_source" | "web_source" | "external_web_source" => {
+                        EvidenceClass::ExternalSource
+                    }
+                    "observation" => EvidenceClass::Observation,
+                    "measurement" => EvidenceClass::Measurement,
+                    "simulation" => EvidenceClass::Simulation,
+                    "experiment" => EvidenceClass::Experiment,
+                    "agent_inference" => EvidenceClass::AgentInference,
+                    "user_assertion" => EvidenceClass::UserAssertion,
+                    "derived_statistic" => EvidenceClass::DerivedStatistic,
+                    "reported_claim" => EvidenceClass::ReportedClaim,
+                    _ => EvidenceClass::AgentSynthesis,
+                });
 
         const EVIDENTIARY_ROLES: &[&str] = &[
             "supports",
@@ -1549,8 +1731,12 @@ impl ModelToolService {
             subject,
             SearchToolRequest {
                 query_text: Some(request.problem),
-                query_vector: request.query_vector,
-                embedding: request.embedding,
+                // `resolve` is a natural-language MCP workflow.  The required problem text is
+                // authoritative; raw vectors belong to `search`, where an explicit embedding
+                // descriptor is required.  This also recovers safely from clients that attach a
+                // fabricated placeholder vector (for example `[0, 0, 0]`).
+                query_vector: None,
+                embedding: None,
                 collection: request.collection,
                 k: request.max_hypotheses,
                 kinds: None,
@@ -1574,14 +1760,45 @@ impl ModelToolService {
                     .collect();
                 let successful_outcomes = related.iter().filter(|item| item.successful).count();
                 let failed_outcomes = related.len().saturating_sub(successful_outcomes);
-                let empirical_factor = if related.is_empty() {
+                let outcome_success_rate = if related.is_empty() {
                     0.5
                 } else {
                     successful_outcomes as f32 / related.len() as f32
                 };
+                let verification_weight = match record.verification_state {
+                    VerificationState::Verified => 1.0,
+                    VerificationState::ReportedUnverified => 0.65,
+                    VerificationState::PendingEvidence => 0.5,
+                    VerificationState::Unverified => 0.4,
+                    VerificationState::Falsified => 0.0,
+                };
+                let measured_outcomes = related
+                    .iter()
+                    .filter(|outcome| outcome.measurement.is_some())
+                    .count();
+                let reproducibility_score = if related.is_empty() {
+                    0.25
+                } else {
+                    measured_outcomes as f32 / related.len() as f32
+                };
+                let age = search.snapshot_lsn.saturating_sub(record.commit_lsn) as f32;
+                let recency_weight = 1.0 / (1.0 + age / 1_000.0);
+                let mut ranking_components = BTreeMap::new();
+                ranking_components.insert("semantic_relevance".to_string(), evidence.score);
+                ranking_components.insert("verification_weight".to_string(), verification_weight);
+                ranking_components.insert("outcome_success_rate".to_string(), outcome_success_rate);
+                ranking_components
+                    .insert("reproducibility_score".to_string(), reproducibility_score);
+                ranking_components.insert("recency_weight".to_string(), recency_weight);
                 ResolutionHypothesis {
                     hypothesis: record.content.clone(),
-                    confidence: (evidence.score * empirical_factor).clamp(0.0, 1.0),
+                    confidence: (evidence.score
+                        * verification_weight
+                        * (0.5 + 0.5 * outcome_success_rate)
+                        * (0.75 + 0.25 * reproducibility_score)
+                        * recency_weight)
+                        .clamp(0.0, 1.0),
+                    ranking_components,
                     evidence_ids: vec![record.id.clone()],
                     successful_outcomes,
                     failed_outcomes,
@@ -1589,6 +1806,8 @@ impl ModelToolService {
                 }
             })
             .collect();
+        let mut hypotheses: Vec<ResolutionHypothesis> = hypotheses;
+        hypotheses.sort_by(|left, right| right.confidence.total_cmp(&left.confidence));
         Ok(EvidenceEnvelope {
             tenant_id: search.tenant_id,
             snapshot_lsn: search.snapshot_lsn,
@@ -1666,7 +1885,8 @@ impl ModelToolService {
                 || m.metrics_digest.trim().is_empty()
             {
                 return Err(HNSQRError::InvalidRequest(
-                    "measurement spec requires non-empty artifact_id, producer, and metrics_digest".to_string(),
+                    "measurement spec requires non-empty artifact_id, producer, and metrics_digest"
+                        .to_string(),
                 ));
             }
             (
@@ -1675,7 +1895,9 @@ impl ModelToolService {
             )
         } else if !request.metrics.is_empty() {
             (
-                request.evidence_class.unwrap_or(EvidenceClass::ReportedClaim),
+                request
+                    .evidence_class
+                    .unwrap_or(EvidenceClass::ReportedClaim),
                 VerificationState::ReportedUnverified,
             )
         } else {
@@ -1893,7 +2115,10 @@ impl ModelToolService {
                         provenance: vec![ProvenanceReference {
                             source_id: format!("agent:{}", subject.key_id),
                             uri: None,
-                            content_hash: format!("sha256:{}", sha256_hex(request.case_id.as_bytes())),
+                            content_hash: format!(
+                                "sha256:{}",
+                                sha256_hex(request.case_id.as_bytes())
+                            ),
                             observed_at_lsn: Some(snapshot_lsn),
                         }],
                     },
@@ -2150,6 +2375,203 @@ impl ModelToolService {
         })
     }
 
+    /// Returns the capability and collection-space snapshot required to safely start any case.
+    pub fn status(&self, subject: &AuthenticatedSubject) -> EvidenceEnvelope<RuntimeStatus> {
+        let mut collection_embeddings = self.store.collection_specs(&subject.tenant_id);
+        collection_embeddings
+            .entry(default_collection())
+            .or_insert_with(|| self.embedder.descriptor().clone());
+        let mut degradations = Vec::new();
+        if self.web_search.is_none() {
+            degradations.push("live web search is not configured".to_string());
+        }
+        if subject.role < AccessRole::ReadWrite {
+            degradations
+                .push("read-only authorization: durable learning writes are disabled".to_string());
+        }
+        EvidenceEnvelope {
+            tenant_id: subject.tenant_id.clone(),
+            snapshot_lsn: self.store.current_lsn(),
+            retrieval_contract: "runtime_preflight".to_string(),
+            certified: true,
+            proof_upper_bound: None,
+            content_is_untrusted: false,
+            results: RuntimeStatus {
+                ready: true,
+                read_write_authorized: subject.role >= AccessRole::ReadWrite,
+                web_search_available: self.web_search.is_some(),
+                embedding_provider: self.embedder.descriptor().clone(),
+                collection_embeddings,
+                limits: RuntimeLimits {
+                    max_search_results: MAX_K,
+                    max_web_results: self
+                        .web_search
+                        .as_ref()
+                        .map_or(0, |provider| provider.max_results()),
+                    max_hypotheses: 20,
+                    max_traversal_depth: MAX_TRAVERSAL_DEPTH,
+                },
+                degradations,
+            },
+            contradictions: Vec::new(),
+        }
+    }
+
+    /// Prepares a universal evidence-first case. The server never executes consequential
+    /// actions: callers must pass the returned action gate to an authorized executor.
+    pub fn run_case(
+        &self,
+        subject: &AuthenticatedSubject,
+        mut request: RunCaseToolRequest,
+    ) -> HNSQRResult<EvidenceEnvelope<RunCaseResult>> {
+        if request.objective.trim().is_empty() {
+            return Err(HNSQRError::InvalidRequest(
+                "objective is required".to_string(),
+            ));
+        }
+        if request.budgets.tool_calls == 0
+            || request.budgets.tool_calls > 100
+            || request.budgets.retrieval_results == 0
+            || request.budgets.retrieval_results > MAX_K
+        {
+            return Err(HNSQRError::InvalidRequest(
+                "budgets.tool_calls must be 1..=100 and budgets.retrieval_results must be 1..=100"
+                    .to_string(),
+            ));
+        }
+        const RECIPES: &[&str] = &[
+            "research_and_synthesize",
+            "diagnose_and_fix",
+            "implement_and_test",
+            "compare_options",
+            "incident_response",
+            "analyze_dataset",
+            "evaluate_strategy",
+        ];
+        const EVIDENCE_POLICIES: &[&str] =
+            &["none", "knowledge_only", "web_if_needed", "web_required"];
+        const EXECUTION_POLICIES: &[&str] = &["propose_only", "tests_only", "authorized_executor"];
+        if !RECIPES.contains(&request.recipe.as_str())
+            || !EVIDENCE_POLICIES.contains(&request.evidence_policy.as_str())
+            || !EXECUTION_POLICIES.contains(&request.execution_policy.as_str())
+        {
+            return Err(HNSQRError::InvalidRequest(
+                "unknown recipe, evidence_policy, or execution_policy".to_string(),
+            ));
+        }
+        let status = self.status(subject).results;
+        let minimum_calls = if status.read_write_authorized { 3 } else { 1 }
+            + usize::from(request.evidence_policy == "web_required");
+        if request.budgets.tool_calls < minimum_calls {
+            return Err(HNSQRError::InvalidRequest(format!(
+                "budgets.tool_calls={} cannot satisfy the selected workflow; at least {minimum_calls} calls are required",
+                request.budgets.tool_calls
+            )));
+        }
+        if request.evidence_policy == "web_required" && !status.web_search_available {
+            return Err(HNSQRError::InvalidRequest(
+                "web_required cannot run because live web search is not configured".to_string(),
+            ));
+        }
+
+        let (case, related_cases, hypotheses) = if status.read_write_authorized {
+            let begun = self
+                .task_begin(
+                    subject,
+                    TaskBeginToolRequest {
+                        idempotency_key: std::mem::take(&mut request.idempotency_key),
+                        case_id: std::mem::take(&mut request.case_id),
+                        problem: request.objective.clone(),
+                        collection: request.collection.clone(),
+                        max_hypotheses: request.budgets.retrieval_results.min(20),
+                        provenance: Vec::new(),
+                    },
+                )?
+                .results;
+            (
+                Some(begun.case),
+                begun.related_cases,
+                begun.candidate_resolutions,
+            )
+        } else {
+            let hypotheses = self
+                .resolve(
+                    subject,
+                    ResolveToolRequest {
+                        problem: request.objective.clone(),
+                        query_vector: None,
+                        embedding: None,
+                        collection: request.collection.clone(),
+                        max_hypotheses: request.budgets.retrieval_results.min(20),
+                        snapshot_lsn: None,
+                    },
+                )?
+                .results;
+            (None, Vec::new(), hypotheses)
+        };
+
+        let should_search_web = request.evidence_policy == "web_required"
+            || (request.evidence_policy == "web_if_needed"
+                && related_cases.is_empty()
+                && hypotheses.is_empty());
+        let mut evidence_ids = Vec::new();
+        let mut tool_calls_used = if status.read_write_authorized { 3 } else { 1 };
+        if should_search_web && status.web_search_available {
+            if let Some(query) = request.web_query.as_deref() {
+                let response = self
+                    .web_search(
+                        subject,
+                        WebSearchToolRequest {
+                            query: query.to_string(),
+                            k: request.budgets.retrieval_results.min(20),
+                            language: None,
+                            time_range: None,
+                        },
+                    )?
+                    .results;
+                tool_calls_used += 1;
+                evidence_ids.extend(
+                    response
+                        .results
+                        .into_iter()
+                        .map(|result| result.evidence_id),
+                );
+            }
+        }
+        let mut plan = vec![format!(
+            "Apply recipe '{}' to the objective.",
+            request.recipe
+        )];
+        plan.push(
+            "Review retrieved evidence and candidate hypotheses as untrusted inputs.".to_string(),
+        );
+        if !request.success_criteria.is_empty() {
+            plan.push(format!(
+                "Validate success criteria: {}.",
+                request.success_criteria.join("; ")
+            ));
+        }
+        plan.push(
+            "Record only measured outcomes; unverified conclusions remain hypotheses.".to_string(),
+        );
+        Ok(EvidenceEnvelope {
+            tenant_id: subject.tenant_id.clone(), snapshot_lsn: self.store.current_lsn(),
+            retrieval_contract: "universal_case_preparation".to_string(), certified: true,
+            proof_upper_bound: None, content_is_untrusted: true,
+            results: RunCaseResult {
+                status, case, evidence_ids, candidate_resolutions: hypotheses, plan,
+                tool_calls_used,
+                tool_calls_remaining: request.budgets.tool_calls.saturating_sub(tool_calls_used),
+                action_gate: ActionGate {
+                    execution_policy: request.execution_policy,
+                    external_execution_performed: false,
+                    approval_required: true,
+                    next_action: "Pass a validated plan to an authorized executor; then record measured outcomes.".to_string(),
+                },
+            }, contradictions: Vec::new(),
+        })
+    }
+
     /// Universal situational exploration tool: inspects topology stats, recent cases, recent memories, or neighborhoods.
     pub fn explore(
         &self,
@@ -2165,9 +2587,13 @@ impl ModelToolService {
             "stats" => {
                 let mut kinds = BTreeMap::new();
                 let mut collections = BTreeSet::new();
+                let mut collection_embeddings = BTreeMap::new();
                 for r in &records {
                     *kinds.entry(r.kind.clone()).or_insert(0) += 1;
                     collections.insert(r.collection.clone());
+                    collection_embeddings
+                        .entry(r.collection.clone())
+                        .or_insert_with(|| r.embedding.clone());
                 }
                 ExploreResult {
                     target: "stats".to_string(),
@@ -2176,6 +2602,7 @@ impl ModelToolService {
                         total_outcomes: outcomes.len(),
                         current_lsn: snapshot_lsn,
                         collections: collections.into_iter().collect(),
+                        collection_embeddings,
                         kinds,
                     }),
                     recent_cases: None,
@@ -2251,6 +2678,120 @@ impl ModelToolService {
             proof_upper_bound: None,
             content_is_untrusted: true,
             results: result,
+            contradictions: Vec::new(),
+        })
+    }
+
+    /// Universal ingestion tool: compiles external material (codebase, files, markdown, URLs) into ContextGraph.
+    pub fn ingest(
+        &self,
+        subject: &AuthenticatedSubject,
+        request: IngestToolRequest,
+    ) -> HNSQRResult<EvidenceEnvelope<IngestResult>> {
+        let namespace = crate::contextgraph::Namespace::new(
+            request
+                .namespace
+                .unwrap_or_else(|| format!("tenant:{}", subject.tenant_id)),
+        );
+
+        let sources = if let Some(path) = &request.path {
+            let fs_adapter = crate::contextgraph::adapters::fs::FilesystemSourceAdapter::new();
+            fs_adapter.crawl_directory(path)?
+        } else if let Some(text) = &request.text {
+            vec![crate::contextgraph::SourceInput::from_text(
+                text,
+                request.url.unwrap_or_else(|| "direct_input".to_string()),
+                request.source_type,
+            )]
+        } else {
+            return Err(HNSQRError::InvalidRequest(
+                "path or text is required for ingest".to_string(),
+            ));
+        };
+
+        let compiler = crate::contextgraph::ContextCompiler::default();
+        let output = compiler.compile(&namespace, &sources)?;
+        let entities_count = output.entities.len();
+        let relations_count = output.relations.len();
+        let duration_ms = output.duration_ms;
+        let canonical_fingerprint = format!("{:x?}", output.canonical_fingerprint);
+
+        let commit_lsn = self.contextgraph.commit_delta(output.into_delta());
+
+        Ok(EvidenceEnvelope {
+            tenant_id: subject.tenant_id.clone(),
+            snapshot_lsn: commit_lsn,
+            retrieval_contract: "contextgraph_atomic_ingest".to_string(),
+            certified: true,
+            proof_upper_bound: None,
+            content_is_untrusted: true,
+            results: IngestResult {
+                namespace: namespace.0,
+                entities_count,
+                relations_count,
+                canonical_fingerprint,
+                commit_lsn,
+                duration_ms,
+            },
+            contradictions: Vec::new(),
+        })
+    }
+
+    /// Universal pathfinding tool: discovers shortest semantic relation path between entities.
+    pub fn path(
+        &self,
+        subject: &AuthenticatedSubject,
+        request: PathToolRequest,
+    ) -> HNSQRResult<EvidenceEnvelope<Option<crate::contextgraph::ContextSlice>>> {
+        let snapshot_lsn = self.snapshot_lsn(request.snapshot_lsn)?;
+        let state = self.contextgraph.snapshot();
+        let from_id = crate::contextgraph::schema::EntityId(request.from);
+        let to_id = crate::contextgraph::schema::EntityId(request.to);
+        let budget = crate::contextgraph::ContextBudget {
+            max_results: 50,
+            max_chars: 12000,
+            max_depth: request.max_depth,
+        };
+        let slice =
+            crate::contextgraph::ContextQueryEngine::path(&state, &from_id, &to_id, &budget);
+
+        Ok(EvidenceEnvelope {
+            tenant_id: subject.tenant_id.clone(),
+            snapshot_lsn,
+            retrieval_contract: "contextgraph_path_search".to_string(),
+            certified: true,
+            proof_upper_bound: None,
+            content_is_untrusted: true,
+            results: slice,
+            contradictions: Vec::new(),
+        })
+    }
+
+    /// Universal diff tool: compares ContextGraph state across snapshots or namespaces.
+    pub fn diff(
+        &self,
+        subject: &AuthenticatedSubject,
+        request: DiffToolRequest,
+    ) -> HNSQRResult<EvidenceEnvelope<serde_json::Value>> {
+        let state = self.contextgraph.snapshot();
+        let report = serde_json::json!({
+            "namespace": state.namespace.0,
+            "commit_lsn": state.commit_lsn,
+            "entities_count": state.entities.len(),
+            "relations_count": state.relations.len(),
+            "from_snapshot": request.from_snapshot,
+            "to_snapshot": request.to_snapshot,
+            "canonical_fingerprint": format!("{:x?}", state.canonical_fingerprint),
+        });
+
+        Ok(EvidenceEnvelope {
+            tenant_id: subject.tenant_id.clone(),
+            snapshot_lsn: state.commit_lsn,
+            retrieval_contract: "contextgraph_snapshot_diff".to_string(),
+            certified: true,
+            proof_upper_bound: None,
+            content_is_untrusted: true,
+            results: report,
             contradictions: Vec::new(),
         })
     }
@@ -2457,6 +2998,107 @@ async fn outcome_handler(
     .await
 }
 
+async fn task_begin_handler(
+    State(service): State<Arc<ModelToolService>>,
+    headers: HeaderMap,
+    Json(request): Json<TaskBeginToolRequest>,
+) -> Response {
+    run_rest(
+        service,
+        headers,
+        AccessRole::ReadWrite,
+        request,
+        |s, a, r| s.task_begin(a, r),
+    )
+    .await
+}
+
+async fn task_context_handler(
+    State(service): State<Arc<ModelToolService>>,
+    headers: HeaderMap,
+    Json(request): Json<TaskContextToolRequest>,
+) -> Response {
+    run_rest(
+        service,
+        headers,
+        AccessRole::ReadOnly,
+        request,
+        |s, a, r| s.task_context(a, r),
+    )
+    .await
+}
+
+async fn task_complete_handler(
+    State(service): State<Arc<ModelToolService>>,
+    headers: HeaderMap,
+    Json(request): Json<TaskCompleteToolRequest>,
+) -> Response {
+    run_rest(
+        service,
+        headers,
+        AccessRole::ReadWrite,
+        request,
+        |s, a, r| s.task_complete(a, r),
+    )
+    .await
+}
+
+async fn web_search_handler(
+    State(service): State<Arc<ModelToolService>>,
+    headers: HeaderMap,
+    Json(request): Json<WebSearchToolRequest>,
+) -> Response {
+    run_rest(
+        service,
+        headers,
+        AccessRole::ReadOnly,
+        request,
+        |s, a, r| s.web_search(a, r),
+    )
+    .await
+}
+
+async fn explore_handler(
+    State(service): State<Arc<ModelToolService>>,
+    headers: HeaderMap,
+    Json(request): Json<ExploreToolRequest>,
+) -> Response {
+    run_rest(
+        service,
+        headers,
+        AccessRole::ReadOnly,
+        request,
+        |s, a, r| s.explore(a, r),
+    )
+    .await
+}
+
+async fn status_handler(
+    State(service): State<Arc<ModelToolService>>,
+    headers: HeaderMap,
+) -> Response {
+    let subject = match service.auth().authenticate(&headers, AccessRole::ReadOnly) {
+        Ok(subject) => subject,
+        Err(error) => return error_response(error),
+    };
+    Json(service.status(&subject)).into_response()
+}
+
+async fn run_case_handler(
+    State(service): State<Arc<ModelToolService>>,
+    headers: HeaderMap,
+    Json(request): Json<RunCaseToolRequest>,
+) -> Response {
+    run_rest(
+        service,
+        headers,
+        AccessRole::ReadOnly,
+        request,
+        |s, a, r| s.run_case(a, r),
+    )
+    .await
+}
+
 /// Builds the provider-neutral REST routes. MCP routes are merged by `transport::mcp`.
 pub fn create_model_api_router(service: Arc<ModelToolService>) -> Router {
     Router::new()
@@ -2465,6 +3107,13 @@ pub fn create_model_api_router(service: Arc<ModelToolService>) -> Router {
         .route("/v1/knowledge/resolve", post(resolve_handler))
         .route("/v1/knowledge/remember", post(remember_handler))
         .route("/v1/knowledge/outcomes", post(outcome_handler))
+        .route("/v1/knowledge/tasks/begin", post(task_begin_handler))
+        .route("/v1/knowledge/tasks/context", post(task_context_handler))
+        .route("/v1/knowledge/tasks/complete", post(task_complete_handler))
+        .route("/v1/knowledge/web/search", post(web_search_handler))
+        .route("/v1/knowledge/explore", post(explore_handler))
+        .route("/v1/knowledge/status", post(status_handler))
+        .route("/v1/knowledge/cases/run", post(run_case_handler))
         .with_state(service)
 }
 
@@ -2866,6 +3515,36 @@ mod tests {
             resolution.results[0].status,
             "hypothesis_requires_external_validation"
         );
+    }
+
+    #[test]
+    fn resolve_embeds_the_problem_instead_of_using_a_placeholder_vector() {
+        let service = service(Arc::new(ModelKnowledgeStore::in_memory()));
+        let actor = subject("alpha", AccessRole::ReadWrite);
+        service
+            .remember(
+                &actor,
+                remember_request("resolution", "resolution-key", "capacity sharing agreement"),
+            )
+            .unwrap();
+
+        let resolution = service
+            .resolve(
+                &actor,
+                ResolveToolRequest {
+                    problem: "capacity sharing".to_string(),
+                    // Some MCP clients used to fabricate this field. `resolve` must remain in
+                    // the collection's text embedding space rather than adapt this vector.
+                    query_vector: Some(vec![0.0, 0.0, 0.0]),
+                    embedding: None,
+                    collection: "knowledge".to_string(),
+                    max_hypotheses: 5,
+                    snapshot_lsn: None,
+                },
+            )
+            .unwrap();
+
+        assert_eq!(resolution.results[0].evidence_ids, ["resolution"]);
     }
 
     #[test]

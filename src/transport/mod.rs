@@ -27,9 +27,11 @@ pub use embedding_provider::{
 };
 pub use mcp::{MCP_PROTOCOL_VERSION, create_mcp_router, process_mcp_payload};
 pub use model_gateway::{
-    EmbeddingDescriptor, EvidenceEnvelope, KnowledgeRecord, ModelGatewayAuth, ModelKnowledgeStore,
-    ModelOutcomeRecord, ModelToolService, RecordOutcomeToolRequest, RememberToolRequest,
-    ResolveToolRequest, SearchToolRequest, TraverseToolRequest, create_model_api_router,
+    ActionGate, CaseBudget, EmbeddingDescriptor, EvidenceEnvelope, KnowledgeRecord,
+    ModelGatewayAuth, ModelKnowledgeStore, ModelOutcomeRecord, ModelToolService,
+    RecordOutcomeToolRequest, RememberToolRequest, ResolveToolRequest, RunCaseResult,
+    RunCaseToolRequest, RuntimeStatus, SearchToolRequest, TraverseToolRequest,
+    create_model_api_router,
 };
 pub use qir0::{HNSQRClient, HNSQRServer, MessageHeader, OpCode, PROTOCOL_MAGIC};
 pub use resp::{PubSubBroker, RedisStreamEngine, RespFrame, RespServer, StreamEntry};

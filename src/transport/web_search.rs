@@ -73,7 +73,9 @@ pub trait WebSearchProvider: Send + Sync {
 pub struct WebSearchToolRequest {
     #[serde(alias = "query_text")]
     pub query: String,
-    #[serde(default = "default_request_k")]
+    /// `max_results` is the conventional name used by many MCP clients.  Keep it as
+    /// a wire-level alias for `k` so clients do not need provider-specific retries.
+    #[serde(default = "default_request_k", alias = "max_results")]
     pub k: usize,
     #[serde(default)]
     pub language: Option<String>,
@@ -129,6 +131,9 @@ pub struct WebSearchResponse {
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct WebSearchResult {
+    /// Canonical durable evidence ID. It is stable for the retrieved content and
+    /// can be supplied directly to case, traversal, and outcome workflows.
+    pub evidence_id: String,
     pub title: String,
     pub url: String,
     pub snippet: String,
@@ -236,13 +241,17 @@ fn search_searxng(
         .into_iter()
         .take(request.k)
         .filter(|result| result.url.starts_with("http://") || result.url.starts_with("https://"))
-        .map(|result| WebSearchResult {
-            content_hash: evidence_hash(&result.title, &result.url, &result.content),
-            title: result.title,
-            url: result.url,
-            snippet: result.content,
-            published_at: result.published_date,
-            engines: result.engines,
+        .map(|result| {
+            let content_hash = evidence_hash(&result.title, &result.url, &result.content);
+            WebSearchResult {
+                evidence_id: format!("source:web:{}", &content_hash[..16]),
+                content_hash,
+                title: result.title,
+                url: result.url,
+                snippet: result.content,
+                published_at: result.published_date,
+                engines: result.engines,
+            }
         })
         .collect();
     Ok(WebSearchResponse {
@@ -308,6 +317,16 @@ mod tests {
                 .validate(8)
                 .is_err()
         );
+    }
+
+    #[test]
+    fn accepts_max_results_as_a_compatibility_alias() {
+        let request: WebSearchToolRequest = serde_json::from_value(serde_json::json!({
+            "query": "MCP interoperability",
+            "max_results": 4
+        }))
+        .unwrap();
+        assert_eq!(request.k, 4);
     }
 
     #[test]

@@ -31,7 +31,6 @@ use hnsqr::{
     AdaptivePolicy, HNSQRConfig, HNSQRIndex, NodeIndex, RiveroProfile, SimilarityScore,
     VectorEmbedding,
 };
-use rayon::prelude::*;
 
 const D: usize = 64;
 const N: usize = 10_000;
@@ -75,12 +74,11 @@ fn load_real_workload(
         queries.len()
     );
 
-    let ground_truth = compute_exact_ground_truth(&corpus, &queries, K_BENCH);
     Workload {
         name: name.to_string(),
         corpus,
         queries,
-        ground_truth,
+        ground_truth: Vec::new(),
     }
 }
 
@@ -94,26 +92,6 @@ fn load_boundary_workload(n: usize, d: usize, q_count: usize, _seed: u64) -> Wor
 
 fn load_isotropic_workload(n: usize, d: usize, q_count: usize, _seed: u64) -> Workload {
     load_real_workload("Real Query Partition C", n, d, q_count, q_count * 2)
-}
-
-fn compute_exact_ground_truth(
-    corpus: &[VectorEmbedding],
-    queries: &[VectorEmbedding],
-    k: usize,
-) -> Vec<Vec<(NodeIndex, SimilarityScore)>> {
-    queries
-        .par_iter()
-        .map(|query| {
-            let mut scores: Vec<(NodeIndex, SimilarityScore)> = corpus
-                .iter()
-                .enumerate()
-                .map(|(idx, doc)| (idx as NodeIndex, query.projective_overlap(doc)))
-                .collect();
-            scores.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-            scores.truncate(k);
-            scores
-        })
-        .collect()
 }
 
 fn calculate_ndcg(
@@ -500,11 +478,8 @@ fn run_workload_benchmark(workload: &Workload) {
     // metric.  This prevents a benchmark-local similarity helper from
     // drifting away from the actual serving contract.
     let mut evaluated_workload = workload.clone();
-    evaluated_workload.ground_truth = evaluated_workload
-        .queries
-        .iter()
-        .map(|query| index.search_indices_exact(query, K_BENCH, None).unwrap())
-        .collect();
+    evaluated_workload.ground_truth =
+        common::compute_exact_ground_truth(&index, &evaluated_workload.queries, K_BENCH);
 
     let res_strict = evaluate_strict_reference(&index, &evaluated_workload);
     let res_adapt_bounded = evaluate_adaptive_bounded(&index, &evaluated_workload);

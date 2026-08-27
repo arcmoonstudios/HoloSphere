@@ -17,6 +17,8 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
+mod common;
+
 use hnsqr::planning::RetrievalContract;
 use hnsqr::storage::snapshot::SnapshotOpenOptions;
 use hnsqr::vector::folding::ComplexWeaver;
@@ -126,17 +128,7 @@ fn benchmark_million_dataset(name: &str, snapshot_path: &Path, query_path: &Path
         queries.len()
     );
     let t_gt = Instant::now();
-    let ground_truths: Vec<Vec<(usize, f32)>> = queries
-        .iter()
-        .map(|q| {
-            index
-                .search_indices_exact(q, K_NEIGHBORS, None)
-                .expect("exact ground truth failed")
-                .into_iter()
-                .map(|(slot, score)| (slot as usize, score))
-                .collect()
-        })
-        .collect();
+    let ground_truths = common::compute_exact_ground_truth(&index, &queries, K_NEIGHBORS);
     println!("  Ground truth computed in {:.2?}", t_gt.elapsed());
 
     let modes = [
@@ -162,8 +154,7 @@ fn benchmark_million_dataset(name: &str, snapshot_path: &Path, query_path: &Path
 
         for (qi, query) in queries.iter().enumerate() {
             let gt = &ground_truths[qi];
-            let gt_indices: std::collections::HashSet<usize> =
-                gt.iter().map(|(idx, _)| *idx).collect();
+            let gt_indices: std::collections::HashSet<_> = gt.iter().map(|(idx, _)| *idx).collect();
 
             let start = Instant::now();
             let raw_results = match mode {
@@ -198,7 +189,7 @@ fn benchmark_million_dataset(name: &str, snapshot_path: &Path, query_path: &Path
             });
             let matched = results
                 .iter()
-                .filter(|&&(idx, _)| gt_indices.contains(&(idx as usize)))
+                .filter(|&&(idx, _)| gt_indices.contains(&idx))
                 .count();
             let recall_pct = (matched as f64 / K_NEIGHBORS as f64) * 100.0;
 

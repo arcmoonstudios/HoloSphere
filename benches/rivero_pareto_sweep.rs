@@ -29,7 +29,6 @@ use hnsqr::{
     HNSQRConfig, HNSQRIndex, NodeIndex, RiveroAddress, RiveroConfig, SimilarityScore,
     VectorEmbedding,
 };
-use rayon::prelude::*;
 
 const SWEEP_SEED: u64 = 0x5249_5645_524f_5357;
 const DIMENSION: usize = 64;
@@ -82,12 +81,11 @@ fn load_real_workload(
         queries.len()
     );
 
-    let ground_truth = compute_ground_truth(&corpus, &queries, 100);
     Workload {
         name: name.to_string(),
         corpus,
         queries,
-        ground_truth,
+        ground_truth: Vec::new(),
     }
 }
 
@@ -125,28 +123,6 @@ fn load_boundary_workload(
         query_count,
         query_count * 2,
     )
-}
-
-fn compute_ground_truth(
-    corpus: &[VectorEmbedding],
-    queries: &[VectorEmbedding],
-    top_k: usize,
-) -> Vec<Vec<(NodeIndex, SimilarityScore)>> {
-    queries
-        .par_iter()
-        .map(|query| {
-            let mut scores: Vec<(NodeIndex, SimilarityScore)> = corpus
-                .iter()
-                .enumerate()
-                .map(|(idx, doc)| (idx as NodeIndex, query.projective_overlap(doc)))
-                .collect();
-            scores.sort_unstable_by(|lhs, rhs| {
-                rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
-            });
-            scores.truncate(top_k);
-            scores
-        })
-        .collect()
 }
 
 fn calculate_ndcg(
@@ -256,7 +232,7 @@ fn main() {
     let boundary =
         load_boundary_workload(CORPUS_SIZE, DIMENSION, QUERY_COUNT, 32, SWEEP_SEED ^ 0x5678);
 
-    let workloads = vec![clustered, isotropic, boundary];
+    let mut workloads = vec![clustered, isotropic, boundary];
 
     // Parameter Grid Definition
     let foundation_options = [8, 12, 16, 24];
@@ -273,7 +249,7 @@ fn main() {
     println!("  Candidate Cap (K_cap): {:?}", candidate_cap_options);
     println!();
 
-    for workload in &workloads {
+    for workload in &mut workloads {
         println!(
             "════════════════════════════════════════════════════════════════════════════════════════"
         );
@@ -338,6 +314,9 @@ fn main() {
             let _ = index.save_snapshot_v2(&snap_path);
             index
         };
+
+        workload.ground_truth =
+            common::compute_exact_ground_truth(&index, &workload.queries, K_BENCH);
 
         // Precompile query addresses
         let addresses: Vec<RiveroAddress> = workload

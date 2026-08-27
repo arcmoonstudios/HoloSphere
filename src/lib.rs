@@ -327,10 +327,6 @@ pub use planning::autoforge::{
 pub use planning::planner::{
     ExecutionPlan, ExecutionProof, QueryModality, RetrievalContract, UniversalPlanner,
 };
-pub use proof::lutz::{
-    LutzCandidateThreat, LutzCertificationDiagnostics, LutzCertifier, LutzCode,
-    LutzGlobalCertified, LutzQueryTable, SemanticRerankPlan, exact_rerank_locality_sorted,
-};
 pub use proof::{
     DenseExactProof, GlobalExactProofSearch, ProofCentroidCode, ProofNode, ProofQuery,
     SegmentProofView, SemanticProofTree,
@@ -751,6 +747,87 @@ pub fn dot_product_complex_simd(a: &[Complex32], b: &[Complex32]) -> Complex32 {
     {
         dot_product_complex_scalar_unrolled(a, b)
     }
+}
+
+/// Computes only the real component of the complex inner product. Cosine and
+/// Euclidean scoring do not need the imaginary cross-product component.
+#[inline(always)]
+pub fn dot_product_real_complex_simd(a: &[Complex32], b: &[Complex32]) -> f32 {
+    #[cfg(target_arch = "x86_64")]
+    {
+        unsafe { dot_product_real_complex_avx2(a, b) }
+    }
+    #[cfg(target_arch = "aarch64")]
+    {
+        unsafe { dot_product_real_complex_neon(a, b) }
+    }
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+    {
+        a.iter()
+            .zip(b)
+            .map(|(lhs, rhs)| lhs.re * rhs.re + lhs.im * rhs.im)
+            .sum()
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2,fma")]
+unsafe fn dot_product_real_complex_avx2(a: &[Complex32], b: &[Complex32]) -> f32 {
+    use core::arch::x86_64::*;
+
+    let float_len = a.len().min(b.len()) * 2;
+    let a_ptr = a.as_ptr() as *const f32;
+    let b_ptr = b.as_ptr() as *const f32;
+    let mut acc0 = _mm256_setzero_ps();
+    let mut acc1 = _mm256_setzero_ps();
+    let mut offset = 0;
+    while offset + 16 <= float_len {
+        acc0 = _mm256_fmadd_ps(
+            _mm256_loadu_ps(a_ptr.add(offset)),
+            _mm256_loadu_ps(b_ptr.add(offset)),
+            acc0,
+        );
+        acc1 = _mm256_fmadd_ps(
+            _mm256_loadu_ps(a_ptr.add(offset + 8)),
+            _mm256_loadu_ps(b_ptr.add(offset + 8)),
+            acc1,
+        );
+        offset += 16;
+    }
+    let mut lanes = [0.0f32; 8];
+    _mm256_storeu_ps(lanes.as_mut_ptr(), _mm256_add_ps(acc0, acc1));
+    let mut total = lanes.into_iter().sum::<f32>();
+    while offset < float_len {
+        total += *a_ptr.add(offset) * *b_ptr.add(offset);
+        offset += 1;
+    }
+    total
+}
+
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "neon")]
+unsafe fn dot_product_real_complex_neon(a: &[Complex32], b: &[Complex32]) -> f32 {
+    use core::arch::aarch64::*;
+
+    let float_len = a.len().min(b.len()) * 2;
+    let a_ptr = a.as_ptr() as *const f32;
+    let b_ptr = b.as_ptr() as *const f32;
+    let mut acc = vdupq_n_f32(0.0);
+    let mut offset = 0;
+    while offset + 4 <= float_len {
+        acc = vfmaq_f32(
+            acc,
+            vld1q_f32(a_ptr.add(offset)),
+            vld1q_f32(b_ptr.add(offset)),
+        );
+        offset += 4;
+    }
+    let mut total = vaddvq_f32(acc);
+    while offset < float_len {
+        total += *a_ptr.add(offset) * *b_ptr.add(offset);
+        offset += 1;
+    }
+    total
 }
 
 #[cfg(target_arch = "aarch64")]
@@ -1890,7 +1967,6 @@ pub struct HNSQRIndex {
     peak_active_searches: AtomicUsize,
     stats: RwLock<IndexStats>,
     lifecycle: RwLock<()>,
-    lutz_codes: RwLock<Vec<Option<crate::proof::lutz::LutzCode>>>,
     proof_tree: RwLock<Option<Arc<SemanticProofTree>>>,
     /// Normalized arena vectors paired with `proof_tree`. Certified search must
     /// reuse this immutable materialization rather than allocate and normalize
@@ -1929,7 +2005,6 @@ impl HNSQRIndex {
             peak_active_searches: AtomicUsize::new(0),
             stats: RwLock::new(IndexStats::default()),
             lifecycle: RwLock::new(()),
-            lutz_codes: RwLock::new(Vec::with_capacity(max_capacity)),
             proof_tree: RwLock::new(None),
             proof_vectors: RwLock::new(None),
             wal: RwLock::new(None),
@@ -2020,7 +2095,6 @@ impl HNSQRIndex {
             peak_active_searches: AtomicUsize::new(0),
             stats: RwLock::new(IndexStats::default()),
             lifecycle: RwLock::new(()),
-            lutz_codes: RwLock::new(Vec::with_capacity(max_capacity)),
             proof_tree: RwLock::new(None),
             proof_vectors: RwLock::new(None),
             wal: RwLock::new(None),
@@ -2066,7 +2140,6 @@ impl HNSQRIndex {
             peak_active_searches: AtomicUsize::new(0),
             stats: RwLock::new(IndexStats::default()),
             lifecycle: RwLock::new(()),
-            lutz_codes: RwLock::new(Vec::with_capacity(max_cap)),
             proof_tree: RwLock::new(None),
             proof_vectors: RwLock::new(None),
             wal: RwLock::new(None),
@@ -2678,18 +2751,6 @@ impl HNSQRIndex {
                 node_index,
             );
         }
-        if rivero_enabled {
-            let lutz_code = crate::proof::lutz::LutzCode::encode(
-                &VectorEmbedding::from_complex(data.to_vec()),
-                true,
-            );
-            let mut lutz_guard = self.lutz_codes.write();
-            if lutz_guard.len() <= node_index as usize {
-                lutz_guard.resize(node_index as usize + 1, None);
-            }
-            lutz_guard[node_index as usize] = Some(lutz_code);
-        }
-
         self.arena.publish_slot(node_index);
         {
             let mut stats = self.stats.write();
@@ -3666,7 +3727,7 @@ impl HNSQRIndex {
             crate::planning::planner::ExecutionPlan::ExactScan { .. } => {
                 self.search_indices_exact(query, k, filter_mask)
             }
-            crate::planning::planner::ExecutionPlan::LutzGlobalCertified {
+            crate::planning::planner::ExecutionPlan::ProofTreeCertified {
                 initial_seed_cap: _,
             } => match self.certified_search(query, k, filter_mask)? {
                 CertifiedSearchOutcome::Exact { results, .. } => Ok(results),
@@ -3688,7 +3749,7 @@ impl HNSQRIndex {
                     })
                 }
             },
-            crate::planning::planner::ExecutionPlan::LutzPacRelaxed {
+            crate::planning::planner::ExecutionPlan::ProofTreePacRelaxed {
                 epsilon,
                 delta,
                 initial_seed_cap: _,
@@ -4014,9 +4075,15 @@ impl HNSQRIndex {
 
         let query_data = query.complex_data();
         let query_norm_sq = query.norm_squared();
+        // The metric is a query-scoped contract.  Reading it once keeps the
+        // authoritative exact loop free of per-vector configuration locks.
+        let dist_fn = self.config.read().distance_function;
         let n = self.arena.len();
 
-        let mut scored: Vec<(NodeIndex, SimilarityScore)> = Vec::with_capacity(n.min(k * 4));
+        // Exact search scores every eligible live slot.  Pre-size for that
+        // upper bound rather than repeatedly growing from a tiny `k * 4`
+        // allocation on large corpora.
+        let mut scored: Vec<(NodeIndex, SimilarityScore)> = Vec::with_capacity(n);
         for i in 0..n as NodeIndex {
             if !self.arena.is_live(i) {
                 continue;
@@ -4026,7 +4093,13 @@ impl HNSQRIndex {
             }
             let v = self.arena.get_vector_slice(i);
             let norm_sq = self.arena.get_norm_squared(i);
-            let score = self.similarity_score_slices(query_data, v, query_norm_sq, norm_sq);
+            let score = self.similarity_score_slices_with_metric(
+                query_data,
+                v,
+                query_norm_sq,
+                norm_sq,
+                dist_fn,
+            );
             scored.push((i, score));
         }
 
@@ -5531,14 +5604,14 @@ impl HNSQRIndex {
                 affect,
             );
             match plan {
-                crate::planning::planner::ExecutionPlan::LutzGlobalCertified { .. } => self
+                crate::planning::planner::ExecutionPlan::ProofTreeCertified { .. } => self
                     .search_indices_with_contract(
                         query,
                         k * 3,
                         compiled_mask.as_ref(),
                         crate::planning::planner::RetrievalContract::Certified,
                     )?,
-                crate::planning::planner::ExecutionPlan::LutzPacRelaxed {
+                crate::planning::planner::ExecutionPlan::ProofTreePacRelaxed {
                     epsilon, delta, ..
                 } => self.search_indices_with_contract(
                     query,
@@ -5722,13 +5795,7 @@ impl HNSQRIndex {
         }
         self.metadata_index.remove_node_index(index);
 
-        // Invalidate cached proof tree and clear quantized code slot
-        {
-            let mut lutz_guard = self.lutz_codes.write();
-            if (index as usize) < lutz_guard.len() {
-                lutz_guard[index as usize] = None;
-            }
-        }
+        // Mutations invalidate the cached proof material.
         *self.proof_tree.write() = None;
         *self.proof_vectors.write() = None;
 

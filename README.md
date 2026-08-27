@@ -475,7 +475,7 @@ Client ACK ◄── CommitReceipt ◄── ShardStateMachine Apply ◄── Q
 ## Wire Protocols, Web Console & API Docs
 
 * **QIR0 Binary TCP Protocol (`:9090`)**: High-throughput async protocol supporting `OpCode::Ping`, `Insert`, `Search`, `BatchSearch`, `Stats`, and `OpCode::GraphQuery`.
-* **Model Context Protocol (`POST :8080/mcp`)**: MCP `2025-06-18` Streamable HTTP server for OpenAI, Gemini, Claude, and compatible agents. It exposes tenant-isolated evidence primitives (`search`, `traverse`, `resolve`, `remember`, `record_outcome`), live public-web retrieval (`web.search`), and a native model-agnostic case workflow (`task.begin`, `task.context`, `task.complete`) with role checks and closed JSON schemas.
+* **Model Context Protocol (`POST :8080/mcp`)**: MCP `2025-06-18` Streamable HTTP server for OpenAI, Gemini, Claude, and compatible agents. It exposes tenant-isolated evidence primitives (`search`, `traverse`, `resolve`, `remember`, `record_outcome`), live public-web retrieval (`web_search`), and a native model-agnostic case workflow (`task_begin`, `task_context`, `task_complete`) with role checks and closed JSON schemas. Dotted aliases (`web.search`, `task.begin`, etc.) are retained for backward compatibility.
 * **Redis RESP Protocol (`:6379`)**: Native RESP2/RESP3 server with `PING`, `SET`, `GET`, `INCR`, `DEL`, `PUBLISH`, `SUBSCRIBE`, `XADD`, and `XREAD`.
 * **Arrow-shaped batch socket (`:50051`)**: Project-local `ARROW1`-framed schema and batch payload; full gRPC Arrow Flight SQL compatibility is not yet claimed.
 * **HTTP REST Gateway (`:8080`)**: Axum-based JSON REST API for vector collections plus `/v1/knowledge/search`, `/traverse`, `/resolve`, `/remember`, and `/outcomes`. Collection search accepts exactly one of a raw `query`/`vector` or `query_text`; text-only operations use the configured embedding provider and collections pin its model identity. Human-readable metadata accepts natural JSON string, integer, float, and Boolean scalars. Model responses carry a pinned LSN, proof status, and an explicit untrusted-content marker.
@@ -503,6 +503,45 @@ hash provider remains available as an explicit offline fallback.
 For MCP reads, omit `snapshot_lsn` (or use `0`, for clients that serialize absent numeric
 fields as zero) to read the latest committed knowledge. A positive `snapshot_lsn` is a
 strict historical pin.
+
+#### Adding HoloSphere to your MCP client
+
+HoloSphere ships a pre-built STDIO MCP server alongside the main daemon. Most MCP-capable
+clients (Kiro, Claude Desktop, Cursor, etc.) accept a JSON config file—typically
+`mcp_config.json` or `mcp.json`—where you register servers by name.
+
+Add a `holosphere` entry to that file:
+
+```json
+{
+  "mcpServers": {
+    "holosphere": {
+      "command": "X:\\_Repos\\holosphere\\target\\agent-integrations\\hnsqr_mcp_stdio-96e59d65d8058633.exe",
+      "args": [],
+      "env": {
+        "HNSQR_MCP_ROLE": "readwrite",
+        "HNSQR_DATA_DIR": "C:\\Users\\YourName\\AppData\\Local\\HoloSphere\\model-agent",
+        "HNSQR_MCP_TENANT": "local-agents",
+        "HNSQR_CONFIG": "X:\\_Repos\\holosphere\\Config.toml"
+      }
+    }
+  }
+}
+```
+
+Key fields:
+
+| Field | Purpose |
+|---|---|
+| `command` | Absolute path to the compiled `hnsqr_mcp_stdio-*.exe` under `target\agent-integrations\`. The hash suffix changes on rebuild—update this after `cargo build --release`. |
+| `HNSQR_MCP_ROLE` | `readonly`, `readwrite`, or `admin`. Omit to get the fail-closed default (no access). For development without tokens set `HNSQR_MODEL_ALLOW_ANONYMOUS=true` in `env` instead. |
+| `HNSQR_DATA_DIR` | Directory where `model-knowledge.jsonl` is persisted and replayed at startup. Must be writable by the process. |
+| `HNSQR_MCP_TENANT` | Logical namespace for knowledge scoping. Use distinct values per agent or project to keep knowledge isolated. |
+| `HNSQR_CONFIG` | Absolute path to [`Config.toml`](Config.toml). Required when the MCP client launches the process outside the repository directory. |
+
+For production deployments replace `HNSQR_MCP_ROLE` with token-based auth by setting
+`HNSQR_MODEL_READ_TOKEN`, `HNSQR_MODEL_WRITE_TOKEN`, or `HNSQR_MODEL_ADMIN_TOKEN` in
+`env` and removing `HNSQR_MODEL_ALLOW_ANONYMOUS`.
 
 ### Configurable Local and Hosted Embeddings
 
@@ -606,18 +645,18 @@ client can use the native task workflow, which is backed by the same tenant-scop
 durable knowledge graph as the five evidence primitives:
 
 ```text
-task.begin(problem)
+task_begin(problem)
   → retrieve prior similar cases and evidence-backed candidate resolutions
   → persist the new Issue case and `similar_to` links
-task.context(case_id)
+task_context(case_id)
   → rehydrate the case, graph relations, and pinned evidence for any later agent
-task.complete(case_id, measured evidence)
+task_complete(case_id, measured evidence)
   → persist the empirical outcome
   → on success, promote a Resolution and link it with `fixed_by`
 ```
 
-`task.begin` and `task.complete` require read-write authorization and non-empty
-provenance. `task.context` is read-only. All writes use caller-supplied idempotency keys;
+`task_begin` (or alias `task.begin`) and `task_complete` (or alias `task.complete`) require read-write authorization and non-empty
+provenance. `task_context` is read-only. All writes use caller-supplied idempotency keys;
 retrieved content remains explicitly untrusted evidence and never becomes executable
 instruction. This makes the memory loop provider-neutral: any agent or model using the
 MCP can resume a solved case without relying on Codex-specific behavior or CI hooks.

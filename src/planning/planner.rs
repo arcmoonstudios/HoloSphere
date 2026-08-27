@@ -14,7 +14,6 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 use crate::planning::affect::{AffectiveRegime, AffectiveStateTensor8D};
-use crate::proof::lutz::SemanticRerankPlan;
 use crate::rivero::RiveroProfile;
 
 /// Declarative user correctness contract.
@@ -56,17 +55,16 @@ pub enum ExecutionPlan {
     /// Pure exact scan (for small effective corpora $N_{\text{eff}} < N_{\text{cross}}$).
     ExactScan { effective_n: usize },
     /// Corpus-Global Cauchy-Schwarz certified retrieval with Rivero seeding.
-    LutzGlobalCertified { initial_seed_cap: usize },
+    ProofTreeCertified { initial_seed_cap: usize },
     /// PAC-Relaxed (ε, δ) branch-and-bound retrieval.
-    LutzPacRelaxed {
+    ProofTreePacRelaxed {
         initial_seed_cap: usize,
         epsilon: f32,
         delta: f32,
     },
-    /// Rivero routing + Semantic Reranker.
+    /// Rivero routing followed by direct Exact SIMD reranking.
     RiveroRetrieval {
         profile: RiveroProfile,
-        rerank_plan: SemanticRerankPlan,
         candidate_cap: usize,
     },
     /// Sparse BM25 / Block-Max WAND lexical search.
@@ -254,7 +252,7 @@ impl UniversalPlanner {
         }
 
         if let RetrievalContract::PacRelaxed { epsilon, delta } = effective_contract {
-            return ExecutionPlan::LutzPacRelaxed {
+            return ExecutionPlan::ProofTreePacRelaxed {
                 initial_seed_cap: ((2048.0 * dim_multiplier) * (1.0 - epsilon)).round() as usize,
                 epsilon,
                 delta,
@@ -276,16 +274,8 @@ impl UniversalPlanner {
 
         let candidate_cap = ((base_cap as f32) * dim_multiplier).round() as usize;
 
-        // 4. Select Semantic Reranking Policy based on residency
-        let rerank_plan = if is_mmap_cold {
-            SemanticRerankPlan::LutzFastScan
-        } else {
-            SemanticRerankPlan::ExactSimd
-        };
-
         ExecutionPlan::RiveroRetrieval {
             profile,
-            rerank_plan,
             candidate_cap,
         }
     }
@@ -316,7 +306,7 @@ mod tests {
             }
         ));
 
-        // Large corpus (N=100,000 at 1536D) with HighRecall contract in cold mmap -> Rivero + LutzFastScan
+        // Large corpus with HighRecall remains Rivero plus direct Exact SIMD reranking.
         let plan_large_cold = UniversalPlanner::plan(
             100_000,
             768,
@@ -328,7 +318,6 @@ mod tests {
             plan_large_cold,
             ExecutionPlan::RiveroRetrieval {
                 profile: RiveroProfile::Balanced,
-                rerank_plan: SemanticRerankPlan::LutzFastScan,
                 ..
             }
         ));
@@ -372,7 +361,7 @@ mod tests {
             false,
             &explore_affect,
         );
-        assert!(matches!(plan_explore, ExecutionPlan::LutzPacRelaxed { .. }));
+        assert!(matches!(plan_explore, ExecutionPlan::ProofTreePacRelaxed { .. }));
     }
 
     #[test]

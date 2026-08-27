@@ -54,12 +54,12 @@ fn main() {
         let mut strict_count = 0usize;
         let mut fallback_count = 0usize;
         let mut false_confident_count = 0usize;
+        let exact_results = common::compute_exact_ground_truth(&index, q_set, 10);
 
-        for q in *q_set {
+        for (q, exact_res) in q_set.iter().zip(exact_results.iter()) {
             // Canonical false-confidence oracle: exhaustive results under the
             // same index metric. Comparing Adaptive with Strict Rivero only
             // measures agreement between two approximate paths.
-            let exact_res = index.search_indices_exact(q, 10, None).unwrap();
             let exact_top10: Vec<NodeIndex> = exact_res.iter().map(|(idx, _)| *idx).collect();
 
             let (adapt_res, diag) = index

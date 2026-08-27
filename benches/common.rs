@@ -32,12 +32,31 @@ use hnsqr::metadata::index::MetadataValue;
 use hnsqr::rivero::RiveroProfile;
 use hnsqr::storage::snapshot::SnapshotOpenOptions;
 use hnsqr::vector::folding::ComplexWeaver;
-use hnsqr::{HNSQRIndex, NodeIndex, VectorEmbedding};
+use hnsqr::{HNSQRIndex, NodeIndex, SimilarityScore, VectorEmbedding};
 use num_complex::Complex32;
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_BENCH_SEED: u64 = 0x484e_5351_525f_5632;
 pub const CACHE_VERSION: u32 = 6;
+
+/// Produces the canonical benchmark oracle using the index's own exhaustive
+/// search implementation and configured metric.  Benchmarks must not recreate
+/// this with a local similarity helper: doing so can silently grade the same
+/// Rivero result against a different ranking contract.
+pub fn compute_exact_ground_truth(
+    index: &HNSQRIndex,
+    queries: &[VectorEmbedding],
+    k: usize,
+) -> Vec<Vec<(NodeIndex, SimilarityScore)>> {
+    queries
+        .iter()
+        .map(|query| {
+            index
+                .search_indices_exact(query, k, None)
+                .expect("exact ground-truth search must succeed")
+        })
+        .collect()
+}
 
 /// Multi-tier benchmarking scale configuration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

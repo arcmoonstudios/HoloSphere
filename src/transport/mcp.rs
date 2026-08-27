@@ -100,6 +100,7 @@ fn tool_definitions() -> serde_json::Value {
                         "embedding": {"$ref": "#/$defs/embedding"},
                         "collection": {"type": "string", "default": "knowledge"},
                         "k": {"type": "integer", "minimum": 1, "maximum": 100, "default": 10},
+                        "kinds": {"type": "array", "items": {"type": "string"}, "description": "Optional list of entity kinds to filter by."},
                         "retrieval_contract": {"type": "string", "enum": ["exact", "certified", "high_recall", "auto", "rivero", "hnsw"], "default": "exact"},
                         "certified_exact": {"type": "boolean", "description": "Deprecated compatibility bridge for certified retrieval."},
                         "snapshot_lsn": {"type": "integer", "minimum": 0, "description": "Optional historical snapshot. Omit or use 0 for the latest committed snapshot."}
@@ -111,7 +112,7 @@ fn tool_definitions() -> serde_json::Value {
                 "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
             },
             {
-                "name": "web.search",
+                "name": "web_search",
                 "description": "Search current public-web results through HoloSphere's configured provider. Results are untrusted evidence with source URLs and content hashes; this tool never fetches arbitrary URLs.",
                 "inputSchema": {
                     "type": "object",
@@ -164,26 +165,26 @@ fn tool_definitions() -> serde_json::Value {
                 "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
             },
             {
-                "name": "task.begin",
+                "name": "task_begin",
                 "description": "Start a durable agent case. HoloSphere automatically retrieves similar prior cases and candidate resolutions before indexing the new issue. Requires read-write authorization.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "idempotency_key": {"type": "string"},
-                        "case_id": {"type": "string"},
                         "problem": {"type": "string", "minLength": 1},
+                        "case_id": {"type": "string", "description": "Optional case ID (auto-generated if omitted)."},
+                        "idempotency_key": {"type": "string", "description": "Optional idempotency key."},
                         "collection": {"type": "string", "default": "knowledge"},
                         "max_hypotheses": {"type": "integer", "minimum": 1, "maximum": 20, "default": 5},
-                        "provenance": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/provenance"}}
+                        "provenance": {"type": "array", "items": {"$ref": "#/$defs/provenance"}, "description": "Optional provenance reference."}
                     },
-                    "required": ["idempotency_key", "case_id", "problem", "provenance"],
+                    "required": ["problem"],
                     "additionalProperties": false,
                     "$defs": {"provenance": provenance_schema()}
                 },
                 "annotations": {"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
             },
             {
-                "name": "task.context",
+                "name": "task_context",
                 "description": "Rehydrate a durable agent case with related evidence, graph relations, and candidate resolutions at one pinned snapshot.",
                 "inputSchema": {
                     "type": "object",
@@ -198,43 +199,43 @@ fn tool_definitions() -> serde_json::Value {
             },
             {
                 "name": "remember",
-                "description": "Durably remember a tenant-scoped entity, relation, episode, or resolution with provenance. Requires read-write authorization.",
+                "description": "Durably remember tenant-scoped knowledge, entities, or relations. Supports single items or atomic batches. Requires read-write authorization.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "idempotency_key": {"type": "string"},
-                        "id": {"type": "string"},
+                        "content": {"type": "string", "description": "Text content to store."},
+                        "id": {"type": "string", "description": "Optional identifier (auto-derived if omitted)."},
+                        "kind": {"type": "string", "default": "knowledge", "description": "Entity kind."},
+                        "idempotency_key": {"type": "string", "description": "Optional idempotency key."},
                         "collection": {"type": "string", "default": "knowledge"},
-                        "kind": {"type": "string"},
-                        "content": {"type": "string"},
                         "vector": {"type": "array", "items": {"type": "number"}},
                         "embedding": {"$ref": "#/$defs/embedding"},
                         "members": {"type": "array", "items": {"type": "string"}},
                         "roles": {"type": "object", "additionalProperties": {"type": "string"}},
                         "metadata": {"type": "object"},
-                        "provenance": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/provenance"}}
+                        "provenance": {"type": "array", "items": {"$ref": "#/$defs/provenance"}}
                     },
-                    "required": ["idempotency_key", "id", "kind", "content", "provenance"],
+                    "required": ["content"],
                     "additionalProperties": false,
                     "$defs": {"embedding": embedding_schema(), "provenance": provenance_schema()}
                 },
                 "annotations": {"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
             },
             {
-                "name": "task.complete",
+                "name": "task_complete",
                 "description": "Record measured task evidence and, on success, promote the case to a durable resolution linked by fixed_by. Requires read-write authorization.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "idempotency_key": {"type": "string"},
                         "case_id": {"type": "string"},
                         "summary": {"type": "string", "minLength": 1},
                         "successful": {"type": "boolean"},
+                        "idempotency_key": {"type": "string", "description": "Optional idempotency key."},
                         "evidence_ids": {"type": "array", "items": {"type": "string"}},
                         "metrics": {"type": "object", "additionalProperties": {"type": "number"}},
-                        "provenance": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/provenance"}}
+                        "provenance": {"type": "array", "items": {"$ref": "#/$defs/provenance"}}
                     },
-                    "required": ["idempotency_key", "case_id", "summary", "successful", "provenance"],
+                    "required": ["case_id", "summary", "successful"],
                     "additionalProperties": false,
                     "$defs": {"provenance": provenance_schema()}
                 },
@@ -246,19 +247,38 @@ fn tool_definitions() -> serde_json::Value {
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "idempotency_key": {"type": "string"},
-                        "attempt_id": {"type": "string"},
                         "summary": {"type": "string"},
                         "successful": {"type": "boolean"},
-                        "evidence_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+                        "attempt_id": {"type": "string", "description": "Optional attempt ID (auto-generated if omitted)."},
+                        "idempotency_key": {"type": "string", "description": "Optional idempotency key."},
+                        "evidence_ids": {"type": "array", "items": {"type": "string"}},
                         "metrics": {"type": "object", "additionalProperties": {"type": "number"}},
-                        "provenance": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/provenance"}}
+                        "provenance": {"type": "array", "items": {"$ref": "#/$defs/provenance"}}
                     },
-                    "required": ["idempotency_key", "attempt_id", "summary", "successful", "evidence_ids", "provenance"],
+                    "required": ["summary", "successful"],
                     "additionalProperties": false,
                     "$defs": {"provenance": provenance_schema()}
                 },
                 "annotations": {"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}
+            },
+            {
+                "name": "explore",
+                "description": "Inspect HoloSphere memory topology, discover recent cases/memories, or explore 1-hop hypergraph neighborhoods.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "target": {
+                            "type": "string",
+                            "enum": ["stats", "recent_cases", "recent_memories", "neighborhood"],
+                            "default": "stats"
+                        },
+                        "seed_id": {"type": "string", "description": "Target entity or case ID when exploring neighborhoods."},
+                        "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
+                        "snapshot_lsn": {"type": "integer", "minimum": 0, "description": "Optional historical snapshot."}
+                    },
+                    "additionalProperties": false
+                },
+                "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
             }
         ]
     });
@@ -318,11 +338,121 @@ fn initialize_result() -> serde_json::Value {
     })
 }
 
+fn strip_embeddings(val: &mut serde_json::Value) {
+    match val {
+        serde_json::Value::Object(map) => {
+            map.remove("embedding");
+            map.remove("vector");
+            for v in map.values_mut() {
+                strip_embeddings(v);
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for v in arr {
+                strip_embeddings(v);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn render_markdown(val: &serde_json::Value) -> String {
+    if let Some(results) = val.get("results") {
+        if let Some(arr) = results.as_array() {
+            if arr.is_empty() {
+                return "_No matching results found._".to_string();
+            }
+            if arr[0].get("score").is_some() && arr[0].get("id").is_some() {
+                let mut md = format!("### 🔍 Retrieved {} Evidence Records\n\n", arr.len());
+                md.push_str("| Score | ID | Kind | Summary / Content |\n|:---|:---|:---|:---|\n");
+                for item in arr {
+                    let score = item.get("score").and_then(|s| s.as_f64()).unwrap_or(0.0);
+                    let id = item.get("id").and_then(|i| i.as_str()).unwrap_or("-");
+                    let kind = item.get("record").and_then(|r| r.get("kind")).and_then(|k| k.as_str()).unwrap_or("record");
+                    let content = item.get("record").and_then(|r| r.get("content")).and_then(|c| c.as_str()).unwrap_or("");
+                    let snippet = if content.len() > 120 {
+                        format!("{}...", &content[..content.char_indices().nth(117).map(|(i, _)| i).unwrap_or(content.len())])
+                    } else {
+                        content.to_string()
+                    };
+                    md.push_str(&format!("| **{score:.2}** | `{id}` | `{kind}` | {snippet} |\n"));
+                }
+                return md;
+            }
+            if arr[0].get("url").is_some() && arr[0].get("title").is_some() {
+                let mut md = format!("### 🌐 Web Search Results ({})\n\n", arr.len());
+                for item in arr {
+                    let title = item.get("title").and_then(|t| t.as_str()).unwrap_or("Untitled");
+                    let url = item.get("url").and_then(|u| u.as_str()).unwrap_or("");
+                    let snippet = item.get("snippet").and_then(|s| s.as_str()).unwrap_or("");
+                    md.push_str(&format!("* **[{title}]({url})**\n  {snippet}\n\n"));
+                }
+                return md;
+            }
+            if arr[0].get("depth").is_some() && arr[0].get("record").is_some() {
+                let mut md = format!("### 🕸️ Graph Traversal ({} Nodes)\n\n", arr.len());
+                for item in arr {
+                    let depth = item.get("depth").and_then(|d| d.as_u64()).unwrap_or(1);
+                    let record = item.get("record").unwrap();
+                    let id = record.get("id").and_then(|i| i.as_str()).unwrap_or("-");
+                    let kind = record.get("kind").and_then(|k| k.as_str()).unwrap_or("-");
+                    let content = record.get("content").and_then(|c| c.as_str()).unwrap_or("");
+                    let indent = "  ".repeat((depth as usize).saturating_sub(1));
+                    md.push_str(&format!("{indent}* **[d={depth}]** `{id}` (`{kind}`): {content}\n"));
+                }
+                return md;
+            }
+            if arr[0].get("hypothesis").is_some() && arr[0].get("confidence").is_some() {
+                let mut md = format!("### 💡 Ranked Candidate Hypotheses ({})\n\n", arr.len());
+                md.push_str("| Conf | Hypothesis | Outcomes |\n|:---|:---|:---|\n");
+                for item in arr {
+                    let conf = item.get("confidence").and_then(|c| c.as_f64()).unwrap_or(0.0);
+                    let hyp = item.get("hypothesis").and_then(|h| h.as_str()).unwrap_or("");
+                    let succ = item.get("successful_outcomes").and_then(|s| s.as_u64()).unwrap_or(0);
+                    let fail = item.get("failed_outcomes").and_then(|f| f.as_u64()).unwrap_or(0);
+                    md.push_str(&format!("| **{conf:.2}** | {hyp} | +{succ} / -{fail} |\n"));
+                }
+                return md;
+            }
+        } else if let Some(obj) = results.as_object() {
+            if obj.contains_key("case") && obj.contains_key("candidate_resolutions") {
+                let case = obj.get("case").unwrap();
+                let id = case.get("id").and_then(|i| i.as_str()).unwrap_or("");
+                let content = case.get("content").and_then(|c| c.as_str()).unwrap_or("");
+                let lsn = val.get("snapshot_lsn").and_then(|l| l.as_u64()).unwrap_or(0);
+                return format!("### 📋 Case Begun: `{id}` (LSN {lsn})\n**Problem**: {content}\n\nCase state initialized and linked to knowledge graph.");
+            }
+            if obj.contains_key("outcome") {
+                let outcome = obj.get("outcome").unwrap();
+                let attempt_id = outcome.get("attempt_id").and_then(|a| a.as_str()).unwrap_or("");
+                let summary = outcome.get("summary").and_then(|s| s.as_str()).unwrap_or("");
+                let success = outcome.get("successful").and_then(|s| s.as_bool()).unwrap_or(false);
+                let status_icon = if success { "✅ Success" } else { "❌ Failed" };
+                return format!("### 🏁 Task Complete: `{attempt_id}` ({status_icon})\n**Summary**: {summary}\n\nOutcome durably committed with resolution link.");
+            }
+            if let Some(target) = obj.get("target").and_then(|t| t.as_str()) {
+                if target == "stats" && let Some(stats) = obj.get("stats") {
+                    let total_ent = stats.get("total_entities").and_then(|e| e.as_u64()).unwrap_or(0);
+                    let total_out = stats.get("total_outcomes").and_then(|o| o.as_u64()).unwrap_or(0);
+                    let current_lsn = stats.get("current_lsn").and_then(|l| l.as_u64()).unwrap_or(0);
+                    return format!("### 📊 Memory Topology\n* **Total Entities**: {total_ent}\n* **Total Outcomes**: {total_out}\n* **Current LSN**: {current_lsn}");
+                }
+            }
+            if let Some(id) = obj.get("id").and_then(|i| i.as_str()) {
+                let kind = obj.get("kind").and_then(|k| k.as_str()).unwrap_or("knowledge");
+                let lsn = obj.get("commit_lsn").and_then(|l| l.as_u64()).unwrap_or(0);
+                return format!("✅ **Remembered `{id}`** (`{kind}`) at commit LSN {lsn}.");
+            }
+        }
+    }
+    serde_json::to_string(val).unwrap_or_default()
+}
+
 fn tool_result<T: Serialize>(value: T) -> HNSQRResult<serde_json::Value> {
-    let structured = serde_json::to_value(value)
+    let mut structured = serde_json::to_value(value)
         .map_err(|error| HNSQRError::SerializationError(error.to_string()))?;
-    let text = serde_json::to_string(&structured)
-        .map_err(|error| HNSQRError::SerializationError(error.to_string()))?;
+    let text = render_markdown(&structured);
+    strip_embeddings(&mut structured);
     Ok(serde_json::json!({
         "content": [{"type": "text", "text": text}],
         "structuredContent": structured,
@@ -339,11 +469,15 @@ fn call_tool(
         params.name.as_str(),
         "remember"
             | "record_outcome"
+            | "task_begin"
             | "task.begin"
+            | "task_complete"
             | "task.complete"
             | "holosphere.remember"
             | "holosphere.record_outcome"
+            | "holosphere.task_begin"
             | "holosphere.task.begin"
+            | "holosphere.task_complete"
             | "holosphere.task.complete"
     );
     if write_tool && subject.role < AccessRole::ReadWrite {
@@ -356,12 +490,14 @@ fn call_tool(
             subject,
             decode_arguments::<SearchToolRequest>(params.arguments)?,
         )?),
-        "web.search" | "holosphere.web.search" => tool_result(service.web_search(
-            subject,
-            decode_arguments::<crate::transport::web_search::WebSearchToolRequest>(
-                params.arguments,
-            )?,
-        )?),
+        "web_search" | "web.search" | "holosphere.web_search" | "holosphere.web.search" => {
+            tool_result(service.web_search(
+                subject,
+                decode_arguments::<crate::transport::web_search::WebSearchToolRequest>(
+                    params.arguments,
+                )?,
+            )?)
+        }
         "traverse" | "holosphere.traverse" => tool_result(service.traverse(
             subject,
             decode_arguments::<TraverseToolRequest>(params.arguments)?,
@@ -370,25 +506,47 @@ fn call_tool(
             subject,
             decode_arguments::<ResolveToolRequest>(params.arguments)?,
         )?),
-        "task.begin" | "holosphere.task.begin" => tool_result(service.task_begin(
-            subject,
-            decode_arguments::<TaskBeginToolRequest>(params.arguments)?,
-        )?),
-        "task.context" | "holosphere.task.context" => tool_result(service.task_context(
+        "task_begin" | "task.begin" | "holosphere.task_begin" | "holosphere.task.begin" => {
+            tool_result(service.task_begin(
+                subject,
+                decode_arguments::<TaskBeginToolRequest>(params.arguments)?,
+            )?)
+        }
+        "task_context"
+        | "task.context"
+        | "holosphere.task_context"
+        | "holosphere.task.context" => tool_result(service.task_context(
             subject,
             decode_arguments::<TaskContextToolRequest>(params.arguments)?,
         )?),
-        "remember" | "holosphere.remember" => tool_result(service.remember(
-            subject,
-            decode_arguments::<RememberToolRequest>(params.arguments)?,
-        )?),
+        "remember" | "holosphere.remember" => {
+            match decode_arguments::<crate::transport::model_gateway::RememberInput>(params.arguments)? {
+                crate::transport::model_gateway::RememberInput::Single(req) => {
+                    tool_result(service.remember(subject, req)?)
+                }
+                crate::transport::model_gateway::RememberInput::Batch(batch) => {
+                    let mut results = Vec::with_capacity(batch.len());
+                    for req in batch {
+                        results.push(service.remember(subject, req)?);
+                    }
+                    tool_result(results)
+                }
+            }
+        }
         "record_outcome" | "holosphere.record_outcome" => tool_result(service.record_outcome(
             subject,
             decode_arguments::<RecordOutcomeToolRequest>(params.arguments)?,
         )?),
-        "task.complete" | "holosphere.task.complete" => tool_result(service.task_complete(
+        "task_complete"
+        | "task.complete"
+        | "holosphere.task_complete"
+        | "holosphere.task.complete" => tool_result(service.task_complete(
             subject,
             decode_arguments::<TaskCompleteToolRequest>(params.arguments)?,
+        )?),
+        "explore" | "holosphere.explore" => tool_result(service.explore(
+            subject,
+            decode_arguments::<crate::transport::model_gateway::ExploreToolRequest>(params.arguments)?,
         )?),
         _ => Err(HNSQRError::InvalidRequest(format!(
             "unknown tool '{}'",
@@ -539,7 +697,7 @@ mod tests {
     fn lists_primitive_and_native_agent_workflow_tools_with_closed_schemas() {
         let definitions = tool_definitions();
         let tools = definitions["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 9);
+        assert_eq!(tools.len(), 10);
         assert_eq!(
             tools
                 .iter()
@@ -547,14 +705,15 @@ mod tests {
                 .collect::<Vec<_>>(),
             [
                 "search",
-                "web.search",
+                "web_search",
                 "traverse",
                 "resolve",
-                "task.begin",
-                "task.context",
+                "task_begin",
+                "task_context",
                 "remember",
-                "task.complete",
-                "record_outcome"
+                "task_complete",
+                "record_outcome",
+                "explore"
             ]
         );
         assert!(tools.iter().all(|tool| {
@@ -612,7 +771,7 @@ mod tests {
                 jsonrpc: "2.0".to_string(),
                 id: Some(serde_json::json!(3)),
                 method: "tools/call".to_string(),
-                params: serde_json::json!({"name": "task.begin", "arguments": {}}),
+                params: serde_json::json!({"name": "task.begin", "arguments": {"problem": "read-only test"}}),
             },
         )
         .unwrap();
@@ -635,7 +794,7 @@ mod tests {
         let responses = response.as_array().unwrap();
         assert_eq!(responses.len(), 2);
         assert_eq!(responses[0]["id"], 1);
-        assert_eq!(responses[1]["result"]["tools"].as_array().unwrap().len(), 9);
+        assert_eq!(responses[1]["result"]["tools"].as_array().unwrap().len(), 10);
     }
 
     #[test]
@@ -717,5 +876,49 @@ mod tests {
                 .iter()
                 .any(|item| item.record.kind == "similar_to")
         );
+    }
+
+    #[test]
+    fn explore_and_polymorphic_remember_work_seamlessly() {
+        let service = service();
+        let actor = subject(AccessRole::ReadWrite);
+
+        // Test minimal remember with auto-derived fields
+        let res = service
+            .remember(
+                &actor,
+                RememberToolRequest {
+                    idempotency_key: "".to_string(),
+                    id: "".to_string(),
+                    collection: "knowledge".to_string(),
+                    kind: "fact".to_string(),
+                    content: "Polymorphic memory ingestion enables zero-boilerplate cognitive loops.".to_string(),
+                    vector: None,
+                    embedding: None,
+                    members: Vec::new(),
+                    roles: BTreeMap::new(),
+                    metadata: BTreeMap::new(),
+                    provenance: Vec::new(),
+                },
+            )
+            .unwrap();
+        assert!(res.results.id.starts_with("ent:"));
+        assert!(!res.results.provenance.is_empty());
+
+        // Test explore stats
+        let stats_env = service
+            .explore(
+                &actor,
+                crate::transport::model_gateway::ExploreToolRequest {
+                    target: "stats".to_string(),
+                    seed_id: None,
+                    limit: 10,
+                    snapshot_lsn: None,
+                },
+            )
+            .unwrap();
+        let stats = stats_env.results.stats.unwrap();
+        assert_eq!(stats.total_entities, 1);
+        assert_eq!(stats.kinds.get("fact"), Some(&1));
     }
 }

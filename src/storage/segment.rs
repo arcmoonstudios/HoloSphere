@@ -8,9 +8,9 @@
 //!
 //! ## Architecture
 //! - **`MutableSegment`**: Lock-free/low-lock append-only buffer holding live incoming vectors,
-//!   tombstones, delta Rivero routing, and fast LUTz codes.
+//!   tombstones and delta Rivero routing.
 //! - **`ImmutableSegment`**: Sealed, read-only segment with precomputed Rivero topology
-//!   and LUTz codebooks.
+//!   and proof-tree metadata.
 //! - **`SegmentedEngine`**: Coordinates fan-out queries across active and immutable segments,
 //!   merges Top-K finalists, and performs atomic generation swaps during background compaction.
 /*▫~•◦------------------------------------------------------------------------------------‣
@@ -27,9 +27,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::metadata::index::MetadataValue;
 use crate::planning::planner::RetrievalContract;
-use crate::proof::lutz::{
-    LutzCertifier, LutzCode, LutzGlobalCertified, LutzQueryTable, SemanticRerankPlan,
-};
+use crate::proof::lutz::SemanticRerankPlan;
 use crate::proof::{GlobalExactProofSearch, SegmentProofView, SemanticProofTree};
 use crate::rivero::{RiveroCompiler, RiveroProfile, RiveroTerritoryIndex};
 use crate::storage::wal::{DurabilityPolicy, WalManager, WalMutation};
@@ -63,7 +61,6 @@ pub struct MutableSegment {
     pub dimension: usize,
     pub max_capacity: usize,
     vectors: PlRwLock<Vec<VectorEmbedding>>,
-    lutz_codes: PlRwLock<Vec<LutzCode>>,
     id_to_slot: PlRwLock<HashMap<Arc<str>, u32>>,
     slot_to_id: PlRwLock<Vec<Arc<str>>>,
     tombstones: PlRwLock<RoaringBitmap>,
@@ -79,7 +76,6 @@ impl MutableSegment {
             dimension,
             max_capacity,
             vectors: PlRwLock::new(Vec::with_capacity(max_capacity.min(4096))),
-            lutz_codes: PlRwLock::new(Vec::with_capacity(max_capacity.min(4096))),
             id_to_slot: PlRwLock::new(HashMap::with_capacity(max_capacity.min(4096))),
             slot_to_id: PlRwLock::new(Vec::with_capacity(max_capacity.min(4096))),
             tombstones: PlRwLock::new(RoaringBitmap::new()),
@@ -111,11 +107,9 @@ impl MutableSegment {
         }
 
         let slot = vectors.len() as u32;
-        let lutz_code = LutzCode::encode(&vector, true);
         let address = self.compiler.compile(vector.complex_data());
 
         self.territories.insert(&address, slot);
-        self.lutz_codes.write().push(lutz_code);
         self.slot_to_id.write().push(node_id.clone());
         id_map.insert(node_id, slot);
         vectors.push(vector);
@@ -144,7 +138,7 @@ impl MutableSegment {
         let total = self.vectors.read().len();
         let deleted = self.tombstones.read().len() as usize;
         let live = total.saturating_sub(deleted);
-        let mem = total * (self.dimension * 8 + std::mem::size_of::<LutzCode>() + 64);
+        let mem = total * (self.dimension * 8 + 64);
 
         SegmentStats {
             segment_id: self.id,
@@ -170,7 +164,7 @@ impl MutableSegment {
         let vectors = self.vectors.read();
         let tombstones = self.tombstones.read();
         let slot_to_id = self.slot_to_id.read();
-        let lutz_codes = self.lutz_codes.read();
+        let _ = rerank_plan;
 
         let total = vectors.len();
         if total == 0 {
@@ -193,35 +187,17 @@ impl MutableSegment {
             return Vec::new();
         }
 
-        let concrete_plan = rerank_plan.resolve(&candidate_slots, self.dimension * 8, false);
-
-        let top_slots: Vec<(NodeIndex, SimilarityScore)> = match concrete_plan {
-            SemanticRerankPlan::LutzFastScan => {
-                let query_lut = LutzQueryTable::build(query);
-                let (certified, _) = LutzCertifier::certify(
-                    &query_lut,
-                    &candidate_slots,
-                    |slot| lutz_codes.get(slot as usize),
-                    |slot| (query.dot_product_complex(&vectors[slot as usize])).re,
-                    k,
-                );
-                certified
-            }
-            SemanticRerankPlan::ExactSimd | SemanticRerankPlan::Auto => {
-                let mut scored: Vec<(NodeIndex, SimilarityScore)> = candidate_slots
-                    .into_iter()
-                    .map(|slot| {
-                        (
-                            slot,
-                            (query.dot_product_complex(&vectors[slot as usize])).re,
-                        )
-                    })
-                    .collect();
-                scored.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-                scored.truncate(k);
-                scored
-            }
-        };
+        let mut top_slots: Vec<(NodeIndex, SimilarityScore)> = candidate_slots
+            .into_iter()
+            .map(|slot| {
+                (
+                    slot,
+                    (query.dot_product_complex(&vectors[slot as usize])).re,
+                )
+            })
+            .collect();
+        top_slots.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        top_slots.truncate(k);
 
         top_slots
             .into_iter()
@@ -243,14 +219,13 @@ impl MutableSegment {
         let vectors = self.vectors.read();
         let tombstones = self.tombstones.read();
         let slot_to_id = self.slot_to_id.read();
-        let lutz_codes = self.lutz_codes.read();
         let total = vectors.len();
         if total == 0 {
             return Vec::new();
         }
 
         match contract {
-            RetrievalContract::Exact => {
+            RetrievalContract::Exact | RetrievalContract::Certified => {
                 let mut scored: Vec<(NodeIndex, SimilarityScore)> = (0..total as NodeIndex)
                     .filter(|&slot| !tombstones.contains(slot))
                     .map(|slot| {
@@ -267,44 +242,6 @@ impl MutableSegment {
                     .map(|(s, score)| (slot_to_id[s as usize].clone(), score))
                     .collect()
             }
-            RetrievalContract::Certified => {
-                let q_addr = self.compiler.compile(query.complex_data());
-                let config = RiveroProfile::Strict.config();
-                let seed_cands: Vec<(NodeIndex, SimilarityScore)> = self
-                    .territories
-                    .with_candidates_config(&q_addr, &config, |cands, _| {
-                        let mut s: Vec<_> = cands
-                            .iter()
-                            .copied()
-                            .filter(|&slot| (slot as usize) < total && !tombstones.contains(slot))
-                            .map(|slot| {
-                                (
-                                    slot,
-                                    (query.dot_product_complex(&vectors[slot as usize])).re,
-                                )
-                            })
-                            .collect();
-                        s.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-                        s
-                    });
-
-                let query_lut = LutzQueryTable::build(query);
-                let (certified, _) = LutzGlobalCertified::certify_global(
-                    &query_lut,
-                    k,
-                    &seed_cands,
-                    total,
-                    None,
-                    |slot| !tombstones.contains(slot),
-                    |slot| lutz_codes.get(slot as usize),
-                    |slot| (query.dot_product_complex(&vectors[slot as usize])).re,
-                );
-
-                certified
-                    .into_iter()
-                    .map(|(s, score)| (slot_to_id[s as usize].clone(), score))
-                    .collect()
-            }
             _ => self.search(query, k, SemanticRerankPlan::Auto),
         }
     }
@@ -315,7 +252,6 @@ pub struct ImmutableSegment {
     pub id: SegmentId,
     pub dimension: usize,
     vectors: Vec<VectorEmbedding>,
-    lutz_codes: Vec<LutzCode>,
     id_to_slot: HashMap<Arc<str>, u32>,
     slot_to_id: Vec<Arc<str>>,
     tombstones: PlRwLock<RoaringBitmap>,
@@ -328,7 +264,6 @@ impl ImmutableSegment {
     /// Freezes a mutable segment into an immutable segment.
     pub fn freeze(mutable: &MutableSegment) -> Self {
         let vectors = mutable.vectors.read().clone();
-        let lutz_codes = mutable.lutz_codes.read().clone();
         let id_to_slot = mutable.id_to_slot.read().clone();
         let slot_to_id = mutable.slot_to_id.read().clone();
         let tombstones = mutable.tombstones.read().clone();
@@ -357,7 +292,6 @@ impl ImmutableSegment {
             id: mutable.id,
             dimension: mutable.dimension,
             vectors,
-            lutz_codes,
             id_to_slot,
             slot_to_id,
             tombstones: PlRwLock::new(tombstones),
@@ -382,7 +316,7 @@ impl ImmutableSegment {
         let total = self.vectors.len();
         let deleted = self.tombstones.read().len() as usize;
         let live = total.saturating_sub(deleted);
-        let mem = total * (self.dimension * 8 + std::mem::size_of::<LutzCode>() + 64);
+        let mem = total * (self.dimension * 8 + 64);
 
         SegmentStats {
             segment_id: self.id,
@@ -423,35 +357,18 @@ impl ImmutableSegment {
             return Vec::new();
         }
 
-        let concrete_plan = rerank_plan.resolve(&candidate_slots, self.dimension * 8, false);
-
-        let top_slots: Vec<(NodeIndex, SimilarityScore)> = match concrete_plan {
-            SemanticRerankPlan::LutzFastScan => {
-                let query_lut = LutzQueryTable::build(query);
-                let (certified, _) = LutzCertifier::certify(
-                    &query_lut,
-                    &candidate_slots,
-                    |slot| self.lutz_codes.get(slot as usize),
-                    |slot| (query.dot_product_complex(&self.vectors[slot as usize])).re,
-                    k,
-                );
-                certified
-            }
-            SemanticRerankPlan::ExactSimd | SemanticRerankPlan::Auto => {
-                let mut scored: Vec<(NodeIndex, SimilarityScore)> = candidate_slots
-                    .into_iter()
-                    .map(|slot| {
-                        (
-                            slot,
-                            (query.dot_product_complex(&self.vectors[slot as usize])).re,
-                        )
-                    })
-                    .collect();
-                scored.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-                scored.truncate(k);
-                scored
-            }
-        };
+        let _ = rerank_plan;
+        let mut top_slots: Vec<(NodeIndex, SimilarityScore)> = candidate_slots
+            .into_iter()
+            .map(|slot| {
+                (
+                    slot,
+                    (query.dot_product_complex(&self.vectors[slot as usize])).re,
+                )
+            })
+            .collect();
+        top_slots.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        top_slots.truncate(k);
 
         top_slots
             .into_iter()
@@ -505,7 +422,7 @@ impl ImmutableSegment {
                 let seg_view = SegmentProofView {
                     tree: &self.proof_tree,
                     vectors: &self.vectors,
-                    lutz_codes: Some(&self.lutz_codes),
+                    lutz_codes: None,
                     tombstones: Some(&tombstones),
                 };
 
@@ -871,14 +788,13 @@ impl SegmentedEngine {
         let mut merged_vectors = Vec::with_capacity(live_count);
         let mut merged_id_to_slot = HashMap::with_capacity(live_count);
         let mut merged_slot_to_id = Vec::with_capacity(live_count);
-        let mut lutz_codes = Vec::with_capacity(live_count);
 
         let compiler = RiveroCompiler::new(self.dimension);
         let territories = RiveroTerritoryIndex::new();
         let mut inserted_ids = std::collections::HashSet::with_capacity(live_count);
         let bytes_per_vec = (self.dimension * std::mem::size_of::<num_complex::Complex32>()) as u64;
 
-        // Streaming transfer: extract vectors, encode LUTz and populate Rivero in a single pass
+        // Streaming transfer: extract vectors and populate Rivero in a single pass.
         for seg in immutables.iter().rev() {
             let tombstones = seg.tombstones.read();
             for (slot, v) in seg.vectors.iter().enumerate() {
@@ -892,7 +808,6 @@ impl SegmentedEngine {
 
                         let addr = compiler.compile(v.complex_data());
                         territories.insert(&addr, new_slot);
-                        lutz_codes.push(LutzCode::encode(v, true));
                         merged_vectors.push(v.clone());
                     }
                 }
@@ -911,7 +826,6 @@ impl SegmentedEngine {
             id: new_compact_id,
             dimension: self.dimension,
             vectors: merged_vectors,
-            lutz_codes,
             id_to_slot: merged_id_to_slot,
             slot_to_id: merged_slot_to_id,
             tombstones: PlRwLock::new(RoaringBitmap::new()),

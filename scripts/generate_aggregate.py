@@ -24,12 +24,31 @@ def generate_aggregate():
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     output_path = os.path.join(repo_root, "holosphere.txt")
     
-    ignore_dirs = {".git", ".github", "target", "target-embedding-validation", "target-gate-b-validation", "target-web-release", "target-web-release-fix", "target-web-validation", ".gemini", ".idea", ".vscode", "__pycache__", "node_modules", "datasets", "benchmark_databases", "scripts", "tests", "benches", "performance-baseline-v1" }
+    ignore_dirs = {
+        ".git", ".github", ".gemini", ".idea", ".vscode", "__pycache__",
+        "node_modules", "datasets", "benchmark_databases", "scripts",
+        "tests", "benches", "performance-baseline-v1",
+        # Rust build output directories
+        "target",
+        "target-benchmark-integrity-validation",
+        "target-correctness-audit",
+        "target-embedding-validation",
+        "target-gate-b-validation",
+        "target-policy-integrity-validation",
+        "target-semantics-validation",
+        "target-universal-certification-validation",
+        "target-web-release",
+        "target-web-release-fix",
+        "target-web-validation",
+    }
     ignore_files = {"holosphere.txt", "Cargo.lock", "SignalTraceMACROS.md"}
-    
+
     collected_files = []
     for root, dirs, files in os.walk(repo_root):
-        dirs[:] = [d for d in dirs if d not in ignore_dirs]
+        dirs[:] = [
+            d for d in dirs
+            if d not in ignore_dirs and not d.startswith("target-")
+        ]
         for f in files:
             full_path = os.path.join(root, f)
             rel_path = os.path.relpath(full_path, repo_root).replace("\\", "/")

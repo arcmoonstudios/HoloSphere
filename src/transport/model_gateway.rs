@@ -168,6 +168,8 @@ pub struct SearchToolRequest {
     #[serde(default = "default_k")]
     pub k: usize,
     #[serde(default)]
+    pub kinds: Option<Vec<String>>,
+    #[serde(default)]
     pub filter: Option<FilterExpr>,
     #[serde(default)]
     pub retrieval_contract: Option<String>,
@@ -185,13 +187,20 @@ pub struct SearchEvidence {
     pub record: Option<KnowledgeRecord>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+fn default_kind() -> String {
+    "knowledge".to_string()
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RememberToolRequest {
+    #[serde(default)]
     pub idempotency_key: String,
+    #[serde(default)]
     pub id: String,
     #[serde(default = "default_collection")]
     pub collection: String,
+    #[serde(default = "default_kind")]
     pub kind: String,
     pub content: String,
     #[serde(default)]
@@ -206,6 +215,13 @@ pub struct RememberToolRequest {
     pub metadata: BTreeMap<String, serde_json::Value>,
     #[serde(default)]
     pub provenance: Vec<ProvenanceReference>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+pub enum RememberInput {
+    Batch(Vec<RememberToolRequest>),
+    Single(RememberToolRequest),
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -257,7 +273,9 @@ pub struct ResolutionHypothesis {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RecordOutcomeToolRequest {
+    #[serde(default)]
     pub idempotency_key: String,
+    #[serde(default)]
     pub attempt_id: String,
     pub summary: String,
     pub successful: bool,
@@ -273,7 +291,9 @@ pub struct RecordOutcomeToolRequest {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TaskBeginToolRequest {
+    #[serde(default)]
     pub idempotency_key: String,
+    #[serde(default)]
     pub case_id: String,
     pub problem: String,
     #[serde(default = "default_collection")]
@@ -297,6 +317,7 @@ pub struct TaskContextToolRequest {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TaskCompleteToolRequest {
+    #[serde(default)]
     pub idempotency_key: String,
     pub case_id: String,
     pub summary: String,
@@ -305,7 +326,51 @@ pub struct TaskCompleteToolRequest {
     pub evidence_ids: Vec<String>,
     #[serde(default)]
     pub metrics: BTreeMap<String, f64>,
+    #[serde(default)]
     pub provenance: Vec<ProvenanceReference>,
+}
+
+/// Universal situational exploration tool request.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExploreToolRequest {
+    #[serde(default = "default_explore_target")]
+    pub target: String,
+    #[serde(default)]
+    pub seed_id: Option<String>,
+    #[serde(default = "default_explore_limit")]
+    pub limit: usize,
+    #[serde(default)]
+    pub snapshot_lsn: Option<u64>,
+}
+
+fn default_explore_target() -> String {
+    "stats".to_string()
+}
+fn default_explore_limit() -> usize {
+    10
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct ExploreTopologyStats {
+    pub total_entities: usize,
+    pub total_outcomes: usize,
+    pub current_lsn: u64,
+    pub collections: Vec<String>,
+    pub kinds: BTreeMap<String, usize>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct ExploreResult {
+    pub target: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stats: Option<ExploreTopologyStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recent_cases: Option<Vec<KnowledgeRecord>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recent_memories: Option<Vec<KnowledgeRecord>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub neighborhood: Option<Vec<TraversalEvidence>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -357,6 +422,16 @@ impl KnowledgeJournalEntry {
         }
         Ok(self.event)
     }
+}
+
+fn sha256_hex(data: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn event_checksum(event: &KnowledgeEvent) -> HNSQRResult<String> {
@@ -936,11 +1011,40 @@ impl ModelToolService {
         Ok(())
     }
 
+    fn normalize_remember(
+        &self,
+        subject: &AuthenticatedSubject,
+        mut request: RememberToolRequest,
+    ) -> RememberToolRequest {
+        if request.kind.trim().is_empty() {
+            request.kind = "knowledge".to_string();
+        }
+        if request.idempotency_key.trim().is_empty() {
+            let hash = sha256_hex(format!("{}:{}:{}", subject.tenant_id, request.kind, request.content).as_bytes());
+            request.idempotency_key = format!("auto:{}", &hash[..24]);
+        }
+        if request.id.trim().is_empty() {
+            let hash = sha256_hex(format!("{}:{}", subject.tenant_id, request.content).as_bytes());
+            request.id = format!("ent:{}", &hash[..16]);
+        }
+        if request.provenance.is_empty() {
+            let hash = format!("sha256:{}", sha256_hex(request.content.as_bytes()));
+            request.provenance = vec![ProvenanceReference {
+                source_id: format!("agent:{}", subject.key_id),
+                uri: None,
+                content_hash: hash,
+                observed_at_lsn: None,
+            }];
+        }
+        request
+    }
+
     pub fn remember(
         &self,
         subject: &AuthenticatedSubject,
         request: RememberToolRequest,
     ) -> HNSQRResult<EvidenceEnvelope<KnowledgeRecord>> {
+        let request = self.normalize_remember(subject, request);
         validate_identifier("idempotency_key", &request.idempotency_key)?;
         validate_identifier("id", &request.id)?;
         validate_identifier("collection", &request.collection)?;
@@ -1093,8 +1197,13 @@ impl ModelToolService {
             .into_iter()
             .filter_map(|(id, score)| {
                 let record = self.store.record_at(&subject.tenant_id, &id, snapshot_lsn);
-                record.as_ref()?;
-                Some(SearchEvidence { id, score, record })
+                let record = record?;
+                if let Some(ref allowed_kinds) = request.kinds {
+                    if !allowed_kinds.is_empty() && !allowed_kinds.contains(&record.kind) {
+                        return None;
+                    }
+                }
+                Some(SearchEvidence { id, score, record: Some(record) })
             })
             .collect();
         results.truncate(request.k);
@@ -1197,6 +1306,7 @@ impl ModelToolService {
                 embedding: request.embedding,
                 collection: request.collection,
                 k: request.max_hypotheses,
+                kinds: None,
                 filter: None,
                 retrieval_contract: Some("exact".to_string()),
                 certified_exact: None,
@@ -1247,28 +1357,47 @@ impl ModelToolService {
     pub fn record_outcome(
         &self,
         subject: &AuthenticatedSubject,
-        request: RecordOutcomeToolRequest,
+        mut request: RecordOutcomeToolRequest,
     ) -> HNSQRResult<EvidenceEnvelope<ModelOutcomeRecord>> {
+        if request.summary.trim().is_empty() {
+            return Err(HNSQRError::InvalidRequest("summary is required".to_string()));
+        }
+        if request.attempt_id.trim().is_empty() {
+            let hash = sha256_hex(format!("{}:outcome:{}", subject.tenant_id, request.summary).as_bytes());
+            request.attempt_id = format!("out:{}", &hash[..16]);
+        }
+        if request.idempotency_key.trim().is_empty() {
+            let hash = sha256_hex(format!("{}:outcome:{}:{}", subject.tenant_id, request.attempt_id, request.summary).as_bytes());
+            request.idempotency_key = format!("auto:outcome:{}", &hash[..24]);
+        }
+        if request.provenance.is_empty() {
+            let hash = format!("sha256:{}", sha256_hex(request.summary.as_bytes()));
+            request.provenance = vec![ProvenanceReference {
+                source_id: format!("agent:{}", subject.key_id),
+                uri: None,
+                content_hash: hash,
+                observed_at_lsn: None,
+            }];
+        }
         validate_identifier("idempotency_key", &request.idempotency_key)?;
         validate_identifier("attempt_id", &request.attempt_id)?;
         validate_provenance(&request.provenance)?;
-        if request.evidence_ids.is_empty() {
-            return Err(HNSQRError::InvalidRequest(
-                "at least one evidence_id is required for an empirical outcome".to_string(),
-            ));
-        }
+
         let snapshot_lsn = self.store.current_lsn();
-        for evidence_id in &request.evidence_ids {
-            if self
-                .store
-                .record_at(&subject.tenant_id, evidence_id, snapshot_lsn)
-                .is_none()
-            {
-                return Err(HNSQRError::InvalidRequest(format!(
-                    "evidence_id '{evidence_id}' does not exist in this tenant snapshot"
-                )));
-            }
-        }
+        let valid_evidence: Vec<String> = request
+            .evidence_ids
+            .into_iter()
+            .filter(|evidence_id| {
+                self.store.record_at(&subject.tenant_id, evidence_id, snapshot_lsn).is_some()
+                    || self.store.outcomes_at(&subject.tenant_id, snapshot_lsn).iter().any(|o| &o.attempt_id == evidence_id)
+            })
+            .collect();
+        let evidence_ids = if valid_evidence.is_empty() {
+            vec![request.attempt_id.clone()]
+        } else {
+            valid_evidence
+        };
+
         if request.metrics.values().any(|value| !value.is_finite()) {
             return Err(HNSQRError::InvalidRequest(
                 "outcome metrics must be finite".to_string(),
@@ -1279,7 +1408,7 @@ impl ModelToolService {
             tenant_id: subject.tenant_id.clone(),
             summary: request.summary,
             successful: request.successful,
-            evidence_ids: request.evidence_ids,
+            evidence_ids,
             metrics: request.metrics,
             provenance: request.provenance,
             commit_lsn: 0,
@@ -1305,17 +1434,34 @@ impl ModelToolService {
     pub fn task_begin(
         &self,
         subject: &AuthenticatedSubject,
-        request: TaskBeginToolRequest,
+        mut request: TaskBeginToolRequest,
     ) -> HNSQRResult<EvidenceEnvelope<TaskBeginResult>> {
-        validate_identifier("idempotency_key", &request.idempotency_key)?;
-        validate_identifier("case_id", &request.case_id)?;
-        validate_identifier("collection", &request.collection)?;
-        validate_provenance(&request.provenance)?;
         if request.problem.trim().is_empty() {
             return Err(HNSQRError::InvalidRequest(
                 "problem is required".to_string(),
             ));
         }
+        if request.case_id.trim().is_empty() {
+            let hash = sha256_hex(format!("{}:case:{}", subject.tenant_id, request.problem).as_bytes());
+            request.case_id = format!("case:{}", &hash[..16]);
+        }
+        if request.idempotency_key.trim().is_empty() {
+            let hash = sha256_hex(format!("{}:begin:{}", subject.tenant_id, request.case_id).as_bytes());
+            request.idempotency_key = format!("auto:begin:{}", &hash[..24]);
+        }
+        if request.provenance.is_empty() {
+            let hash = format!("sha256:{}", sha256_hex(request.problem.as_bytes()));
+            request.provenance = vec![ProvenanceReference {
+                source_id: format!("agent:{}", subject.key_id),
+                uri: None,
+                content_hash: hash,
+                observed_at_lsn: None,
+            }];
+        }
+        validate_identifier("idempotency_key", &request.idempotency_key)?;
+        validate_identifier("case_id", &request.case_id)?;
+        validate_identifier("collection", &request.collection)?;
+        validate_provenance(&request.provenance)?;
         if request.max_hypotheses == 0 || request.max_hypotheses > 20 {
             return Err(HNSQRError::InvalidRequest(
                 "max_hypotheses must be between 1 and 20".to_string(),
@@ -1335,6 +1481,7 @@ impl ModelToolService {
                     embedding: None,
                     collection: request.collection.clone(),
                     k: request.max_hypotheses.min(MAX_K),
+                    kinds: None,
                     filter: None,
                     retrieval_contract: Some("exact".to_string()),
                     certified_exact: None,
@@ -1442,6 +1589,7 @@ impl ModelToolService {
                     embedding: None,
                     collection: case.collection.clone(),
                     k: default_hypotheses(),
+                    kinds: None,
                     filter: None,
                     retrieval_contract: Some("exact".to_string()),
                     certified_exact: None,
@@ -1498,8 +1646,24 @@ impl ModelToolService {
     pub fn task_complete(
         &self,
         subject: &AuthenticatedSubject,
-        request: TaskCompleteToolRequest,
+        mut request: TaskCompleteToolRequest,
     ) -> HNSQRResult<EvidenceEnvelope<TaskCompleteResult>> {
+        if request.summary.trim().is_empty() {
+            return Err(HNSQRError::InvalidRequest("summary is required".to_string()));
+        }
+        if request.idempotency_key.trim().is_empty() {
+            let hash = sha256_hex(format!("{}:complete:{}:{}", subject.tenant_id, request.case_id, request.summary).as_bytes());
+            request.idempotency_key = format!("auto:complete:{}", &hash[..24]);
+        }
+        if request.provenance.is_empty() {
+            let hash = format!("sha256:{}", sha256_hex(request.summary.as_bytes()));
+            request.provenance = vec![ProvenanceReference {
+                source_id: format!("agent:{}", subject.key_id),
+                uri: None,
+                content_hash: hash,
+                observed_at_lsn: None,
+            }];
+        }
         validate_identifier("idempotency_key", &request.idempotency_key)?;
         validate_identifier("case_id", &request.case_id)?;
         validate_provenance(&request.provenance)?;
@@ -1511,7 +1675,15 @@ impl ModelToolService {
                 self.store.current_lsn(),
             )
             .ok_or_else(|| HNSQRError::InvalidRequest("case_id does not exist".to_string()))?;
-        let mut evidence_ids = request.evidence_ids.clone();
+        let snapshot_lsn = self.store.current_lsn();
+        let mut evidence_ids: Vec<String> = request
+            .evidence_ids
+            .into_iter()
+            .filter(|id| {
+                self.store.record_at(&subject.tenant_id, id, snapshot_lsn).is_some()
+                    || self.store.outcomes_at(&subject.tenant_id, snapshot_lsn).iter().any(|o| &o.attempt_id == id)
+            })
+            .collect();
         if !evidence_ids.contains(&case.id) {
             evidence_ids.push(case.id.clone());
         }
@@ -1581,6 +1753,111 @@ impl ModelToolService {
                 outcome,
                 resolution,
             },
+            contradictions: Vec::new(),
+        })
+    }
+
+    /// Universal situational exploration tool: inspects topology stats, recent cases, recent memories, or neighborhoods.
+    pub fn explore(
+        &self,
+        subject: &AuthenticatedSubject,
+        request: ExploreToolRequest,
+    ) -> HNSQRResult<EvidenceEnvelope<ExploreResult>> {
+        let snapshot_lsn = self.snapshot_lsn(request.snapshot_lsn)?;
+        let limit = request.limit.clamp(1, 50);
+        let records = self.store.records_at(&subject.tenant_id, snapshot_lsn);
+        let outcomes = self.store.outcomes_at(&subject.tenant_id, snapshot_lsn);
+
+        let result = match request.target.as_str() {
+            "stats" => {
+                let mut kinds = BTreeMap::new();
+                let mut collections = BTreeSet::new();
+                for r in &records {
+                    *kinds.entry(r.kind.clone()).or_insert(0) += 1;
+                    collections.insert(r.collection.clone());
+                }
+                ExploreResult {
+                    target: "stats".to_string(),
+                    stats: Some(ExploreTopologyStats {
+                        total_entities: records.len(),
+                        total_outcomes: outcomes.len(),
+                        current_lsn: snapshot_lsn,
+                        collections: collections.into_iter().collect(),
+                        kinds,
+                    }),
+                    recent_cases: None,
+                    recent_memories: None,
+                    neighborhood: None,
+                }
+            }
+            "recent_cases" => {
+                let mut cases: Vec<_> = records
+                    .into_iter()
+                    .filter(|r| r.kind == "issue" || r.kind.contains("case"))
+                    .collect();
+                cases.sort_by_key(|r| std::cmp::Reverse(r.commit_lsn));
+                cases.truncate(limit);
+                ExploreResult {
+                    target: "recent_cases".to_string(),
+                    stats: None,
+                    recent_cases: Some(cases),
+                    recent_memories: None,
+                    neighborhood: None,
+                }
+            }
+            "recent_memories" => {
+                let mut memories = records;
+                memories.sort_by_key(|r| std::cmp::Reverse(r.commit_lsn));
+                memories.truncate(limit);
+                ExploreResult {
+                    target: "recent_memories".to_string(),
+                    stats: None,
+                    recent_cases: None,
+                    recent_memories: Some(memories),
+                    neighborhood: None,
+                }
+            }
+            "neighborhood" => {
+                let seed_id = request.seed_id.ok_or_else(|| {
+                    HNSQRError::InvalidRequest(
+                        "seed_id is required when target is 'neighborhood'".to_string(),
+                    )
+                })?;
+                let neighborhood = self
+                    .traverse(
+                        subject,
+                        TraverseToolRequest {
+                            seed_ids: vec![seed_id],
+                            relation_kinds: Vec::new(),
+                            max_depth: 2,
+                            max_results: limit,
+                            snapshot_lsn: Some(snapshot_lsn),
+                        },
+                    )?
+                    .results;
+                ExploreResult {
+                    target: "neighborhood".to_string(),
+                    stats: None,
+                    recent_cases: None,
+                    recent_memories: None,
+                    neighborhood: Some(neighborhood),
+                }
+            }
+            other => {
+                return Err(HNSQRError::InvalidRequest(format!(
+                    "unknown explore target '{other}'; must be 'stats', 'recent_cases', 'recent_memories', or 'neighborhood'"
+                )));
+            }
+        };
+
+        Ok(EvidenceEnvelope {
+            tenant_id: subject.tenant_id.clone(),
+            snapshot_lsn,
+            retrieval_contract: "graph_topology_exploration".to_string(),
+            certified: true,
+            proof_upper_bound: None,
+            content_is_untrusted: true,
+            results: result,
             contradictions: Vec::new(),
         })
     }
@@ -1875,6 +2152,7 @@ mod tests {
                     embedding: None,
                     collection: "knowledge".to_string(),
                     k: 5,
+                    kinds: None,
                     filter: None,
                     retrieval_contract: Some("exact".to_string()),
                     certified_exact: None,
@@ -1893,6 +2171,7 @@ mod tests {
                         embedding: None,
                         collection: "knowledge".to_string(),
                         k: 5,
+                        kinds: None,
                         filter: None,
                         retrieval_contract: Some("exact".to_string()),
                         certified_exact: None,
@@ -1970,6 +2249,7 @@ mod tests {
                     embedding: None,
                     collection: "knowledge".to_string(),
                     k: 1,
+                    kinds: None,
                     filter: None,
                     retrieval_contract: Some("exact".to_string()),
                     certified_exact: None,
@@ -2022,6 +2302,7 @@ mod tests {
                     embedding: None,
                     collection: "knowledge".to_string(),
                     k: 1,
+                    kinds: None,
                     filter: None,
                     retrieval_contract: Some("exact".to_string()),
                     certified_exact: None,
@@ -2084,6 +2365,7 @@ mod tests {
                     embedding: None,
                     collection: "knowledge".to_string(),
                     k: 1,
+                    kinds: None,
                     filter: None,
                     retrieval_contract: Some("exact".to_string()),
                     certified_exact: None,
@@ -2114,6 +2396,7 @@ mod tests {
                     embedding: None,
                     collection: "knowledge".to_string(),
                     k: 1,
+                    kinds: None,
                     filter: None,
                     retrieval_contract: None,
                     certified_exact: None,

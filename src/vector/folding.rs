@@ -61,8 +61,11 @@ impl ComplexWeaver {
     /// Folds an $N$-dimensional real LLM vector into an $N/2$-dimensional complex vector.
     /// Consecutive pairs $(x_k, y_k)$ directly map to $z_k = x_k + i y_k = r_k e^{i\theta_k}$.
     ///
-    /// This transformation is lossless, dimension-agnostic, and uses one required output
-    /// allocation without intermediate buffers before 8-bit quantization begins.
+    /// This is the normalized retrieval path: it preserves direction and pairwise complex
+    /// geometry, but intentionally discards the input magnitude. Use
+    /// [`Self::fold_llm_embedding_unnormalized`] when exact round-tripping is required.
+    /// It uses one required output allocation without intermediate buffers before 8-bit
+    /// quantization begins.
     #[inline(always)]
     pub fn fold_llm_embedding(real_vector: &[f32]) -> VectorEmbedding {
         let dim = real_vector.len();
@@ -754,6 +757,38 @@ mod tests {
 
         let unfolded = ComplexWeaver::unfold_to_real(&complex_emb, 1536);
         assert_eq!(unfolded.len(), 1536);
+    }
+
+    #[test]
+    fn pairwise_folding_preserves_real_inner_product_and_cpo_bounds() {
+        let left = [3.0, -2.0, 1.5, 4.0];
+        let right = [-1.0, 5.0, 2.0, -3.0];
+
+        let folded_left = ComplexWeaver::fold_llm_embedding_unnormalized(&left);
+        let folded_right = ComplexWeaver::fold_llm_embedding_unnormalized(&right);
+        let real_dot = left.iter().zip(right).map(|(x, y)| x * y).sum::<f32>();
+        let cross = left
+            .chunks_exact(2)
+            .zip(right.chunks_exact(2))
+            // `dot_product_complex` implements <left|right> = conj(left) * right.
+            .map(|(x, y)| x[0] * y[1] - x[1] * y[0])
+            .sum::<f32>();
+        let complex_inner = folded_left.dot_product_complex(&folded_right);
+
+        assert!((complex_inner.re - real_dot).abs() < 1e-6);
+        assert!((complex_inner.im - cross).abs() < 1e-6);
+        let overlap = folded_left.projective_overlap(&folded_right);
+        assert!((0.0..=1.0).contains(&overlap));
+
+        let phase = Complex32::from_polar(1.0, 0.73);
+        let phase_rotated = VectorEmbedding::from_complex(
+            folded_right
+                .complex_data()
+                .iter()
+                .map(|value| *value * phase)
+                .collect(),
+        );
+        assert!((overlap - folded_left.projective_overlap(&phase_rotated)).abs() < 1e-6);
     }
 
     #[test]

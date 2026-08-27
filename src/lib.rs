@@ -1214,11 +1214,21 @@ impl VectorEmbedding {
     /// $$P(z, w) = \frac{|\langle z, w\rangle|^2}{\|z\|^2 \|w\|^2} \in [0, 1]$$
     ///
     /// Preserves global-phase invariance ($P(z, e^{i\theta}w) = P(z, w)$).
+    ///
+    /// The result is defined as zero for zero-norm, non-finite, or dimension-mismatched
+    /// inputs. That makes the public metric total and preserves its $[0, 1]$ contract
+    /// without silently comparing truncated coordinate prefixes.
     #[inline]
     pub fn projective_overlap(&self, other: &Self) -> SimilarityScore {
+        if self.data.len() != other.data.len() {
+            return 0.0;
+        }
         let ip = self.dot_product_complex(other);
         let num = ip.norm_sqr();
-        let denom = (self.norm_squared() * other.norm_squared()).max(1e-12);
+        let denom = self.norm_squared() * other.norm_squared();
+        if !num.is_finite() || !denom.is_finite() || denom <= 1e-12 {
+            return 0.0;
+        }
         (num / denom).clamp(0.0, 1.0)
     }
 
@@ -5931,6 +5941,18 @@ mod tests {
         assert!((v1.projective_overlap(&v3) - 1.0).abs() < 1e-5);
         assert!((v1.projective_sine_distance(&v3) - 0.0).abs() < 1e-5);
         assert!((v1.projective_sine_distance(&v2) - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn projective_overlap_is_total_for_invalid_public_inputs() {
+        let finite = VectorEmbedding::new(vec![1.0, 0.0]);
+        let mismatched = VectorEmbedding::new(vec![1.0]);
+        let non_finite = VectorEmbedding::from_complex(vec![Complex32::new(f32::NAN, 0.0)]);
+        let zero = VectorEmbedding::new(vec![0.0, 0.0]);
+
+        assert_eq!(finite.projective_overlap(&mismatched), 0.0);
+        assert_eq!(finite.projective_overlap(&non_finite), 0.0);
+        assert_eq!(finite.projective_overlap(&zero), 0.0);
     }
 
     #[test]

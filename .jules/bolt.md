@@ -1,0 +1,3 @@
+## 2026-03-31 - Quad-Unrolled SIMD Accumulators and In-Register AVX Reduction
+**Learning:** Real-complex dot product calculations in vector search exact-scan and cosine-similarity hot paths are bottlenecked by SIMD loop dependency latency and memory stack stores (`_mm256_storeu_ps`) during vector reduction.
+**Action:** Unroll AVX2/NEON SIMD inner loops across 4 independent vector accumulators to saturate FMA execution units, and reduce AVX2 vectors using fast in-register SSE horizontal reduction operations (`_mm256_extractf128_ps` + `_mm_movehl_ps` + `_mm_shuffle_ps`) instead of temporary stack array allocations.

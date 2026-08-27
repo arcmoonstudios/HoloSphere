@@ -782,25 +782,53 @@ unsafe fn dot_product_real_complex_avx2(a: &[Complex32], b: &[Complex32]) -> f32
     let float_len = a.len().min(b.len()) * 2;
     let a_ptr = a.as_ptr() as *const f32;
     let b_ptr = b.as_ptr() as *const f32;
+
+    // 4-accumulator Quad-Unrolling to saturate FMA execution units (4 x 256-bit = 32 floats per loop)
     let mut acc0 = _mm256_setzero_ps();
     let mut acc1 = _mm256_setzero_ps();
+    let mut acc2 = _mm256_setzero_ps();
+    let mut acc3 = _mm256_setzero_ps();
+
+    let chunks32 = float_len / 32;
     let mut offset = 0;
-    while offset + 16 <= float_len {
-        acc0 = _mm256_fmadd_ps(
-            _mm256_loadu_ps(a_ptr.add(offset)),
-            _mm256_loadu_ps(b_ptr.add(offset)),
-            acc0,
-        );
-        acc1 = _mm256_fmadd_ps(
-            _mm256_loadu_ps(a_ptr.add(offset + 8)),
-            _mm256_loadu_ps(b_ptr.add(offset + 8)),
-            acc1,
-        );
+
+    for _ in 0..chunks32 {
+        acc0 = _mm256_fmadd_ps(_mm256_loadu_ps(a_ptr.add(offset)), _mm256_loadu_ps(b_ptr.add(offset)), acc0);
+        acc1 = _mm256_fmadd_ps(_mm256_loadu_ps(a_ptr.add(offset + 8)), _mm256_loadu_ps(b_ptr.add(offset + 8)), acc1);
+        acc2 = _mm256_fmadd_ps(_mm256_loadu_ps(a_ptr.add(offset + 16)), _mm256_loadu_ps(b_ptr.add(offset + 16)), acc2);
+        acc3 = _mm256_fmadd_ps(_mm256_loadu_ps(a_ptr.add(offset + 24)), _mm256_loadu_ps(b_ptr.add(offset + 24)), acc3);
+        offset += 32;
+    }
+
+    let chunks16 = (float_len - offset) / 16;
+    for _ in 0..chunks16 {
+        acc0 = _mm256_fmadd_ps(_mm256_loadu_ps(a_ptr.add(offset)), _mm256_loadu_ps(b_ptr.add(offset)), acc0);
+        acc1 = _mm256_fmadd_ps(_mm256_loadu_ps(a_ptr.add(offset + 8)), _mm256_loadu_ps(b_ptr.add(offset + 8)), acc1);
         offset += 16;
     }
-    let mut lanes = [0.0f32; 8];
-    _mm256_storeu_ps(lanes.as_mut_ptr(), _mm256_add_ps(acc0, acc1));
-    let mut total = lanes.into_iter().sum::<f32>();
+
+    let chunks8 = (float_len - offset) / 8;
+    for _ in 0..chunks8 {
+        acc0 = _mm256_fmadd_ps(_mm256_loadu_ps(a_ptr.add(offset)), _mm256_loadu_ps(b_ptr.add(offset)), acc0);
+        offset += 8;
+    }
+
+    // Fast in-register AVX horizontal reduction without stack stores
+    let acc_a = _mm256_add_ps(acc0, acc1);
+    let acc_b = _mm256_add_ps(acc2, acc3);
+    let acc256 = _mm256_add_ps(acc_a, acc_b);
+
+    let low128 = _mm256_castps256_ps128(acc256);
+    let high128 = _mm256_extractf128_ps(acc256, 1);
+    let acc128 = _mm_add_ps(low128, high128);
+
+    let shuf = _mm_movehl_ps(acc128, acc128);
+    let sums = _mm_add_ps(acc128, shuf);
+    let shuf2 = _mm_shuffle_ps(sums, sums, 1);
+    let final_sum = _mm_add_ss(sums, shuf2);
+
+    let mut total = _mm_cvtss_f32(final_sum);
+
     while offset < float_len {
         total += *a_ptr.add(offset) * *b_ptr.add(offset);
         offset += 1;
@@ -816,17 +844,42 @@ unsafe fn dot_product_real_complex_neon(a: &[Complex32], b: &[Complex32]) -> f32
     let float_len = a.len().min(b.len()) * 2;
     let a_ptr = a.as_ptr() as *const f32;
     let b_ptr = b.as_ptr() as *const f32;
-    let mut acc = vdupq_n_f32(0.0);
+
+    // 4-accumulator Quad-Unrolling to saturate NEON pipelines (4 x 128-bit = 16 floats per loop)
+    let mut acc0 = vdupq_n_f32(0.0);
+    let mut acc1 = vdupq_n_f32(0.0);
+    let mut acc2 = vdupq_n_f32(0.0);
+    let mut acc3 = vdupq_n_f32(0.0);
+
+    let chunks16 = float_len / 16;
     let mut offset = 0;
-    while offset + 4 <= float_len {
-        acc = vfmaq_f32(
-            acc,
-            vld1q_f32(a_ptr.add(offset)),
-            vld1q_f32(b_ptr.add(offset)),
-        );
+
+    for _ in 0..chunks16 {
+        acc0 = vfmaq_f32(acc0, vld1q_f32(a_ptr.add(offset)), vld1q_f32(b_ptr.add(offset)));
+        acc1 = vfmaq_f32(acc1, vld1q_f32(a_ptr.add(offset + 4)), vld1q_f32(b_ptr.add(offset + 4)));
+        acc2 = vfmaq_f32(acc2, vld1q_f32(a_ptr.add(offset + 8)), vld1q_f32(b_ptr.add(offset + 8)));
+        acc3 = vfmaq_f32(acc3, vld1q_f32(a_ptr.add(offset + 12)), vld1q_f32(b_ptr.add(offset + 12)));
+        offset += 16;
+    }
+
+    let chunks8 = (float_len - offset) / 8;
+    for _ in 0..chunks8 {
+        acc0 = vfmaq_f32(acc0, vld1q_f32(a_ptr.add(offset)), vld1q_f32(b_ptr.add(offset)));
+        acc1 = vfmaq_f32(acc1, vld1q_f32(a_ptr.add(offset + 4)), vld1q_f32(b_ptr.add(offset + 4)));
+        offset += 8;
+    }
+
+    let chunks4 = (float_len - offset) / 4;
+    for _ in 0..chunks4 {
+        acc0 = vfmaq_f32(acc0, vld1q_f32(a_ptr.add(offset)), vld1q_f32(b_ptr.add(offset)));
         offset += 4;
     }
+
+    let acc_a = vaddq_f32(acc0, acc1);
+    let acc_b = vaddq_f32(acc2, acc3);
+    let acc = vaddq_f32(acc_a, acc_b);
     let mut total = vaddvq_f32(acc);
+
     while offset < float_len {
         total += *a_ptr.add(offset) * *b_ptr.add(offset);
         offset += 1;

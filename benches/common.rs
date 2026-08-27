@@ -108,8 +108,14 @@ pub struct TextRetrievalCorpus {
     pub folded_corpus: Vec<VectorEmbedding>,
     pub queries_raw: Vec<Vec<f32>>,
     pub folded_queries: Vec<VectorEmbedding>,
+    /// Legacy field name: a disjoint, native query partition (B), not
+    /// synthetically generated hard negatives.
     pub hard_negatives: Vec<VectorEmbedding>,
+    /// Legacy field name: a disjoint, native query partition (C), not a
+    /// fabricated out-of-distribution workload.
     pub ood_queries: Vec<VectorEmbedding>,
+    /// Legacy field name: a disjoint, native query partition (D), not an
+    /// unlabelled dataset being asserted to be isotropic.
     pub isotropic_queries: Vec<VectorEmbedding>,
     pub relevance_ground_truth: Vec<Vec<(usize, u32)>>,
 }
@@ -141,10 +147,24 @@ pub fn read_fvecs<P: AsRef<Path>>(
     path: P,
     limit: Option<usize>,
 ) -> std::io::Result<(Vec<VectorEmbedding>, usize)> {
+    read_fvecs_slice(path, 0, limit)
+}
+
+/// Reads a bounded, native query partition from an `.fvecs` file.
+///
+/// The benchmark suite uses this instead of synthesizing query distributions:
+/// each workload must identify the real query rows it evaluates.  `start` is a
+/// vector row offset, not a byte offset.
+pub fn read_fvecs_slice<P: AsRef<Path>>(
+    path: P,
+    start: usize,
+    limit: Option<usize>,
+) -> std::io::Result<(Vec<VectorEmbedding>, usize)> {
     let mut file = File::open(path)?;
     let mut dim_buf = [0u8; 4];
     let mut vectors = Vec::new();
     let mut dim = 0usize;
+    let mut row = 0usize;
 
     while let Ok(()) = file.read_exact(&mut dim_buf) {
         let current_dim = u32::from_le_bytes(dim_buf) as usize;
@@ -153,11 +173,16 @@ pub fn read_fvecs<P: AsRef<Path>>(
         }
         let mut float_buf = vec![0u8; current_dim * 4];
         file.read_exact(&mut float_buf)?;
+        if row < start {
+            row += 1;
+            continue;
+        }
         let mut floats = Vec::with_capacity(current_dim);
         for chunk in float_buf.chunks_exact(4) {
             floats.push(f32::from_le_bytes(chunk.try_into().unwrap()));
         }
         vectors.push(ComplexWeaver::fold_llm_embedding(&floats));
+        row += 1;
         if let Some(max) = limit {
             if vectors.len() >= max {
                 break;
@@ -172,11 +197,21 @@ pub fn read_fvecs_raw<P: AsRef<Path>>(
     path: P,
     limit: Option<usize>,
 ) -> std::io::Result<(Vec<Vec<f32>>, Vec<VectorEmbedding>, usize)> {
+    read_fvecs_raw_slice(path, 0, limit)
+}
+
+/// Reads raw and folded vectors from a native `.fvecs` row partition.
+pub fn read_fvecs_raw_slice<P: AsRef<Path>>(
+    path: P,
+    start: usize,
+    limit: Option<usize>,
+) -> std::io::Result<(Vec<Vec<f32>>, Vec<VectorEmbedding>, usize)> {
     let mut file = File::open(path)?;
     let mut dim_buf = [0u8; 4];
     let mut raw_vectors = Vec::new();
     let mut folded_vectors = Vec::new();
     let mut dim = 0usize;
+    let mut row = 0usize;
 
     while let Ok(()) = file.read_exact(&mut dim_buf) {
         let current_dim = u32::from_le_bytes(dim_buf) as usize;
@@ -185,6 +220,10 @@ pub fn read_fvecs_raw<P: AsRef<Path>>(
         }
         let mut float_buf = vec![0u8; current_dim * 4];
         file.read_exact(&mut float_buf)?;
+        if row < start {
+            row += 1;
+            continue;
+        }
         let mut floats = Vec::with_capacity(current_dim);
         for chunk in float_buf.chunks_exact(4) {
             floats.push(f32::from_le_bytes(chunk.try_into().unwrap()));
@@ -193,6 +232,7 @@ pub fn read_fvecs_raw<P: AsRef<Path>>(
         let normalized_floats: Vec<f32> = floats.iter().map(|&x| x / norm).collect();
         folded_vectors.push(ComplexWeaver::fold_llm_embedding(&normalized_floats));
         raw_vectors.push(normalized_floats);
+        row += 1;
         if let Some(max) = limit {
             if raw_vectors.len() >= max {
                 break;
@@ -325,7 +365,7 @@ pub fn load_real_dataset_corpus(
     };
 
     let (queries_raw, folded_queries, _) = if query_path.exists() {
-        read_fvecs_raw(&query_path, Some(num_queries))
+        read_fvecs_raw_slice(&query_path, 0, Some(num_queries))
             .unwrap_or_else(|_| (Vec::new(), Vec::new(), actual_dim))
     } else {
         (Vec::new(), Vec::new(), actual_dim)
@@ -352,9 +392,24 @@ pub fn load_real_dataset_corpus(
         );
     }
 
-    let hard_negatives = folded_queries.clone();
-    let ood_queries = folded_queries.clone();
-    let isotropic_queries = folded_queries.clone();
+    let (_, hard_negatives, _) = if query_path.exists() {
+        read_fvecs_raw_slice(&query_path, num_queries, Some(num_queries))
+            .unwrap_or_else(|_| (Vec::new(), Vec::new(), actual_dim))
+    } else {
+        (Vec::new(), Vec::new(), actual_dim)
+    };
+    let (_, ood_queries, _) = if query_path.exists() {
+        read_fvecs_raw_slice(&query_path, num_queries * 2, Some(num_queries))
+            .unwrap_or_else(|_| (Vec::new(), Vec::new(), actual_dim))
+    } else {
+        (Vec::new(), Vec::new(), actual_dim)
+    };
+    let (_, isotropic_queries, _) = if query_path.exists() {
+        read_fvecs_raw_slice(&query_path, num_queries * 3, Some(num_queries))
+            .unwrap_or_else(|_| (Vec::new(), Vec::new(), actual_dim))
+    } else {
+        (Vec::new(), Vec::new(), actual_dim)
+    };
 
     // Grade relevance ground truth for production validation benchmarks
     let mut relevance_ground_truth = Vec::with_capacity(queries_raw.len());

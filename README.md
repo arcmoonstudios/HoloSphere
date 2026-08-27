@@ -358,7 +358,7 @@ Exact SIMD linear scans on modern AVX2/AVX-512 hardware process tens of millions
 
 1. **Direct Measured Table (`MEASURED`):** Benchmark-derived crossover points are used directly for known dimensions.
 2. **Empirical Bias Correction ($1.576\times$):** The raw two-parameter power-law fit ($577,169.2 / D^{0.770}$) systematically underestimates empirical crossover points by $26\%\text{--}43\%$ across 10 of 11 measured dimensions. For unlisted dimensions, the planner applies a mean $1.576\times$ bias-correction factor ($[\text{fit}] \times 1.576$) with an empirical residual band of $\sim [-14\%, +11\%]$.
-3. **Anomalous Dimension Quarantine ($D_{\text{cmplx}}=192$):** The sweep flags $D_{\text{cmplx}}=192$ ($384\text{D}$ real) as an unvalidated boundary artifact. Rather than applying an uncalibrated power law or distorted bias multiplier, the planner logs a `tracing::warn!` and safely routes queries through the `Certified` proof-tree hierarchy.
+3. **Anomalous Dimension Quarantine ($D_{\text{cmplx}}=192$):** The sweep flags $D_{\text{cmplx}}=192$ ($384\text{D}$ real) as an unvalidated boundary artifact. Rather than applying an uncalibrated power law or distorted bias multiplier, the planner logs a `tracing::warn!` and uses the admitted Exact SIMD path. The proof-tree path remains experimental until it passes its admission gate.
 
 ```
   ┌────────┬─────────┬──────────────┬──────────────────┬──────────────┬───────────────────────────────────────────┐

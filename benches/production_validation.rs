@@ -438,20 +438,18 @@ fn run_adaptive_confidence_validation(corpus: &TextRetrievalCorpus, index: &HNSQ
         "════════════════════════════════════════════════════════════════════════════════════════"
     );
 
-    // 1. In-Domain Semantic Queries
+    // Each entry is a distinct, native query partition.  This suite does not
+    // fabricate geometry labels such as "hard negative" or "isotropic".
     let in_domain_queries = corpus.folded_queries.clone();
-
-    // Remaining workloads are real held-out query vectors.  Their labels name
-    // evaluation roles, not fabricated embeddings.
     let hard_negatives = corpus.hard_negatives.clone();
     let ood_queries = corpus.ood_queries.clone();
     let isotropic_queries = corpus.isotropic_queries.clone();
 
     let workloads = [
-        ("Real Semantic", in_domain_queries),
-        ("Hard Negatives", hard_negatives),
-        ("OOD Queries", ood_queries),
-        ("Held-out Isotropic", isotropic_queries),
+        ("Native partition A", in_domain_queries),
+        ("Native partition B", hard_negatives),
+        ("Native partition C", ood_queries),
+        ("Native partition D", isotropic_queries),
     ];
 
     println!(
@@ -465,6 +463,13 @@ fn run_adaptive_confidence_validation(corpus: &TextRetrievalCorpus, index: &HNSQ
     );
 
     for (name, q_set) in &workloads {
+        if q_set.is_empty() {
+            println!(
+                "  │ {:<17} │ {:>12} │ {:>12} │ {:>12} │ {:>13} │ {:>14} │",
+                name, "UNAVAILABLE", "UNAVAILABLE", "UNAVAILABLE", "UNAVAILABLE", "UNAVAILABLE"
+            );
+            continue;
+        }
         let mut fast_count = 0usize;
         let mut balanced_count = 0usize;
         let mut strict_count = 0usize;

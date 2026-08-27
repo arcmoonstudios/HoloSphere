@@ -86,10 +86,10 @@ fn load_semantic_corpus(
     (corpus, queries)
 }
 
-fn run_hierarchy_experiment(exp: &HierarchyExperiment) -> HierarchyResult {
+fn run_hierarchy_experiment(exp: &HierarchyExperiment) -> Option<HierarchyResult> {
     println!("\n═══════════════════════════════════════════════════════════════════════════════");
     println!(
-        " 🔬 Running B3 Hierarchy Experiment: D_real = {} ({} complex), N = {}, K = {}",
+        " 🔬 Running B3 Hierarchy Experiment: D_real = {} ({} complex), requested N = {}, K = {}",
         exp.d_real,
         exp.d_real / 2,
         exp.n_corpus,
@@ -99,6 +99,21 @@ fn run_hierarchy_experiment(exp: &HierarchyExperiment) -> HierarchyResult {
 
     let (corpus, queries) = load_semantic_corpus(exp.n_corpus, exp.n_queries, exp.d_real);
     let complex_dim = corpus.first().map_or(exp.d_real / 2, |v| v.dimension());
+    let actual_n = corpus.len();
+    if actual_n != exp.n_corpus || queries.len() != exp.n_queries {
+        println!(
+            "   ⏭ UNAVAILABLE: requested N={}, queries={}; loaded N={}, queries={}. No result emitted.",
+            exp.n_corpus,
+            exp.n_queries,
+            actual_n,
+            queries.len()
+        );
+        return None;
+    }
+    println!(
+        "   ✓ Loaded immutable real-dataset workload: N = {actual_n}, queries = {}",
+        queries.len()
+    );
 
     // 1. Build Rivero Index
     print!("   ⚙️ Building Rivero Coarse Index...");
@@ -116,7 +131,6 @@ fn run_hierarchy_experiment(exp: &HierarchyExperiment) -> HierarchyResult {
 
     // 3. Build Semantic Proof Tree
     print!("   ⚙️ Building Flattened Semantic Proof Hierarchy...");
-    let actual_n = corpus.len();
     let slots: Vec<NodeIndex> = (0..actual_n as NodeIndex).collect();
     let build_start = Instant::now();
     let proof_tree = SemanticProofTree::build(&corpus, &slots, complex_dim);
@@ -314,9 +328,9 @@ fn run_hierarchy_experiment(exp: &HierarchyExperiment) -> HierarchyResult {
     );
     println!("      • Speedup vs Brute Force:       {:.2}x", speedup);
 
-    HierarchyResult {
+    Some(HierarchyResult {
         d_real: exp.d_real,
-        n_corpus: exp.n_corpus,
+        n_corpus: actual_n,
         exact_recall,
         region_pruned_pct,
         l0_pruned_pct,
@@ -325,7 +339,7 @@ fn run_hierarchy_experiment(exp: &HierarchyExperiment) -> HierarchyResult {
         full_vector_bytes_touched: avg_exact_bytes,
         p50_us,
         speedup_vs_bf: speedup,
-    }
+    })
 }
 
 fn main() {
@@ -369,7 +383,9 @@ fn main() {
 
     let mut results = Vec::new();
     for exp in &matrix {
-        results.push(run_hierarchy_experiment(exp));
+        if let Some(result) = run_hierarchy_experiment(exp) {
+            results.push(result);
+        }
     }
 
     println!(

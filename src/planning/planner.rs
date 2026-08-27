@@ -245,11 +245,12 @@ impl UniversalPlanner {
             1.0f32
         };
 
-        // 2. If effective contract is Certified -> LutzGlobalCertified
+        // 2. Certified proof-tree routing is a research candidate, not an
+        // admitted production path. Its benchmarks currently remain slower
+        // than the authoritative exact SIMD baseline, so preserve the
+        // Certified contract by selecting the exact implementation.
         if matches!(effective_contract, RetrievalContract::Certified) {
-            return ExecutionPlan::LutzGlobalCertified {
-                initial_seed_cap: (2048.0 * dim_multiplier).round() as usize,
-            };
+            return ExecutionPlan::ExactScan { effective_n };
         }
 
         if let RetrievalContract::PacRelaxed { epsilon, delta } = effective_contract {
@@ -304,13 +305,14 @@ mod tests {
             ExecutionPlan::ExactScan { effective_n: 500 }
         ));
 
-        // Large corpus (N=100,000 at 1536D) with Certified contract -> LutzGlobalCertified
+        // Large corpus with a Certified contract remains ExactScan until the
+        // proof path passes the documented production admission gate.
         let plan_large_certified =
             UniversalPlanner::plan(100_000, 768, None, RetrievalContract::Certified, false);
         assert!(matches!(
             plan_large_certified,
-            ExecutionPlan::LutzGlobalCertified {
-                initial_seed_cap: 5120
+            ExecutionPlan::ExactScan {
+                effective_n: 100_000
             }
         ));
 
@@ -342,7 +344,8 @@ mod tests {
 
     #[test]
     fn test_affect_driven_planner_gating() {
-        // One-way door action (R < 0.2) forces LutzGlobalCertified even if contract was HighRecall
+        // One-way door action (R < 0.2) upgrades the contract to Certified;
+        // until proof routing is admitted, Certified resolves safely to Exact.
         let low_r_affect = AffectiveStateTensor8D::new(0.5, 0.2, 0.5, 0.9, 0.9, 0.1, 0.5, 0.05);
         let plan_low_r = UniversalPlanner::plan_with_affect(
             100_000,
@@ -354,7 +357,9 @@ mod tests {
         );
         assert!(matches!(
             plan_low_r,
-            ExecutionPlan::LutzGlobalCertified { .. }
+            ExecutionPlan::ExactScan {
+                effective_n: 100_000
+            }
         ));
 
         // High-curiosity safe exploration (R > 0.8, N > 0.8) licenses PAC relaxation
@@ -378,7 +383,8 @@ mod tests {
         assert_eq!(UniversalPlanner::compute_crossover(768), 5_500);
         assert_eq!(UniversalPlanner::compute_crossover(2_048), 2_800);
 
-        // D=192 quarantine (forces Certified routing safely)
+        // D=192 quarantine promotes the contract to Certified; production
+        // routing resolves that contract to the admitted Exact path.
         assert_eq!(UniversalPlanner::compute_crossover(192), 0);
 
         // Unlisted dimension uses BIAS_CORRECTION (1.576x)

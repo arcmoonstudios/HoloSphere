@@ -4,9 +4,11 @@
 //!▫~•◦-------------------------------------------------------------------‣
 //!
 //! Evaluates the multi-stage, state-reusing adaptive router against:
-//!   1. Clustered Semantic Workload (Natural LLM Embeddings)
-//!   2. Boundary Adversarial Workload (Queries Between Clusters)
-//!   3. Isotropic Uniform Workload (Spherical Stress Test)
+//!   1. Three disjoint native-query partitions from the same public dataset.
+//!
+//! This benchmark intentionally does not synthesize geometry classes.  A real
+//! dataset without distribution labels cannot honestly be called "clustered",
+//! "boundary", or "isotropic"; each row names the query partition it uses.
 //!
 //! Compares:
 //!   - Strict Rivero (Provably Bounded, Fixed Profile)
@@ -37,6 +39,7 @@ const QUERY_COUNT: usize = 100;
 const K_BENCH: usize = 10;
 const SEED: u64 = 0x5461_6765_6441_6470;
 
+#[derive(Clone)]
 struct Workload {
     name: String,
     corpus: Vec<VectorEmbedding>,
@@ -46,10 +49,17 @@ struct Workload {
 
 mod common;
 
-fn load_real_workload(name: &str, n: usize, d: usize, q_count: usize) -> Workload {
+fn load_real_workload(
+    name: &str,
+    n: usize,
+    d: usize,
+    q_count: usize,
+    query_start: usize,
+) -> Workload {
     let (base_path, query_path, _) = common::find_best_matching_dataset(d);
     let (corpus, _) = common::read_fvecs(&base_path, Some(n)).unwrap_or_default();
-    let (queries, _) = common::read_fvecs(&query_path, Some(q_count)).unwrap_or_default();
+    let (queries, _) =
+        common::read_fvecs_slice(&query_path, query_start, Some(q_count)).unwrap_or_default();
 
     assert!(
         !corpus.is_empty(),
@@ -57,9 +67,12 @@ fn load_real_workload(name: &str, n: usize, d: usize, q_count: usize) -> Workloa
         base_path.display()
     );
     assert!(
-        !queries.is_empty(),
-        "query file '{}' is missing or empty",
-        query_path.display()
+        queries.len() == q_count,
+        "query partition [{query_start}..{}) from '{}' contains only {} vectors; \
+         choose a dataset with enough native query rows",
+        query_start + q_count,
+        query_path.display(),
+        queries.len()
     );
 
     let ground_truth = compute_exact_ground_truth(&corpus, &queries, K_BENCH);
@@ -72,15 +85,15 @@ fn load_real_workload(name: &str, n: usize, d: usize, q_count: usize) -> Workloa
 }
 
 fn load_clustered_workload(n: usize, d: usize, q_count: usize, _seed: u64) -> Workload {
-    load_real_workload("Real Clustered Semantic", n, d, q_count)
+    load_real_workload("Real Query Partition A", n, d, q_count, 0)
 }
 
 fn load_boundary_workload(n: usize, d: usize, q_count: usize, _seed: u64) -> Workload {
-    load_real_workload("Real Boundary Workload", n, d, q_count)
+    load_real_workload("Real Query Partition B", n, d, q_count, q_count)
 }
 
 fn load_isotropic_workload(n: usize, d: usize, q_count: usize, _seed: u64) -> Workload {
-    load_real_workload("Real Isotropic Uniform", n, d, q_count)
+    load_real_workload("Real Query Partition C", n, d, q_count, q_count * 2)
 }
 
 fn compute_exact_ground_truth(
@@ -482,10 +495,21 @@ fn run_workload_benchmark(workload: &Workload) {
         index
     };
 
-    let res_strict = evaluate_strict_reference(&index, workload);
-    let res_adapt_bounded = evaluate_adaptive_bounded(&index, workload);
-    let res_adapt_hybrid = evaluate_adaptive_hybrid(&index, workload);
-    let res_graph = evaluate_graph_only(&index, workload);
+    // One canonical oracle for every reported recall and false-confidence
+    // value: the index's exhaustive implementation under its configured
+    // metric.  This prevents a benchmark-local similarity helper from
+    // drifting away from the actual serving contract.
+    let mut evaluated_workload = workload.clone();
+    evaluated_workload.ground_truth = evaluated_workload
+        .queries
+        .iter()
+        .map(|query| index.search_indices_exact(query, K_BENCH, None).unwrap())
+        .collect();
+
+    let res_strict = evaluate_strict_reference(&index, &evaluated_workload);
+    let res_adapt_bounded = evaluate_adaptive_bounded(&index, &evaluated_workload);
+    let res_adapt_hybrid = evaluate_adaptive_hybrid(&index, &evaluated_workload);
+    let res_graph = evaluate_graph_only(&index, &evaluated_workload);
 
     println!("  Staged Execution & Routing Performance Table:");
     println!(
@@ -556,9 +580,14 @@ fn run_workload_benchmark(workload: &Workload) {
         res_adapt_bounded.pct_fast, res_adapt_bounded.pct_balanced, res_adapt_bounded.pct_strict
     );
     let speedup = res_strict.latency_p50_us / res_adapt_bounded.latency_p50_us.max(1e-3);
+    let relationship = if speedup >= 1.0 {
+        "speedup over"
+    } else {
+        "speed relative to"
+    };
     println!(
-        "    * Latency Acceleration: {:.2}x faster than Strict baseline (p50: {:.1} µs vs {:.1} µs)\n",
-        speedup, res_adapt_bounded.latency_p50_us, res_strict.latency_p50_us
+        "    * Latency {} Strict baseline: {:.2}x (Adaptive p50: {:.1} µs; Strict p50: {:.1} µs)\n",
+        relationship, speedup, res_adapt_bounded.latency_p50_us, res_strict.latency_p50_us
     );
 }
 

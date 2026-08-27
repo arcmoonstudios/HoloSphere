@@ -20,6 +20,21 @@ struct DimCrossoverResult {
     measured_crossover: usize,
 }
 
+enum CrossoverObservation {
+    Observed {
+        n: usize,
+        exact_ms: f64,
+        rivero_ms: f64,
+    },
+    /// The sampled range ended before Rivero became faster than Exact.  This
+    /// is a lower bound, not a calibration point.
+    NotObserved {
+        lower_bound_n: usize,
+        exact_ms: f64,
+        rivero_ms: f64,
+    },
+}
+
 fn measure_point(n: usize, complex_dim: usize, num_queries: usize) -> (f64, f64) {
     let dataset =
         load_real_dataset_corpus(n, num_queries, complex_dim * 2, common::DEFAULT_BENCH_SEED);
@@ -56,7 +71,7 @@ fn measure_point(n: usize, complex_dim: usize, num_queries: usize) -> (f64, f64)
     (exact_p50, rivero_p50)
 }
 
-fn find_crossover(complex_dim: usize) -> Option<(usize, f64, f64)> {
+fn find_crossover(complex_dim: usize) -> Option<CrossoverObservation> {
     let num_queries = 16;
     // Compute the real-dim for this complex_dim tier and check dataset capacity.
     let real_dim = complex_dim * 2;
@@ -109,12 +124,20 @@ fn find_crossover(complex_dim: usize) -> Option<(usize, f64, f64)> {
             let n_cross = (n1 as f64 + t * (n2 as f64 - n1 as f64)).round() as usize;
             let e_cross = e1 + t * (e2 - e1);
             let r_cross = r1 + t * (r2 - r1);
-            return Some((n_cross, e_cross, r_cross));
+            return Some(CrossoverObservation::Observed {
+                n: n_cross,
+                exact_ms: e_cross,
+                rivero_ms: r_cross,
+            });
         }
     }
 
     let (n_last, e_last, r_last) = points.last().copied().unwrap();
-    Some((n_last, e_last, r_last))
+    Some(CrossoverObservation::NotObserved {
+        lower_bound_n: n_last,
+        exact_ms: e_last,
+        rivero_ms: r_last,
+    })
 }
 
 fn fit_model(results: &[DimCrossoverResult]) -> (f64, f64, f64) {
@@ -199,7 +222,11 @@ fn main() {
 
     for &(real_d, complex_d) in &dims {
         match find_crossover(complex_d) {
-            Some((n_cross, e_lat, r_lat)) => {
+            Some(CrossoverObservation::Observed {
+                n: n_cross,
+                exact_ms: e_lat,
+                rivero_ms: r_lat,
+            }) => {
                 results.push(DimCrossoverResult {
                     real_dim: real_d,
                     complex_dim: complex_d,
@@ -208,6 +235,16 @@ fn main() {
                 println!(
                     "  │ {:>6} │ {:>7} │ {:>15} N │ {:>6.3} ms  /  {:>6.3} ms    │",
                     real_d, complex_d, n_cross, e_lat, r_lat
+                );
+            }
+            Some(CrossoverObservation::NotObserved {
+                lower_bound_n,
+                exact_ms: e_lat,
+                rivero_ms: r_lat,
+            }) => {
+                println!(
+                    "  │ {:>6} │ {:>7} │ > {:>12} N │ {:>6.3} ms  /  {:>6.3} ms    │",
+                    real_d, complex_d, lower_bound_n, e_lat, r_lat
                 );
             }
             None => {
@@ -224,7 +261,14 @@ fn main() {
     }
     println!("  └────────┴─────────┴───────────────────┴────────────────────────────────┘\n");
 
-    // Fit Mathematical Model: N_cross(D) = A + B / D^p
+    assert!(
+        results.len() >= 2,
+        "crossover calibration requires at least two observed crossings; censored lower bounds are intentionally excluded"
+    );
+
+    // Fit Mathematical Model: N_cross(D) = A + B / D^p.  Censored points
+    // above are deliberately excluded rather than being misrepresented as
+    // empirical crossings.
     let (a, b, p) = fit_model(&results);
 
     println!(

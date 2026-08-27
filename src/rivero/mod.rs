@@ -2637,9 +2637,13 @@ mod tests {
         let phase = Complex32::from_polar(1.0, 1.37);
         let rotated = vector.map(|value| value * phase);
 
-        let lhs = RiveroAddress::compile(&vector);
-        let rhs = RiveroAddress::compile(&rotated);
-        for foundation in 0..RIVERO_FOUNDATIONS {
+        let config = RiveroAddressConfig {
+            geometry: VectorGeometry::ComplexPhaseInvariant,
+            ..Default::default()
+        };
+        let lhs = RiveroAddress::compile_with_config(&vector, config);
+        let rhs = RiveroAddress::compile_with_config(&rotated, config);
+        for foundation in 0..config.foundations as usize {
             for lane in 0..8 {
                 assert!(
                     (lhs.foundations[foundation][lane] - rhs.foundations[foundation][lane]).abs()

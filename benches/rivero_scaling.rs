@@ -67,9 +67,19 @@ fn load_master_dataset(
     dimension: usize,
     query_count: usize,
 ) -> (Vec<VectorEmbedding>, Vec<VectorEmbedding>) {
+    load_master_dataset_slice(count, dimension, 0, query_count)
+}
+
+fn load_master_dataset_slice(
+    count: usize,
+    dimension: usize,
+    query_start: usize,
+    query_count: usize,
+) -> (Vec<VectorEmbedding>, Vec<VectorEmbedding>) {
     let (base_path, query_path, _) = common::find_best_matching_dataset(dimension);
     let (corpus, _) = common::read_fvecs(&base_path, Some(count)).unwrap_or_default();
-    let (queries, _) = common::read_fvecs(&query_path, Some(query_count)).unwrap_or_default();
+    let (queries, _) =
+        common::read_fvecs_slice(&query_path, query_start, Some(query_count)).unwrap_or_default();
 
     assert!(
         !corpus.is_empty(),
@@ -77,9 +87,12 @@ fn load_master_dataset(
         base_path.display()
     );
     assert!(
-        !queries.is_empty(),
-        "query file '{}' is missing or empty",
-        query_path.display()
+        queries.len() == query_count,
+        "query partition [{query_start}..{}) from '{}' contains only {} vectors; \
+         choose a dataset with enough native query rows",
+        query_start + query_count,
+        query_path.display(),
+        queries.len()
     );
     (corpus, queries)
 }
@@ -89,11 +102,12 @@ fn load_isotropic_workload(
     dimension: usize,
     query_count: usize,
 ) -> (Vec<VectorEmbedding>, Vec<VectorEmbedding>) {
-    load_master_dataset(count, dimension, query_count)
+    load_master_dataset_slice(count, dimension, query_count, query_count)
 }
 
 fn load_independent_query_slice(dimension: usize, query_count: usize) -> Vec<VectorEmbedding> {
-    let (_, queries) = load_master_dataset(query_count * 2, dimension, query_count);
+    let (_, queries) =
+        load_master_dataset_slice(query_count * 2, dimension, query_count * 2, query_count);
     queries
 }
 
@@ -102,7 +116,7 @@ fn load_boundary_workload(
     dimension: usize,
     query_count: usize,
 ) -> (Vec<VectorEmbedding>, Vec<VectorEmbedding>) {
-    load_master_dataset(count, dimension, query_count)
+    load_master_dataset_slice(count, dimension, query_count * 3, query_count)
 }
 
 fn exact_top_k(corpus: &[VectorEmbedding], query: &VectorEmbedding, k: usize) -> Vec<u32> {
@@ -545,9 +559,9 @@ fn main() {
     let mut rows = Vec::new();
     for &size in sizes {
         let row = audit_size(&master[..size], &queries, DIMENSION);
-        print_row("clustered-scale", &row);
+        print_row("native-partition-a", &row);
         assert_fixed_work(&row);
-        assert_quality("clustered-scale", &row, strict_quality_gate(row.n));
+        assert_quality("native-partition-a", &row, strict_quality_gate(row.n));
         rows.push(row);
     }
 
@@ -555,14 +569,14 @@ fn main() {
     let (isotropic, isotropic_queries) =
         load_isotropic_workload(secondary_size, DIMENSION, QUERY_COUNT);
     let isotropic_row = audit_size(&isotropic, &isotropic_queries, DIMENSION);
-    print_row("isotropic-anchor", &isotropic_row);
+    print_row("native-partition-b", &isotropic_row);
     assert_fixed_work(&isotropic_row);
     // Anchor Recall@10 remains a reported isotropic stress metric rather than a
     // universal gate: exact ranks 2..k among unrelated random vectors do not
     // remain recoverable at fixed work as N grows. Top-1/self, selectivity, and
     // all fixed-work ceilings remain hard requirements.
     assert_anchor_quality(
-        "isotropic-anchor",
+        "native-partition-b",
         &isotropic_row,
         strict_quality_gate(isotropic_row.n),
     );
@@ -570,17 +584,17 @@ fn main() {
     if !quick {
         let independent_queries = load_independent_query_slice(DIMENSION, QUERY_COUNT);
         let independent_row = audit_size(&isotropic, &independent_queries, DIMENSION);
-        print_row("independent-isotropic", &independent_row);
+        print_row("native-partition-c", &independent_row);
         assert_fixed_work(&independent_row);
     }
 
     let (boundary, boundary_queries) =
         load_boundary_workload(secondary_size, DIMENSION, QUERY_COUNT);
     let boundary_row = audit_size(&boundary, &boundary_queries, DIMENSION);
-    print_row("cluster-boundary", &boundary_row);
+    print_row("native-partition-d", &boundary_row);
     assert_fixed_work(&boundary_row);
     assert_quality(
-        "cluster-boundary",
+        "native-partition-d",
         &boundary_row,
         strict_quality_gate(boundary_row.n),
     );

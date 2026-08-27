@@ -27,7 +27,7 @@ fn main() {
         "╔══════════════════════════════════════════════════════════════════════════════════════╗"
     );
     println!(
-        "║ HNSQR UNIVERSAL ENGINE SCORECARD BENCHMARK (N=50,000, D=1536, K=10)                  ║"
+        "║ HNSQR UNIVERSAL ENGINE SCORECARD BENCHMARK (real dataset, D=1536, K=10)               ║"
     );
     println!(
         "╚══════════════════════════════════════════════════════════════════════════════════════╝\n"
@@ -42,6 +42,9 @@ fn main() {
     let n = dataset.folded_corpus.len();
     let num_queries = dataset.folded_queries.len();
     let complex_dim = dataset.complex_dim;
+    println!(
+        "Loaded real workload: requested N=50,000; actual N={n}; queries={num_queries}; complex D={complex_dim}"
+    );
 
     // =========================================================================
     // 1. DENSE RETRIEVAL EVALUATION
@@ -140,7 +143,11 @@ fn main() {
         }
     }
 
-    // Universal Auto (Contract: Exact / Certified Guaranteed Top-10)
+    // Universal Auto (Certified contract).  Print the selected plan explicitly:
+    // "auto" must never conceal an unexpected execution path.
+    let auto_plan =
+        UniversalPlanner::plan(n, complex_dim, None, RetrievalContract::Certified, false);
+    println!("Universal Auto planner selection: {auto_plan:?}");
     let mut auto_latencies = Vec::with_capacity(num_queries);
     let mut auto_hits = 0usize;
 
@@ -192,8 +199,8 @@ fn main() {
         "  ├──────────────────────┼────────────┼──────────┼──────────┼──────────┼──────────────┼──────────────┤"
     );
     println!(
-        "  │ Exact SIMD (N=50K)   │   100.00%  │ {:>7.1} µs│ {:>7.1} µs│ {:>7.1} µs│ {:>9.0} QPS│    6,144 B   │",
-        exact_p50, exact_p95, exact_p99, exact_qps
+        "  │ Exact SIMD (N={:<5}) │   100.00%  │ {:>7.1} µs│ {:>7.1} µs│ {:>7.1} µs│ {:>9.0} QPS│    6,144 B   │",
+        n, exact_p50, exact_p95, exact_p99, exact_qps
     );
     println!(
         "  │ Rivero Bounded       │ {:>9.2}%  │ {:>7.1} µs│ {:>7.1} µs│ {:>7.1} µs│ {:>9.0} QPS│    6,144 B   │",
@@ -229,7 +236,7 @@ fn main() {
     println!(
         "\n════════════════════════════════════════════════════════════════════════════════════════"
     );
-    println!(" SECTION 2: FILTER SELECTIVITY & CROSSOVER SWEEP (N=50,000)");
+    println!(" SECTION 2: FILTER SELECTIVITY & CROSSOVER SWEEP (N={n})");
     println!(
         "════════════════════════════════════════════════════════════════════════════════════════"
     );
@@ -259,47 +266,36 @@ fn main() {
             RetrievalContract::Certified,
             false,
         );
-        let plan_str = match plan {
-            ExecutionPlan::ExactScan { .. } => "Filtered ExactSIMD",
-            ExecutionPlan::RiveroRetrieval { .. } => "RiveroFast + SIMD",
-            _ => "Other",
+        let plan_str = match &plan {
+            ExecutionPlan::ExactScan { .. } => "ExactScan",
+            ExecutionPlan::LutzGlobalCertified { .. } => "LutzGlobalCertified",
+            ExecutionPlan::LutzPacRelaxed { .. } => "LutzPacRelaxed",
+            ExecutionPlan::RiveroRetrieval { .. } => "RiveroRetrieval",
+            ExecutionPlan::SparseLexical { .. } => "SparseLexical",
+            ExecutionPlan::MultiVectorMaxSim => "MultiVectorMaxSim",
+            ExecutionPlan::HybridFusion { .. } => "HybridFusion",
         };
+        println!("  planner audit: filter={name}, n_eff={n_eff}, plan={plan:?}");
 
-        // Measure actual latency
+        // Execute the exact planner-selected implementation. The previous
+        // harness routed every non-Exact plan through a hand-written Rivero
+        // shortcut, so a printed `LutzGlobalCertified` row did not measure the
+        // plan it claimed to audit.
         let query = &dataset.folded_queries[0];
+        let filter_mask: roaring::RoaringBitmap = (0..n_eff as u32).collect();
         let t0 = Instant::now();
-        let _ = match plan {
-            ExecutionPlan::ExactScan { .. } => {
-                let mut s: Vec<_> = dataset.folded_corpus[..n_eff]
-                    .iter()
-                    .enumerate()
-                    .map(|(id, d)| (id as NodeIndex, (query.dot_product_complex(d)).re))
-                    .collect();
-                s.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
-                s.truncate(k);
-                s
-            }
-            _ => {
-                let q_addr = compiler.compile(query.complex_data());
-                let candidate_slots: Vec<NodeIndex> =
-                    territory_index.with_candidates(&q_addr, 512, |cands: &[NodeIndex], _| {
-                        cands
-                            .iter()
-                            .copied()
-                            .filter(|&id| (id as usize) < n_eff)
-                            .collect()
-                    });
-                exact_rerank_locality_sorted(
-                    &candidate_slots,
-                    |slot| (query.dot_product_complex(&dataset.folded_corpus[slot as usize])).re,
-                    k,
-                )
-            }
-        };
+        let _ = hnsqr_index
+            .search_indices_with_contract(
+                query,
+                k,
+                Some(&filter_mask),
+                RetrievalContract::Certified,
+            )
+            .unwrap();
         let lat = t0.elapsed().as_secs_f64() * 1_000_000.0;
 
         println!(
-            "  │ {:<20} │ {:>10} │ {:<20} │ {:>7.1} µs│   100.0% │ Optimal ✓    │",
+            "  │ {:<20} │ {:>10} │ {:<20} │ {:>7.1} µs│   100.0% │ Policy-consistent │",
             name, n_eff, plan_str, lat
         );
     }

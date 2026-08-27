@@ -16,7 +16,8 @@
 //!   - Resident Scans (mean & peak) vs Theoretical bounds
 //!   - Admissions & Candidate Deduplication
 //!   - Latency distributions (mean, p50, p95, p99)
-//! across Clustered, Isotropic Uniform, and Boundary Adversarial query workloads.
+//! across three disjoint native-query partitions of one public dataset.  The
+//! suite does not synthesize or claim unlabelled geometry classes.
 /*▫~•◦------------------------------------------------------------------------------------‣
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
@@ -55,10 +56,17 @@ struct SweepResult {
 
 mod common;
 
-fn load_real_workload(name: &str, count: usize, dim: usize, query_count: usize) -> Workload {
+fn load_real_workload(
+    name: &str,
+    count: usize,
+    dim: usize,
+    query_count: usize,
+    query_start: usize,
+) -> Workload {
     let (base_path, query_path, _) = common::find_best_matching_dataset(dim);
     let (corpus, _) = common::read_fvecs(&base_path, Some(count)).unwrap_or_default();
-    let (queries, _) = common::read_fvecs(&query_path, Some(query_count)).unwrap_or_default();
+    let (queries, _) =
+        common::read_fvecs_slice(&query_path, query_start, Some(query_count)).unwrap_or_default();
 
     assert!(
         !corpus.is_empty(),
@@ -66,9 +74,12 @@ fn load_real_workload(name: &str, count: usize, dim: usize, query_count: usize) 
         base_path.display()
     );
     assert!(
-        !queries.is_empty(),
-        "query file '{}' is missing or empty",
-        query_path.display()
+        queries.len() == query_count,
+        "query partition [{query_start}..{}) from '{}' contains only {} vectors; \
+         choose a dataset with enough native query rows",
+        query_start + query_count,
+        query_path.display(),
+        queries.len()
     );
 
     let ground_truth = compute_ground_truth(&corpus, &queries, 100);
@@ -87,11 +98,17 @@ fn load_clustered_workload(
     _clusters: usize,
     _seed: u64,
 ) -> Workload {
-    load_real_workload("Real Clustered Semantic", count, dim, query_count)
+    load_real_workload("Real Query Partition A", count, dim, query_count, 0)
 }
 
 fn load_isotropic_workload(count: usize, dim: usize, query_count: usize, _seed: u64) -> Workload {
-    load_real_workload("Real Isotropic Uniform", count, dim, query_count)
+    load_real_workload(
+        "Real Query Partition B",
+        count,
+        dim,
+        query_count,
+        query_count,
+    )
 }
 
 fn load_boundary_workload(
@@ -101,7 +118,13 @@ fn load_boundary_workload(
     _clusters: usize,
     _seed: u64,
 ) -> Workload {
-    load_real_workload("Real Boundary Adversarial", count, dim, query_count)
+    load_real_workload(
+        "Real Query Partition C",
+        count,
+        dim,
+        query_count,
+        query_count * 2,
+    )
 }
 
 fn compute_ground_truth(

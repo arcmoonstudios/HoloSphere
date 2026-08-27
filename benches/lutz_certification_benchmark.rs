@@ -283,7 +283,7 @@ fn main() {
         "  ┌────────┬─────────┬──────────────┬──────────────┬──────────────┬──────────────┬──────────────┐"
     );
     println!(
-        "  │ Real D │ Cmplx D │ Raw Baseline │ L0 Traffic   │ L1 Traffic   │ Exact Vector │ BW Reduction │"
+        "  │ Real D │ Cmplx D │ Raw Baseline │ L0 Traffic   │ L1 Traffic   │ Exact Vector │ BW Efficiency│"
     );
     println!(
         "  ├────────┼─────────┼──────────────┼──────────────┼──────────────┼──────────────┼──────────────┤"

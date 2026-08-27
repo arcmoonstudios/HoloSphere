@@ -113,6 +113,34 @@ fn compute_file_sha256(path: &Path) -> io::Result<String> {
     Ok(hash.iter().map(|b| format!("{:02x}", b)).collect())
 }
 
+fn baseline_update_requested() -> bool {
+    matches!(
+        std::env::var("HOLOSPHERE_UPDATE_BASELINE").as_deref(),
+        Ok("1") | Ok("true") | Ok("TRUE")
+    )
+}
+
+fn persist_or_compare_baseline(path: &Path, current: &DatasetBaselineRecord, update: bool) {
+    if path.exists() && !update {
+        let prior: DatasetBaselineRecord =
+            serde_json::from_reader(File::open(path).expect("open frozen baseline"))
+                .expect("parse frozen baseline");
+        let prior_p50 = prior.aggregate_overall.p50_ms;
+        let current_p50 = current.aggregate_overall.p50_ms;
+        let change_pct = ((current_p50 - prior_p50) / prior_p50.max(f64::EPSILON)) * 100.0;
+        println!(
+            "  ✓ Compared {} against frozen baseline: p50 {:.3} ms -> {:.3} ms ({:+.2}%).",
+            current.dataset_name, prior_p50, current_p50, change_pct
+        );
+        return;
+    }
+
+    let json = serde_json::to_string_pretty(current).expect("serialize baseline");
+    let mut file = File::create(path).expect("create baseline file");
+    file.write_all(json.as_bytes()).expect("write baseline");
+    println!("  ✓ Updated baseline: {}", path.display());
+}
+
 fn read_fvecs(
     path: impl AsRef<Path>,
     max_vectors: Option<usize>,
@@ -367,7 +395,20 @@ fn main() {
     let glove100_query = PathBuf::from("datasets/glove_100/glove100_query.fvecs");
 
     let out_dir = PathBuf::from("performance-baseline-v1");
-    fs::create_dir_all(&out_dir).expect("create performance-baseline-v1 directory");
+    let update_baseline = baseline_update_requested();
+    if update_baseline {
+        fs::create_dir_all(&out_dir).expect("create performance-baseline-v1 directory");
+        println!("  ⚠ Updating frozen baseline because HOLOSPHERE_UPDATE_BASELINE is enabled.");
+    } else {
+        assert!(
+            out_dir.is_dir(),
+            "frozen baseline directory '{}' is missing; create it deliberately with HOLOSPHERE_UPDATE_BASELINE=1",
+            out_dir.display()
+        );
+        println!(
+            "  ✓ Frozen-baseline comparison mode (set HOLOSPHERE_UPDATE_BASELINE=1 to replace it)."
+        );
+    }
 
     let mut dataset_names = Vec::new();
 
@@ -376,14 +417,7 @@ fn main() {
         let sift_record =
             benchmark_oracle_dataset("SIFT1M", &sift1m_raw, &sift1m_base, &sift1m_query, 128);
         let sift_path = out_dir.join("sift1m_exact.json");
-        let sift_json = serde_json::to_string_pretty(&sift_record).expect("serialize sift1m");
-        let mut file = File::create(&sift_path).expect("create sift1m baseline file");
-        file.write_all(sift_json.as_bytes())
-            .expect("write sift1m baseline");
-        println!(
-            "  ✓ Saved SIFT1M exact baseline to: {}",
-            sift_path.display()
-        );
+        persist_or_compare_baseline(&sift_path, &sift_record, update_baseline);
         dataset_names.push("SIFT1M".to_string());
     } else {
         panic!("Missing required SIFT1M dataset or snapshot files");
@@ -399,14 +433,7 @@ fn main() {
             100,
         );
         let glove_path = out_dir.join("glove100_exact.json");
-        let glove_json = serde_json::to_string_pretty(&glove_record).expect("serialize glove100");
-        let mut file = File::create(&glove_path).expect("create glove100 baseline file");
-        file.write_all(glove_json.as_bytes())
-            .expect("write glove100 baseline");
-        println!(
-            "  ✓ Saved GloVe-100 exact baseline to: {}",
-            glove_path.display()
-        );
+        persist_or_compare_baseline(&glove_path, &glove_record, update_baseline);
         dataset_names.push("GloVe-100".to_string());
     } else {
         panic!("Missing required GloVe-100 dataset or snapshot files");
@@ -421,14 +448,23 @@ fn main() {
         datasets: dataset_names,
     };
     let manifest_path = out_dir.join("manifest.json");
-    let manifest_json = serde_json::to_string_pretty(&manifest).expect("serialize manifest");
-    let mut file = File::create(&manifest_path).expect("create manifest file");
-    file.write_all(manifest_json.as_bytes())
-        .expect("write manifest");
-    println!(
-        "  ✓ Saved immutable baseline manifest to: {}",
-        manifest_path.display()
-    );
+    if update_baseline {
+        let manifest_json = serde_json::to_string_pretty(&manifest).expect("serialize manifest");
+        let mut file = File::create(&manifest_path).expect("create manifest file");
+        file.write_all(manifest_json.as_bytes())
+            .expect("write manifest");
+        println!("  ✓ Updated baseline manifest: {}", manifest_path.display());
+    } else {
+        assert!(
+            manifest_path.is_file(),
+            "frozen baseline manifest '{}' is missing; create it deliberately with HOLOSPHERE_UPDATE_BASELINE=1",
+            manifest_path.display()
+        );
+        println!(
+            "  ✓ Preserved frozen baseline manifest: {}",
+            manifest_path.display()
+        );
+    }
 
     println!("\n═══════════════════════════════════════════════════════════════════════════════");
     println!("  🏆 FROZEN P0 EXACT ORACLE BASELINE (performance-baseline-v1/) COMPLETE");

@@ -1853,6 +1853,9 @@ pub struct AdaptiveSearchDiagnostics {
     pub escalated: bool,
     /// Whether unbounded graph fallback was triggered.
     pub graph_fallback_used: bool,
+    /// Whether a requested graph fallback was withheld because the corpus
+    /// exceeds the validated graph-recall regime.
+    pub graph_fallback_disqualified_by_scale: bool,
     /// Cumulative compact resident codes scanned across all stages.
     pub cumulative_resident_scans: usize,
     /// Cumulative exact vector score evaluations performed by Rivero stages before any graph fallback.
@@ -1889,6 +1892,10 @@ pub struct HNSQRIndex {
     lifecycle: RwLock<()>,
     lutz_codes: RwLock<Vec<Option<crate::proof::lutz::LutzCode>>>,
     proof_tree: RwLock<Option<Arc<SemanticProofTree>>>,
+    /// Normalized arena vectors paired with `proof_tree`. Certified search must
+    /// reuse this immutable materialization rather than allocate and normalize
+    /// the complete corpus for every query.
+    proof_vectors: RwLock<Option<Arc<Vec<VectorEmbedding>>>>,
     wal: RwLock<Option<Arc<crate::storage::wal::WalManager>>>,
     wal_durability: RwLock<crate::storage::wal::DurabilityPolicy>,
 }
@@ -1924,6 +1931,7 @@ impl HNSQRIndex {
             lifecycle: RwLock::new(()),
             lutz_codes: RwLock::new(Vec::with_capacity(max_capacity)),
             proof_tree: RwLock::new(None),
+            proof_vectors: RwLock::new(None),
             wal: RwLock::new(None),
             wal_durability: RwLock::new(crate::storage::wal::DurabilityPolicy::WalSync),
         }
@@ -2014,6 +2022,7 @@ impl HNSQRIndex {
             lifecycle: RwLock::new(()),
             lutz_codes: RwLock::new(Vec::with_capacity(max_capacity)),
             proof_tree: RwLock::new(None),
+            proof_vectors: RwLock::new(None),
             wal: RwLock::new(None),
             wal_durability: RwLock::new(crate::storage::wal::DurabilityPolicy::WalSync),
         })
@@ -2059,6 +2068,7 @@ impl HNSQRIndex {
             lifecycle: RwLock::new(()),
             lutz_codes: RwLock::new(Vec::with_capacity(max_cap)),
             proof_tree: RwLock::new(None),
+            proof_vectors: RwLock::new(None),
             wal: RwLock::new(None),
             wal_durability: RwLock::new(crate::storage::wal::DurabilityPolicy::WalSync),
         })
@@ -2871,6 +2881,10 @@ impl HNSQRIndex {
 
         let elapsed = start_time.elapsed().as_micros() as u64;
         trace!(target: "hnsqr::index", index = node_index, elapsed_us = elapsed, "Node inserted successfully");
+        // Any mutation invalidates both halves of the immutable proof view.
+        // Keeping only the tree would leave certified search with stale slots.
+        *self.proof_tree.write() = None;
+        *self.proof_vectors.write() = None;
         Ok(node_index)
     }
 
@@ -3437,6 +3451,7 @@ impl HNSQRIndex {
             })
             .collect();
 
+        let normalized_vectors = Arc::new(normalized_vectors);
         let tree = Arc::new(SemanticProofTree::build(
             &normalized_vectors,
             &live_slots,
@@ -3444,6 +3459,7 @@ impl HNSQRIndex {
         ));
 
         *self.proof_tree.write() = Some(tree.clone());
+        *self.proof_vectors.write() = Some(normalized_vectors);
         tree
     }
 
@@ -3528,16 +3544,22 @@ impl HNSQRIndex {
                 seed_slots.extend_from_slice(cands);
             });
 
-        let normalized_vectors: Vec<VectorEmbedding> = (0..self.arena.len() as NodeIndex)
-            .map(|slot| {
-                if self.arena.is_live(slot) {
-                    let slice = self.arena.get_vector_slice(slot);
-                    VectorEmbedding::from_complex(slice.to_vec()).into_normalized()
-                } else {
-                    VectorEmbedding::from_complex(vec![Complex32::default(); self.dimension])
-                }
-            })
-            .collect();
+        let normalized_vectors = self
+            .proof_vectors
+            .read()
+            .as_ref()
+            .cloned()
+            .unwrap_or_else(|| {
+                // A tree without its paired vector cache can only arise from a
+                // legacy in-process construction. Rebuild both together instead
+                // of falling back to per-query corpus materialization.
+                self.build_proof_tree();
+                self.proof_vectors
+                    .read()
+                    .as_ref()
+                    .cloned()
+                    .expect("proof tree rebuild must populate proof vector cache")
+            });
 
         let seg_view = SegmentProofView {
             tree: &tree,
@@ -4478,10 +4500,17 @@ impl HNSQRIndex {
 
         // Preserve Rivero-stage exact work before optional fallback consumes `all_scored`.
         let cumulative_exact_scores = all_scored.len();
+        // Graph traversal remains an explicit research mode, but Adaptive must
+        // not silently turn it into a production fallback beyond the largest
+        // corpus scale with an admitted recall result.
+        const GRAPH_FALLBACK_MAX_VALIDATED_N: usize = 100_000;
+        let graph_fallback_disqualified_by_scale = policy == AdaptivePolicy::AllowGraphFallback
+            && self.arena.live_len() > GRAPH_FALLBACK_MAX_VALIDATED_N;
         let mut graph_fallback_used = false;
         if latest_confidence.escalation_recommended
             && policy == AdaptivePolicy::AllowGraphFallback
             && current_profile == RiveroProfile::Strict
+            && !graph_fallback_disqualified_by_scale
         {
             let graph_results = self.search_indices_graph_internal(query, k, filter_mask)?;
             let mut combined_map: std::collections::HashMap<NodeIndex, SimilarityScore> =
@@ -4513,6 +4542,7 @@ impl HNSQRIndex {
             confidence_final: latest_confidence.score,
             escalated: stages_executed > 1,
             graph_fallback_used,
+            graph_fallback_disqualified_by_scale,
             cumulative_resident_scans: route_state.cumulative_scans,
             cumulative_exact_scores,
             confidence: latest_confidence,
@@ -5700,6 +5730,7 @@ impl HNSQRIndex {
             }
         }
         *self.proof_tree.write() = None;
+        *self.proof_vectors.write() = None;
 
         let mut eps_write = self.entry_points.write();
         if let Some(pos) = eps_write.iter().position(|&i| i == index) {
@@ -6153,11 +6184,46 @@ mod tests {
         let CertifiedSearchOutcome::Exact { results, proof } = outcome else {
             panic!("exhaustive non-cosine certification cannot time out");
         };
-        assert_eq!(results, exact);
+        assert_eq!(
+            results.iter().map(|(slot, _)| *slot).collect::<Vec<_>>(),
+            exact.iter().map(|(slot, _)| *slot).collect::<Vec<_>>(),
+            "cached proof material must preserve the certified ranking"
+        );
         assert_eq!(results[0].0, nearest);
         assert!(proof.globally_exact);
         assert!(proof.is_accounting_exact());
         assert_eq!(proof.exact_evaluations, 2);
+    }
+
+    #[test]
+    fn certified_cosine_search_rebuilds_cached_proof_material_after_mutation() {
+        let index = HNSQRIndex::new(HNSQRConfig::default(), 2);
+        index
+            .insert("east", VectorEmbedding::new(vec![1.0, 0.0]))
+            .unwrap();
+        index
+            .insert("north", VectorEmbedding::new(vec![0.0, 1.0]))
+            .unwrap();
+        let query = VectorEmbedding::new(vec![1.0, 0.0]);
+
+        let first = index.certified_search(&query, 1, None).unwrap();
+        assert!(matches!(first, CertifiedSearchOutcome::Exact { .. }));
+
+        let inserted = index
+            .insert("near-east", VectorEmbedding::new(vec![0.99, 0.01]))
+            .unwrap();
+        let exact = index.search_indices_exact(&query, 2, None).unwrap();
+        let CertifiedSearchOutcome::Exact { results, .. } =
+            index.certified_search(&query, 2, None).unwrap()
+        else {
+            panic!("unbudgeted certified cosine search must complete");
+        };
+        assert_eq!(
+            results.iter().map(|(slot, _)| *slot).collect::<Vec<_>>(),
+            exact.iter().map(|(slot, _)| *slot).collect::<Vec<_>>(),
+            "cached proof material must preserve the certified ranking"
+        );
+        assert!(results.iter().any(|(slot, _)| *slot == inserted));
     }
 
     #[test]

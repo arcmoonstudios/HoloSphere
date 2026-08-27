@@ -25,48 +25,48 @@
   "exact_scorer_fingerprint": "AVX2-FMA-DualAccComplex-ExactSIMDV1",
   "aggregate_overall": {
     "count": 500,
-    "p50_ns": 33727700,
-    "p95_ns": 42776200,
-    "p99_ns": 46000000,
-    "max_ns": 60285800,
-    "p50_ms": 33.7277,
-    "p95_ms": 42.7762,
-    "p99_ms": 46.0,
-    "max_ms": 60.2858,
-    "mean_ms": 34.8554088,
-    "qps": 28.687562545699645
+    "p50_ns": 31753100,
+    "p95_ns": 39065600,
+    "p99_ns": 42569000,
+    "max_ns": 51224400,
+    "p50_ms": 31.7531,
+    "p95_ms": 39.0656,
+    "p99_ms": 42.569,
+    "max_ms": 51.2244,
+    "mean_ms": 32.5482846,
+    "qps": 30.72113319593982
   },
   "aggregate_tuning": {
     "count": 100,
-    "p50_ns": 33164400,
-    "p95_ns": 39824100,
-    "p99_ns": 41823000,
-    "max_ns": 47013800,
-    "p50_ms": 33.1644,
-    "p95_ms": 39.8241,
-    "p99_ms": 41.823,
-    "max_ms": 47.0138,
-    "mean_ms": 34.11187,
-    "qps": 28.687562545699645
+    "p50_ns": 30056200,
+    "p95_ns": 33580800,
+    "p99_ns": 35488200,
+    "max_ns": 36175400,
+    "p50_ms": 30.0562,
+    "p95_ms": 33.5808,
+    "p99_ms": 35.4882,
+    "max_ms": 36.1754,
+    "mean_ms": 30.5611,
+    "qps": 30.721133195939824
   },
   "aggregate_held_out_admission": {
     "count": 400,
-    "p50_ns": 33956900,
-    "p95_ns": 43157400,
-    "p99_ns": 46000000,
-    "max_ns": 60285800,
-    "p50_ms": 33.9569,
-    "p95_ms": 43.1574,
-    "p99_ms": 46.0,
-    "max_ms": 60.2858,
-    "mean_ms": 35.0412935,
-    "qps": 28.687562545699645
+    "p50_ns": 32121800,
+    "p95_ns": 39661700,
+    "p99_ns": 42607100,
+    "max_ns": 51224400,
+    "p50_ms": 32.1218,
+    "p95_ms": 39.6617,
+    "p99_ms": 42.6071,
+    "max_ms": 51.2244,
+    "mean_ms": 33.04508075,
+    "qps": 30.721133195939824
   },
   "per_query_records": [
     {
       "query_idx": 0,
       "split": "tuning",
-      "latency_ns": 32773700,
+      "latency_ns": 33060000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -115,7 +115,7 @@
     {
       "query_idx": 1,
       "split": "tuning",
-      "latency_ns": 35554700,
+      "latency_ns": 29777400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -164,7 +164,7 @@
     {
       "query_idx": 2,
       "split": "tuning",
-      "latency_ns": 31270700,
+      "latency_ns": 34877500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -213,7 +213,7 @@
     {
       "query_idx": 3,
       "split": "tuning",
-      "latency_ns": 31657200,
+      "latency_ns": 33580800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -262,7 +262,7 @@
     {
       "query_idx": 4,
       "split": "tuning",
-      "latency_ns": 38695600,
+      "latency_ns": 29859500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -311,7 +311,7 @@
     {
       "query_idx": 5,
       "split": "tuning",
-      "latency_ns": 32817300,
+      "latency_ns": 29795100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -360,7 +360,7 @@
     {
       "query_idx": 6,
       "split": "tuning",
-      "latency_ns": 32096400,
+      "latency_ns": 31210800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -409,7 +409,7 @@
     {
       "query_idx": 7,
       "split": "tuning",
-      "latency_ns": 31768900,
+      "latency_ns": 33809700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -458,7 +458,7 @@
     {
       "query_idx": 8,
       "split": "tuning",
-      "latency_ns": 33271700,
+      "latency_ns": 32022400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -507,7 +507,7 @@
     {
       "query_idx": 9,
       "split": "tuning",
-      "latency_ns": 32386100,
+      "latency_ns": 31057800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -556,7 +556,7 @@
     {
       "query_idx": 10,
       "split": "tuning",
-      "latency_ns": 32975700,
+      "latency_ns": 31804600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -605,7 +605,7 @@
     {
       "query_idx": 11,
       "split": "tuning",
-      "latency_ns": 31535300,
+      "latency_ns": 29930600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -654,7 +654,7 @@
     {
       "query_idx": 12,
       "split": "tuning",
-      "latency_ns": 30931600,
+      "latency_ns": 29686600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -703,7 +703,7 @@
     {
       "query_idx": 13,
       "split": "tuning",
-      "latency_ns": 32884500,
+      "latency_ns": 30040600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -752,7 +752,7 @@
     {
       "query_idx": 14,
       "split": "tuning",
-      "latency_ns": 33538100,
+      "latency_ns": 29792800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -801,7 +801,7 @@
     {
       "query_idx": 15,
       "split": "tuning",
-      "latency_ns": 32104400,
+      "latency_ns": 29704400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -850,7 +850,7 @@
     {
       "query_idx": 16,
       "split": "tuning",
-      "latency_ns": 31747900,
+      "latency_ns": 30524500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -899,7 +899,7 @@
     {
       "query_idx": 17,
       "split": "tuning",
-      "latency_ns": 36043100,
+      "latency_ns": 29626600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -948,7 +948,7 @@
     {
       "query_idx": 18,
       "split": "tuning",
-      "latency_ns": 30815000,
+      "latency_ns": 30324000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -997,7 +997,7 @@
     {
       "query_idx": 19,
       "split": "tuning",
-      "latency_ns": 36469400,
+      "latency_ns": 30609900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -1046,7 +1046,7 @@
     {
       "query_idx": 20,
       "split": "tuning",
-      "latency_ns": 33347700,
+      "latency_ns": 30619200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -1095,7 +1095,7 @@
     {
       "query_idx": 21,
       "split": "tuning",
-      "latency_ns": 36129700,
+      "latency_ns": 29926500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -1144,7 +1144,7 @@
     {
       "query_idx": 22,
       "split": "tuning",
-      "latency_ns": 36875100,
+      "latency_ns": 30013500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -1193,7 +1193,7 @@
     {
       "query_idx": 23,
       "split": "tuning",
-      "latency_ns": 38981400,
+      "latency_ns": 29991700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -1242,7 +1242,7 @@
     {
       "query_idx": 24,
       "split": "tuning",
-      "latency_ns": 35698100,
+      "latency_ns": 29723800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -1291,7 +1291,7 @@
     {
       "query_idx": 25,
       "split": "tuning",
-      "latency_ns": 31106300,
+      "latency_ns": 29732700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -1340,7 +1340,7 @@
     {
       "query_idx": 26,
       "split": "tuning",
-      "latency_ns": 33557300,
+      "latency_ns": 35141900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -1389,7 +1389,7 @@
     {
       "query_idx": 27,
       "split": "tuning",
-      "latency_ns": 34361300,
+      "latency_ns": 30525300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -1438,7 +1438,7 @@
     {
       "query_idx": 28,
       "split": "tuning",
-      "latency_ns": 40955500,
+      "latency_ns": 30375900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -1487,7 +1487,7 @@
     {
       "query_idx": 29,
       "split": "tuning",
-      "latency_ns": 30459200,
+      "latency_ns": 30633600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -1536,7 +1536,7 @@
     {
       "query_idx": 30,
       "split": "tuning",
-      "latency_ns": 37269800,
+      "latency_ns": 32394600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -1585,7 +1585,7 @@
     {
       "query_idx": 31,
       "split": "tuning",
-      "latency_ns": 33164400,
+      "latency_ns": 29855500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -1634,7 +1634,7 @@
     {
       "query_idx": 32,
       "split": "tuning",
-      "latency_ns": 32863600,
+      "latency_ns": 30210800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -1683,7 +1683,7 @@
     {
       "query_idx": 33,
       "split": "tuning",
-      "latency_ns": 33411100,
+      "latency_ns": 30325500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -1732,7 +1732,7 @@
     {
       "query_idx": 34,
       "split": "tuning",
-      "latency_ns": 32848900,
+      "latency_ns": 30100600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -1781,7 +1781,7 @@
     {
       "query_idx": 35,
       "split": "tuning",
-      "latency_ns": 31573900,
+      "latency_ns": 30150100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -1830,7 +1830,7 @@
     {
       "query_idx": 36,
       "split": "tuning",
-      "latency_ns": 33727700,
+      "latency_ns": 30163100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -1879,7 +1879,7 @@
     {
       "query_idx": 37,
       "split": "tuning",
-      "latency_ns": 32982500,
+      "latency_ns": 29693300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -1928,7 +1928,7 @@
     {
       "query_idx": 38,
       "split": "tuning",
-      "latency_ns": 32261900,
+      "latency_ns": 29822900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -1977,7 +1977,7 @@
     {
       "query_idx": 39,
       "split": "tuning",
-      "latency_ns": 33561900,
+      "latency_ns": 33356600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -2026,7 +2026,7 @@
     {
       "query_idx": 40,
       "split": "tuning",
-      "latency_ns": 37892000,
+      "latency_ns": 29916000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -2075,7 +2075,7 @@
     {
       "query_idx": 41,
       "split": "tuning",
-      "latency_ns": 33109100,
+      "latency_ns": 30311000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -2124,7 +2124,7 @@
     {
       "query_idx": 42,
       "split": "tuning",
-      "latency_ns": 31109000,
+      "latency_ns": 30039700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -2173,7 +2173,7 @@
     {
       "query_idx": 43,
       "split": "tuning",
-      "latency_ns": 30443600,
+      "latency_ns": 31315600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -2222,7 +2222,7 @@
     {
       "query_idx": 44,
       "split": "tuning",
-      "latency_ns": 30979300,
+      "latency_ns": 29813800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -2271,7 +2271,7 @@
     {
       "query_idx": 45,
       "split": "tuning",
-      "latency_ns": 31312900,
+      "latency_ns": 29895300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -2320,7 +2320,7 @@
     {
       "query_idx": 46,
       "split": "tuning",
-      "latency_ns": 32824600,
+      "latency_ns": 30349500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -2369,7 +2369,7 @@
     {
       "query_idx": 47,
       "split": "tuning",
-      "latency_ns": 31854600,
+      "latency_ns": 30072400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -2418,7 +2418,7 @@
     {
       "query_idx": 48,
       "split": "tuning",
-      "latency_ns": 31903500,
+      "latency_ns": 29963600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -2467,7 +2467,7 @@
     {
       "query_idx": 49,
       "split": "tuning",
-      "latency_ns": 36898000,
+      "latency_ns": 30868800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -2516,7 +2516,7 @@
     {
       "query_idx": 50,
       "split": "tuning",
-      "latency_ns": 32668700,
+      "latency_ns": 30305500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -2565,7 +2565,7 @@
     {
       "query_idx": 51,
       "split": "tuning",
-      "latency_ns": 32544900,
+      "latency_ns": 29707500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -2614,7 +2614,7 @@
     {
       "query_idx": 52,
       "split": "tuning",
-      "latency_ns": 36665100,
+      "latency_ns": 30576300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -2663,7 +2663,7 @@
     {
       "query_idx": 53,
       "split": "tuning",
-      "latency_ns": 33231200,
+      "latency_ns": 29599500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -2712,7 +2712,7 @@
     {
       "query_idx": 54,
       "split": "tuning",
-      "latency_ns": 34410100,
+      "latency_ns": 29869200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -2761,7 +2761,7 @@
     {
       "query_idx": 55,
       "split": "tuning",
-      "latency_ns": 37229500,
+      "latency_ns": 32167800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -2810,7 +2810,7 @@
     {
       "query_idx": 56,
       "split": "tuning",
-      "latency_ns": 37015900,
+      "latency_ns": 30073200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -2859,7 +2859,7 @@
     {
       "query_idx": 57,
       "split": "tuning",
-      "latency_ns": 31891200,
+      "latency_ns": 29785800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -2908,7 +2908,7 @@
     {
       "query_idx": 58,
       "split": "tuning",
-      "latency_ns": 39148700,
+      "latency_ns": 29965900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -2957,7 +2957,7 @@
     {
       "query_idx": 59,
       "split": "tuning",
-      "latency_ns": 34620400,
+      "latency_ns": 31107100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -3006,7 +3006,7 @@
     {
       "query_idx": 60,
       "split": "tuning",
-      "latency_ns": 31241100,
+      "latency_ns": 29923200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -3055,7 +3055,7 @@
     {
       "query_idx": 61,
       "split": "tuning",
-      "latency_ns": 31938100,
+      "latency_ns": 30287600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -3104,7 +3104,7 @@
     {
       "query_idx": 62,
       "split": "tuning",
-      "latency_ns": 33607900,
+      "latency_ns": 29906500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -3153,7 +3153,7 @@
     {
       "query_idx": 63,
       "split": "tuning",
-      "latency_ns": 34881500,
+      "latency_ns": 31740200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -3202,7 +3202,7 @@
     {
       "query_idx": 64,
       "split": "tuning",
-      "latency_ns": 37676700,
+      "latency_ns": 29896100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -3251,7 +3251,7 @@
     {
       "query_idx": 65,
       "split": "tuning",
-      "latency_ns": 34053900,
+      "latency_ns": 30701200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -3300,7 +3300,7 @@
     {
       "query_idx": 66,
       "split": "tuning",
-      "latency_ns": 32783100,
+      "latency_ns": 29634700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -3349,7 +3349,7 @@
     {
       "query_idx": 67,
       "split": "tuning",
-      "latency_ns": 34652600,
+      "latency_ns": 29600000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -3398,7 +3398,7 @@
     {
       "query_idx": 68,
       "split": "tuning",
-      "latency_ns": 32690800,
+      "latency_ns": 30106600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -3447,7 +3447,7 @@
     {
       "query_idx": 69,
       "split": "tuning",
-      "latency_ns": 31984500,
+      "latency_ns": 30056200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -3496,7 +3496,7 @@
     {
       "query_idx": 70,
       "split": "tuning",
-      "latency_ns": 34558700,
+      "latency_ns": 29973000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -3545,7 +3545,7 @@
     {
       "query_idx": 71,
       "split": "tuning",
-      "latency_ns": 32759000,
+      "latency_ns": 29945800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -3594,7 +3594,7 @@
     {
       "query_idx": 72,
       "split": "tuning",
-      "latency_ns": 33415200,
+      "latency_ns": 30486100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -3643,7 +3643,7 @@
     {
       "query_idx": 73,
       "split": "tuning",
-      "latency_ns": 32126700,
+      "latency_ns": 29860600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -3692,7 +3692,7 @@
     {
       "query_idx": 74,
       "split": "tuning",
-      "latency_ns": 32089000,
+      "latency_ns": 30071600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -3741,7 +3741,7 @@
     {
       "query_idx": 75,
       "split": "tuning",
-      "latency_ns": 34477300,
+      "latency_ns": 30109800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -3790,7 +3790,7 @@
     {
       "query_idx": 76,
       "split": "tuning",
-      "latency_ns": 31942900,
+      "latency_ns": 29817500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -3839,7 +3839,7 @@
     {
       "query_idx": 77,
       "split": "tuning",
-      "latency_ns": 37745200,
+      "latency_ns": 29867800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -3888,7 +3888,7 @@
     {
       "query_idx": 78,
       "split": "tuning",
-      "latency_ns": 33691600,
+      "latency_ns": 30003000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -3937,7 +3937,7 @@
     {
       "query_idx": 79,
       "split": "tuning",
-      "latency_ns": 32727200,
+      "latency_ns": 29959500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -3986,7 +3986,7 @@
     {
       "query_idx": 80,
       "split": "tuning",
-      "latency_ns": 31786300,
+      "latency_ns": 29969900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -4035,7 +4035,7 @@
     {
       "query_idx": 81,
       "split": "tuning",
-      "latency_ns": 32261200,
+      "latency_ns": 30701800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -4084,7 +4084,7 @@
     {
       "query_idx": 82,
       "split": "tuning",
-      "latency_ns": 31868600,
+      "latency_ns": 29774800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -4133,7 +4133,7 @@
     {
       "query_idx": 83,
       "split": "tuning",
-      "latency_ns": 32044700,
+      "latency_ns": 29949400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -4182,7 +4182,7 @@
     {
       "query_idx": 84,
       "split": "tuning",
-      "latency_ns": 34046000,
+      "latency_ns": 29987400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -4231,7 +4231,7 @@
     {
       "query_idx": 85,
       "split": "tuning",
-      "latency_ns": 32744300,
+      "latency_ns": 30175200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -4280,7 +4280,7 @@
     {
       "query_idx": 86,
       "split": "tuning",
-      "latency_ns": 34795000,
+      "latency_ns": 30850100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -4329,7 +4329,7 @@
     {
       "query_idx": 87,
       "split": "tuning",
-      "latency_ns": 41033700,
+      "latency_ns": 30136400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -4378,7 +4378,7 @@
     {
       "query_idx": 88,
       "split": "tuning",
-      "latency_ns": 35856800,
+      "latency_ns": 30013800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -4427,7 +4427,7 @@
     {
       "query_idx": 89,
       "split": "tuning",
-      "latency_ns": 31037500,
+      "latency_ns": 29781900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -4476,7 +4476,7 @@
     {
       "query_idx": 90,
       "split": "tuning",
-      "latency_ns": 31708200,
+      "latency_ns": 35488200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -4525,7 +4525,7 @@
     {
       "query_idx": 91,
       "split": "tuning",
-      "latency_ns": 33300000,
+      "latency_ns": 29813900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -4574,7 +4574,7 @@
     {
       "query_idx": 92,
       "split": "tuning",
-      "latency_ns": 39824100,
+      "latency_ns": 29496400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -4623,7 +4623,7 @@
     {
       "query_idx": 93,
       "split": "tuning",
-      "latency_ns": 35700800,
+      "latency_ns": 31047200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -4672,7 +4672,7 @@
     {
       "query_idx": 94,
       "split": "tuning",
-      "latency_ns": 32781300,
+      "latency_ns": 29568600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -4721,7 +4721,7 @@
     {
       "query_idx": 95,
       "split": "tuning",
-      "latency_ns": 38047600,
+      "latency_ns": 29719500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -4770,7 +4770,7 @@
     {
       "query_idx": 96,
       "split": "tuning",
-      "latency_ns": 47013800,
+      "latency_ns": 30423600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -4819,7 +4819,7 @@
     {
       "query_idx": 97,
       "split": "tuning",
-      "latency_ns": 41681800,
+      "latency_ns": 31694200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -4868,7 +4868,7 @@
     {
       "query_idx": 98,
       "split": "tuning",
-      "latency_ns": 36562400,
+      "latency_ns": 29839100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -4917,7 +4917,7 @@
     {
       "query_idx": 99,
       "split": "tuning",
-      "latency_ns": 41823000,
+      "latency_ns": 36175400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -4966,7 +4966,7 @@
     {
       "query_idx": 100,
       "split": "admission",
-      "latency_ns": 43157400,
+      "latency_ns": 31130400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -5015,7 +5015,7 @@
     {
       "query_idx": 101,
       "split": "admission",
-      "latency_ns": 41307400,
+      "latency_ns": 32173100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -5064,7 +5064,7 @@
     {
       "query_idx": 102,
       "split": "admission",
-      "latency_ns": 42409700,
+      "latency_ns": 42533600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -5113,7 +5113,7 @@
     {
       "query_idx": 103,
       "split": "admission",
-      "latency_ns": 36203800,
+      "latency_ns": 32430100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -5162,7 +5162,7 @@
     {
       "query_idx": 104,
       "split": "admission",
-      "latency_ns": 32353900,
+      "latency_ns": 29839900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -5211,7 +5211,7 @@
     {
       "query_idx": 105,
       "split": "admission",
-      "latency_ns": 32204200,
+      "latency_ns": 30548100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -5260,7 +5260,7 @@
     {
       "query_idx": 106,
       "split": "admission",
-      "latency_ns": 32045900,
+      "latency_ns": 30050500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -5309,7 +5309,7 @@
     {
       "query_idx": 107,
       "split": "admission",
-      "latency_ns": 33609900,
+      "latency_ns": 31020800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -5358,7 +5358,7 @@
     {
       "query_idx": 108,
       "split": "admission",
-      "latency_ns": 32716100,
+      "latency_ns": 31749100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -5407,7 +5407,7 @@
     {
       "query_idx": 109,
       "split": "admission",
-      "latency_ns": 38593500,
+      "latency_ns": 31476700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -5456,7 +5456,7 @@
     {
       "query_idx": 110,
       "split": "admission",
-      "latency_ns": 32071600,
+      "latency_ns": 31197400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -5505,7 +5505,7 @@
     {
       "query_idx": 111,
       "split": "admission",
-      "latency_ns": 33688000,
+      "latency_ns": 31355600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -5554,7 +5554,7 @@
     {
       "query_idx": 112,
       "split": "admission",
-      "latency_ns": 35182700,
+      "latency_ns": 31437500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -5603,7 +5603,7 @@
     {
       "query_idx": 113,
       "split": "admission",
-      "latency_ns": 34441200,
+      "latency_ns": 31382800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -5652,7 +5652,7 @@
     {
       "query_idx": 114,
       "split": "admission",
-      "latency_ns": 41146900,
+      "latency_ns": 30915300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -5701,7 +5701,7 @@
     {
       "query_idx": 115,
       "split": "admission",
-      "latency_ns": 42776200,
+      "latency_ns": 31649500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -5750,7 +5750,7 @@
     {
       "query_idx": 116,
       "split": "admission",
-      "latency_ns": 41926700,
+      "latency_ns": 32456700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -5799,7 +5799,7 @@
     {
       "query_idx": 117,
       "split": "admission",
-      "latency_ns": 43307900,
+      "latency_ns": 31951400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -5848,7 +5848,7 @@
     {
       "query_idx": 118,
       "split": "admission",
-      "latency_ns": 42355000,
+      "latency_ns": 38032900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -5897,7 +5897,7 @@
     {
       "query_idx": 119,
       "split": "admission",
-      "latency_ns": 32617400,
+      "latency_ns": 31196800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -5946,7 +5946,7 @@
     {
       "query_idx": 120,
       "split": "admission",
-      "latency_ns": 35712800,
+      "latency_ns": 31614300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -5995,7 +5995,7 @@
     {
       "query_idx": 121,
       "split": "admission",
-      "latency_ns": 31804900,
+      "latency_ns": 32188400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -6044,7 +6044,7 @@
     {
       "query_idx": 122,
       "split": "admission",
-      "latency_ns": 35932700,
+      "latency_ns": 31766100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -6093,7 +6093,7 @@
     {
       "query_idx": 123,
       "split": "admission",
-      "latency_ns": 30916700,
+      "latency_ns": 31336700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -6142,7 +6142,7 @@
     {
       "query_idx": 124,
       "split": "admission",
-      "latency_ns": 30723500,
+      "latency_ns": 31588700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -6191,7 +6191,7 @@
     {
       "query_idx": 125,
       "split": "admission",
-      "latency_ns": 31367700,
+      "latency_ns": 31685300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -6240,7 +6240,7 @@
     {
       "query_idx": 126,
       "split": "admission",
-      "latency_ns": 33492000,
+      "latency_ns": 31583400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -6289,7 +6289,7 @@
     {
       "query_idx": 127,
       "split": "admission",
-      "latency_ns": 38883500,
+      "latency_ns": 35140000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -6338,7 +6338,7 @@
     {
       "query_idx": 128,
       "split": "admission",
-      "latency_ns": 33023400,
+      "latency_ns": 30882700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -6387,7 +6387,7 @@
     {
       "query_idx": 129,
       "split": "admission",
-      "latency_ns": 34013800,
+      "latency_ns": 30907900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -6436,7 +6436,7 @@
     {
       "query_idx": 130,
       "split": "admission",
-      "latency_ns": 30594200,
+      "latency_ns": 30894700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -6485,7 +6485,7 @@
     {
       "query_idx": 131,
       "split": "admission",
-      "latency_ns": 38351600,
+      "latency_ns": 37186900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -6534,7 +6534,7 @@
     {
       "query_idx": 132,
       "split": "admission",
-      "latency_ns": 31647400,
+      "latency_ns": 31917600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -6583,7 +6583,7 @@
     {
       "query_idx": 133,
       "split": "admission",
-      "latency_ns": 30774900,
+      "latency_ns": 32841800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -6632,7 +6632,7 @@
     {
       "query_idx": 134,
       "split": "admission",
-      "latency_ns": 31575600,
+      "latency_ns": 35520300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -6681,7 +6681,7 @@
     {
       "query_idx": 135,
       "split": "admission",
-      "latency_ns": 34895700,
+      "latency_ns": 39086600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -6730,7 +6730,7 @@
     {
       "query_idx": 136,
       "split": "admission",
-      "latency_ns": 30577900,
+      "latency_ns": 32889900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -6779,7 +6779,7 @@
     {
       "query_idx": 137,
       "split": "admission",
-      "latency_ns": 34772200,
+      "latency_ns": 30774500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -6828,7 +6828,7 @@
     {
       "query_idx": 138,
       "split": "admission",
-      "latency_ns": 31476100,
+      "latency_ns": 30731300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -6877,7 +6877,7 @@
     {
       "query_idx": 139,
       "split": "admission",
-      "latency_ns": 34679400,
+      "latency_ns": 30561700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -6926,7 +6926,7 @@
     {
       "query_idx": 140,
       "split": "admission",
-      "latency_ns": 37765700,
+      "latency_ns": 31020700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -6975,7 +6975,7 @@
     {
       "query_idx": 141,
       "split": "admission",
-      "latency_ns": 36696000,
+      "latency_ns": 37035000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -7024,7 +7024,7 @@
     {
       "query_idx": 142,
       "split": "admission",
-      "latency_ns": 33729200,
+      "latency_ns": 32703000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -7073,7 +7073,7 @@
     {
       "query_idx": 143,
       "split": "admission",
-      "latency_ns": 60285800,
+      "latency_ns": 31279200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -7122,7 +7122,7 @@
     {
       "query_idx": 144,
       "split": "admission",
-      "latency_ns": 37032300,
+      "latency_ns": 36291000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -7171,7 +7171,7 @@
     {
       "query_idx": 145,
       "split": "admission",
-      "latency_ns": 32383200,
+      "latency_ns": 30899900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -7220,7 +7220,7 @@
     {
       "query_idx": 146,
       "split": "admission",
-      "latency_ns": 38696400,
+      "latency_ns": 31126800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -7269,7 +7269,7 @@
     {
       "query_idx": 147,
       "split": "admission",
-      "latency_ns": 31474600,
+      "latency_ns": 31010600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -7318,7 +7318,7 @@
     {
       "query_idx": 148,
       "split": "admission",
-      "latency_ns": 31537900,
+      "latency_ns": 32362900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -7367,7 +7367,7 @@
     {
       "query_idx": 149,
       "split": "admission",
-      "latency_ns": 30637300,
+      "latency_ns": 31104900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -7416,7 +7416,7 @@
     {
       "query_idx": 150,
       "split": "admission",
-      "latency_ns": 31759500,
+      "latency_ns": 33008600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -7465,7 +7465,7 @@
     {
       "query_idx": 151,
       "split": "admission",
-      "latency_ns": 37349800,
+      "latency_ns": 34799500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -7514,7 +7514,7 @@
     {
       "query_idx": 152,
       "split": "admission",
-      "latency_ns": 32837100,
+      "latency_ns": 38378500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -7563,7 +7563,7 @@
     {
       "query_idx": 153,
       "split": "admission",
-      "latency_ns": 30511200,
+      "latency_ns": 31398300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -7612,7 +7612,7 @@
     {
       "query_idx": 154,
       "split": "admission",
-      "latency_ns": 30657300,
+      "latency_ns": 31476700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -7661,7 +7661,7 @@
     {
       "query_idx": 155,
       "split": "admission",
-      "latency_ns": 31578900,
+      "latency_ns": 33658500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -7710,7 +7710,7 @@
     {
       "query_idx": 156,
       "split": "admission",
-      "latency_ns": 35003200,
+      "latency_ns": 31584200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -7759,7 +7759,7 @@
     {
       "query_idx": 157,
       "split": "admission",
-      "latency_ns": 31903700,
+      "latency_ns": 31543400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -7808,7 +7808,7 @@
     {
       "query_idx": 158,
       "split": "admission",
-      "latency_ns": 34640400,
+      "latency_ns": 32554500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -7857,7 +7857,7 @@
     {
       "query_idx": 159,
       "split": "admission",
-      "latency_ns": 32818500,
+      "latency_ns": 32179200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -7906,7 +7906,7 @@
     {
       "query_idx": 160,
       "split": "admission",
-      "latency_ns": 35045400,
+      "latency_ns": 32169500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -7955,7 +7955,7 @@
     {
       "query_idx": 161,
       "split": "admission",
-      "latency_ns": 33094100,
+      "latency_ns": 35909200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -8004,7 +8004,7 @@
     {
       "query_idx": 162,
       "split": "admission",
-      "latency_ns": 32261100,
+      "latency_ns": 32305200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -8053,7 +8053,7 @@
     {
       "query_idx": 163,
       "split": "admission",
-      "latency_ns": 33075900,
+      "latency_ns": 32164600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -8102,7 +8102,7 @@
     {
       "query_idx": 164,
       "split": "admission",
-      "latency_ns": 33631200,
+      "latency_ns": 32271500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -8151,7 +8151,7 @@
     {
       "query_idx": 165,
       "split": "admission",
-      "latency_ns": 33876600,
+      "latency_ns": 31582000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -8200,7 +8200,7 @@
     {
       "query_idx": 166,
       "split": "admission",
-      "latency_ns": 34081100,
+      "latency_ns": 31529200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -8249,7 +8249,7 @@
     {
       "query_idx": 167,
       "split": "admission",
-      "latency_ns": 34852400,
+      "latency_ns": 31393000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -8298,7 +8298,7 @@
     {
       "query_idx": 168,
       "split": "admission",
-      "latency_ns": 32886300,
+      "latency_ns": 31007800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -8347,7 +8347,7 @@
     {
       "query_idx": 169,
       "split": "admission",
-      "latency_ns": 35584400,
+      "latency_ns": 32262100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -8396,7 +8396,7 @@
     {
       "query_idx": 170,
       "split": "admission",
-      "latency_ns": 32047100,
+      "latency_ns": 31574000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -8445,7 +8445,7 @@
     {
       "query_idx": 171,
       "split": "admission",
-      "latency_ns": 31119100,
+      "latency_ns": 31427500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -8494,7 +8494,7 @@
     {
       "query_idx": 172,
       "split": "admission",
-      "latency_ns": 34336500,
+      "latency_ns": 34671600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -8543,7 +8543,7 @@
     {
       "query_idx": 173,
       "split": "admission",
-      "latency_ns": 32104000,
+      "latency_ns": 31388300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -8592,7 +8592,7 @@
     {
       "query_idx": 174,
       "split": "admission",
-      "latency_ns": 31285500,
+      "latency_ns": 30897100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -8641,7 +8641,7 @@
     {
       "query_idx": 175,
       "split": "admission",
-      "latency_ns": 32578200,
+      "latency_ns": 31352900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -8690,7 +8690,7 @@
     {
       "query_idx": 176,
       "split": "admission",
-      "latency_ns": 34432300,
+      "latency_ns": 31029900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -8739,7 +8739,7 @@
     {
       "query_idx": 177,
       "split": "admission",
-      "latency_ns": 37869700,
+      "latency_ns": 31230900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -8788,7 +8788,7 @@
     {
       "query_idx": 178,
       "split": "admission",
-      "latency_ns": 34859400,
+      "latency_ns": 37331200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -8837,7 +8837,7 @@
     {
       "query_idx": 179,
       "split": "admission",
-      "latency_ns": 35273000,
+      "latency_ns": 31488100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -8886,7 +8886,7 @@
     {
       "query_idx": 180,
       "split": "admission",
-      "latency_ns": 32331200,
+      "latency_ns": 31486700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -8935,7 +8935,7 @@
     {
       "query_idx": 181,
       "split": "admission",
-      "latency_ns": 38269100,
+      "latency_ns": 31294800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -8984,7 +8984,7 @@
     {
       "query_idx": 182,
       "split": "admission",
-      "latency_ns": 39677500,
+      "latency_ns": 32188200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -9033,7 +9033,7 @@
     {
       "query_idx": 183,
       "split": "admission",
-      "latency_ns": 31748600,
+      "latency_ns": 31581300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -9082,7 +9082,7 @@
     {
       "query_idx": 184,
       "split": "admission",
-      "latency_ns": 30400700,
+      "latency_ns": 31138400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -9131,7 +9131,7 @@
     {
       "query_idx": 185,
       "split": "admission",
-      "latency_ns": 31978100,
+      "latency_ns": 30896500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -9180,7 +9180,7 @@
     {
       "query_idx": 186,
       "split": "admission",
-      "latency_ns": 31041100,
+      "latency_ns": 31253700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -9229,7 +9229,7 @@
     {
       "query_idx": 187,
       "split": "admission",
-      "latency_ns": 35634300,
+      "latency_ns": 31479500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -9278,7 +9278,7 @@
     {
       "query_idx": 188,
       "split": "admission",
-      "latency_ns": 32772100,
+      "latency_ns": 31415000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -9327,7 +9327,7 @@
     {
       "query_idx": 189,
       "split": "admission",
-      "latency_ns": 31606000,
+      "latency_ns": 32008300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -9376,7 +9376,7 @@
     {
       "query_idx": 190,
       "split": "admission",
-      "latency_ns": 32254100,
+      "latency_ns": 32020500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -9425,7 +9425,7 @@
     {
       "query_idx": 191,
       "split": "admission",
-      "latency_ns": 31312000,
+      "latency_ns": 32099900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -9474,7 +9474,7 @@
     {
       "query_idx": 192,
       "split": "admission",
-      "latency_ns": 31043200,
+      "latency_ns": 31185500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -9523,7 +9523,7 @@
     {
       "query_idx": 193,
       "split": "admission",
-      "latency_ns": 31348400,
+      "latency_ns": 36509900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -9572,7 +9572,7 @@
     {
       "query_idx": 194,
       "split": "admission",
-      "latency_ns": 31457800,
+      "latency_ns": 31656400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -9621,7 +9621,7 @@
     {
       "query_idx": 195,
       "split": "admission",
-      "latency_ns": 30901700,
+      "latency_ns": 31702600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -9670,7 +9670,7 @@
     {
       "query_idx": 196,
       "split": "admission",
-      "latency_ns": 30782500,
+      "latency_ns": 30897500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -9719,7 +9719,7 @@
     {
       "query_idx": 197,
       "split": "admission",
-      "latency_ns": 31579800,
+      "latency_ns": 30633800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -9768,7 +9768,7 @@
     {
       "query_idx": 198,
       "split": "admission",
-      "latency_ns": 37640500,
+      "latency_ns": 36456600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -9817,7 +9817,7 @@
     {
       "query_idx": 199,
       "split": "admission",
-      "latency_ns": 30214200,
+      "latency_ns": 35286000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -9866,7 +9866,7 @@
     {
       "query_idx": 200,
       "split": "admission",
-      "latency_ns": 32546200,
+      "latency_ns": 30772800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -9915,7 +9915,7 @@
     {
       "query_idx": 201,
       "split": "admission",
-      "latency_ns": 32266300,
+      "latency_ns": 30885400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -9964,7 +9964,7 @@
     {
       "query_idx": 202,
       "split": "admission",
-      "latency_ns": 31254600,
+      "latency_ns": 30983100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -10013,7 +10013,7 @@
     {
       "query_idx": 203,
       "split": "admission",
-      "latency_ns": 32801700,
+      "latency_ns": 31040300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -10062,7 +10062,7 @@
     {
       "query_idx": 204,
       "split": "admission",
-      "latency_ns": 30806100,
+      "latency_ns": 30652900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -10111,7 +10111,7 @@
     {
       "query_idx": 205,
       "split": "admission",
-      "latency_ns": 34338500,
+      "latency_ns": 30783600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -10160,7 +10160,7 @@
     {
       "query_idx": 206,
       "split": "admission",
-      "latency_ns": 46000000,
+      "latency_ns": 31046200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -10209,7 +10209,7 @@
     {
       "query_idx": 207,
       "split": "admission",
-      "latency_ns": 34791400,
+      "latency_ns": 31108000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -10258,7 +10258,7 @@
     {
       "query_idx": 208,
       "split": "admission",
-      "latency_ns": 31985300,
+      "latency_ns": 30564700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -10307,7 +10307,7 @@
     {
       "query_idx": 209,
       "split": "admission",
-      "latency_ns": 32083800,
+      "latency_ns": 30980500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -10356,7 +10356,7 @@
     {
       "query_idx": 210,
       "split": "admission",
-      "latency_ns": 32364600,
+      "latency_ns": 37224800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -10405,7 +10405,7 @@
     {
       "query_idx": 211,
       "split": "admission",
-      "latency_ns": 32121500,
+      "latency_ns": 30925100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -10454,7 +10454,7 @@
     {
       "query_idx": 212,
       "split": "admission",
-      "latency_ns": 31404700,
+      "latency_ns": 30567600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -10503,7 +10503,7 @@
     {
       "query_idx": 213,
       "split": "admission",
-      "latency_ns": 31276500,
+      "latency_ns": 30766000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -10552,7 +10552,7 @@
     {
       "query_idx": 214,
       "split": "admission",
-      "latency_ns": 32175500,
+      "latency_ns": 32598700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -10601,7 +10601,7 @@
     {
       "query_idx": 215,
       "split": "admission",
-      "latency_ns": 30374400,
+      "latency_ns": 30629500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -10650,7 +10650,7 @@
     {
       "query_idx": 216,
       "split": "admission",
-      "latency_ns": 37091300,
+      "latency_ns": 29469200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -10699,7 +10699,7 @@
     {
       "query_idx": 217,
       "split": "admission",
-      "latency_ns": 37855500,
+      "latency_ns": 29523600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -10748,7 +10748,7 @@
     {
       "query_idx": 218,
       "split": "admission",
-      "latency_ns": 34333600,
+      "latency_ns": 29687700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -10797,7 +10797,7 @@
     {
       "query_idx": 219,
       "split": "admission",
-      "latency_ns": 33075300,
+      "latency_ns": 29820600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -10846,7 +10846,7 @@
     {
       "query_idx": 220,
       "split": "admission",
-      "latency_ns": 35194900,
+      "latency_ns": 29535100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -10895,7 +10895,7 @@
     {
       "query_idx": 221,
       "split": "admission",
-      "latency_ns": 36711100,
+      "latency_ns": 35489200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -10944,7 +10944,7 @@
     {
       "query_idx": 222,
       "split": "admission",
-      "latency_ns": 32069200,
+      "latency_ns": 29933100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -10993,7 +10993,7 @@
     {
       "query_idx": 223,
       "split": "admission",
-      "latency_ns": 32269900,
+      "latency_ns": 29847200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -11042,7 +11042,7 @@
     {
       "query_idx": 224,
       "split": "admission",
-      "latency_ns": 38607900,
+      "latency_ns": 29884400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -11091,7 +11091,7 @@
     {
       "query_idx": 225,
       "split": "admission",
-      "latency_ns": 34147200,
+      "latency_ns": 31109400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -11140,7 +11140,7 @@
     {
       "query_idx": 226,
       "split": "admission",
-      "latency_ns": 35040600,
+      "latency_ns": 29822700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -11189,7 +11189,7 @@
     {
       "query_idx": 227,
       "split": "admission",
-      "latency_ns": 31448900,
+      "latency_ns": 30409100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -11238,7 +11238,7 @@
     {
       "query_idx": 228,
       "split": "admission",
-      "latency_ns": 31420100,
+      "latency_ns": 29978800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -11287,7 +11287,7 @@
     {
       "query_idx": 229,
       "split": "admission",
-      "latency_ns": 31495400,
+      "latency_ns": 29700300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -11336,7 +11336,7 @@
     {
       "query_idx": 230,
       "split": "admission",
-      "latency_ns": 30652700,
+      "latency_ns": 29322200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -11385,7 +11385,7 @@
     {
       "query_idx": 231,
       "split": "admission",
-      "latency_ns": 31360900,
+      "latency_ns": 29585000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -11434,7 +11434,7 @@
     {
       "query_idx": 232,
       "split": "admission",
-      "latency_ns": 33623500,
+      "latency_ns": 29526800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -11483,7 +11483,7 @@
     {
       "query_idx": 233,
       "split": "admission",
-      "latency_ns": 32007900,
+      "latency_ns": 30482100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -11532,7 +11532,7 @@
     {
       "query_idx": 234,
       "split": "admission",
-      "latency_ns": 32668500,
+      "latency_ns": 30026100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -11581,7 +11581,7 @@
     {
       "query_idx": 235,
       "split": "admission",
-      "latency_ns": 31308200,
+      "latency_ns": 30006500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -11630,7 +11630,7 @@
     {
       "query_idx": 236,
       "split": "admission",
-      "latency_ns": 31060700,
+      "latency_ns": 30342900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -11679,7 +11679,7 @@
     {
       "query_idx": 237,
       "split": "admission",
-      "latency_ns": 31298800,
+      "latency_ns": 29633400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -11728,7 +11728,7 @@
     {
       "query_idx": 238,
       "split": "admission",
-      "latency_ns": 31404300,
+      "latency_ns": 29778900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -11777,7 +11777,7 @@
     {
       "query_idx": 239,
       "split": "admission",
-      "latency_ns": 31478300,
+      "latency_ns": 29856800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -11826,7 +11826,7 @@
     {
       "query_idx": 240,
       "split": "admission",
-      "latency_ns": 31214100,
+      "latency_ns": 29871700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -11875,7 +11875,7 @@
     {
       "query_idx": 241,
       "split": "admission",
-      "latency_ns": 35529300,
+      "latency_ns": 29645200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -11924,7 +11924,7 @@
     {
       "query_idx": 242,
       "split": "admission",
-      "latency_ns": 30824700,
+      "latency_ns": 29885600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -11973,7 +11973,7 @@
     {
       "query_idx": 243,
       "split": "admission",
-      "latency_ns": 31190800,
+      "latency_ns": 34039300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -12022,7 +12022,7 @@
     {
       "query_idx": 244,
       "split": "admission",
-      "latency_ns": 31495200,
+      "latency_ns": 29835700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -12071,7 +12071,7 @@
     {
       "query_idx": 245,
       "split": "admission",
-      "latency_ns": 31176600,
+      "latency_ns": 29739100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -12120,7 +12120,7 @@
     {
       "query_idx": 246,
       "split": "admission",
-      "latency_ns": 31453100,
+      "latency_ns": 29884900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -12169,7 +12169,7 @@
     {
       "query_idx": 247,
       "split": "admission",
-      "latency_ns": 31128400,
+      "latency_ns": 29655900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -12218,7 +12218,7 @@
     {
       "query_idx": 248,
       "split": "admission",
-      "latency_ns": 37480100,
+      "latency_ns": 29619800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -12267,7 +12267,7 @@
     {
       "query_idx": 249,
       "split": "admission",
-      "latency_ns": 37120200,
+      "latency_ns": 29749000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -12316,7 +12316,7 @@
     {
       "query_idx": 250,
       "split": "admission",
-      "latency_ns": 32549200,
+      "latency_ns": 29395700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -12365,7 +12365,7 @@
     {
       "query_idx": 251,
       "split": "admission",
-      "latency_ns": 35607000,
+      "latency_ns": 30431700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -12414,7 +12414,7 @@
     {
       "query_idx": 252,
       "split": "admission",
-      "latency_ns": 32716200,
+      "latency_ns": 29565700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -12463,7 +12463,7 @@
     {
       "query_idx": 253,
       "split": "admission",
-      "latency_ns": 34141100,
+      "latency_ns": 29593000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -12512,7 +12512,7 @@
     {
       "query_idx": 254,
       "split": "admission",
-      "latency_ns": 33901000,
+      "latency_ns": 29926500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -12561,7 +12561,7 @@
     {
       "query_idx": 255,
       "split": "admission",
-      "latency_ns": 33834300,
+      "latency_ns": 36178700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -12610,7 +12610,7 @@
     {
       "query_idx": 256,
       "split": "admission",
-      "latency_ns": 32541900,
+      "latency_ns": 32602300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -12659,7 +12659,7 @@
     {
       "query_idx": 257,
       "split": "admission",
-      "latency_ns": 31452500,
+      "latency_ns": 29886400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -12708,7 +12708,7 @@
     {
       "query_idx": 258,
       "split": "admission",
-      "latency_ns": 30714700,
+      "latency_ns": 29660800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -12757,7 +12757,7 @@
     {
       "query_idx": 259,
       "split": "admission",
-      "latency_ns": 31927800,
+      "latency_ns": 29586900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -12806,7 +12806,7 @@
     {
       "query_idx": 260,
       "split": "admission",
-      "latency_ns": 34435200,
+      "latency_ns": 33052300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -12855,7 +12855,7 @@
     {
       "query_idx": 261,
       "split": "admission",
-      "latency_ns": 33576100,
+      "latency_ns": 34781400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -12904,7 +12904,7 @@
     {
       "query_idx": 262,
       "split": "admission",
-      "latency_ns": 39266700,
+      "latency_ns": 29651200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -12953,7 +12953,7 @@
     {
       "query_idx": 263,
       "split": "admission",
-      "latency_ns": 33268100,
+      "latency_ns": 29782200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -13002,7 +13002,7 @@
     {
       "query_idx": 264,
       "split": "admission",
-      "latency_ns": 30795100,
+      "latency_ns": 31983300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -13051,7 +13051,7 @@
     {
       "query_idx": 265,
       "split": "admission",
-      "latency_ns": 30663000,
+      "latency_ns": 29590900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -13100,7 +13100,7 @@
     {
       "query_idx": 266,
       "split": "admission",
-      "latency_ns": 37599500,
+      "latency_ns": 29759300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -13149,7 +13149,7 @@
     {
       "query_idx": 267,
       "split": "admission",
-      "latency_ns": 31095400,
+      "latency_ns": 30578300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -13198,7 +13198,7 @@
     {
       "query_idx": 268,
       "split": "admission",
-      "latency_ns": 31672000,
+      "latency_ns": 31051700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -13247,7 +13247,7 @@
     {
       "query_idx": 269,
       "split": "admission",
-      "latency_ns": 35202300,
+      "latency_ns": 31055800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -13296,7 +13296,7 @@
     {
       "query_idx": 270,
       "split": "admission",
-      "latency_ns": 37689300,
+      "latency_ns": 29817100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -13345,7 +13345,7 @@
     {
       "query_idx": 271,
       "split": "admission",
-      "latency_ns": 38611700,
+      "latency_ns": 29742100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -13394,7 +13394,7 @@
     {
       "query_idx": 272,
       "split": "admission",
-      "latency_ns": 38635700,
+      "latency_ns": 29874900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -13443,7 +13443,7 @@
     {
       "query_idx": 273,
       "split": "admission",
-      "latency_ns": 31090800,
+      "latency_ns": 30380900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -13492,7 +13492,7 @@
     {
       "query_idx": 274,
       "split": "admission",
-      "latency_ns": 31863200,
+      "latency_ns": 30068500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -13541,7 +13541,7 @@
     {
       "query_idx": 275,
       "split": "admission",
-      "latency_ns": 31914900,
+      "latency_ns": 30067400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -13590,7 +13590,7 @@
     {
       "query_idx": 276,
       "split": "admission",
-      "latency_ns": 33228100,
+      "latency_ns": 29915100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -13639,7 +13639,7 @@
     {
       "query_idx": 277,
       "split": "admission",
-      "latency_ns": 38112200,
+      "latency_ns": 32860800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -13688,7 +13688,7 @@
     {
       "query_idx": 278,
       "split": "admission",
-      "latency_ns": 36950200,
+      "latency_ns": 37758900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -13737,7 +13737,7 @@
     {
       "query_idx": 279,
       "split": "admission",
-      "latency_ns": 32993300,
+      "latency_ns": 31551700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -13786,7 +13786,7 @@
     {
       "query_idx": 280,
       "split": "admission",
-      "latency_ns": 32994500,
+      "latency_ns": 31331300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -13835,7 +13835,7 @@
     {
       "query_idx": 281,
       "split": "admission",
-      "latency_ns": 32076400,
+      "latency_ns": 31360500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -13884,7 +13884,7 @@
     {
       "query_idx": 282,
       "split": "admission",
-      "latency_ns": 32269900,
+      "latency_ns": 31271600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -13933,7 +13933,7 @@
     {
       "query_idx": 283,
       "split": "admission",
-      "latency_ns": 32535300,
+      "latency_ns": 36300500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -13982,7 +13982,7 @@
     {
       "query_idx": 284,
       "split": "admission",
-      "latency_ns": 33894800,
+      "latency_ns": 31071000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -14031,7 +14031,7 @@
     {
       "query_idx": 285,
       "split": "admission",
-      "latency_ns": 35558800,
+      "latency_ns": 32167800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -14080,7 +14080,7 @@
     {
       "query_idx": 286,
       "split": "admission",
-      "latency_ns": 37918000,
+      "latency_ns": 33842800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -14129,7 +14129,7 @@
     {
       "query_idx": 287,
       "split": "admission",
-      "latency_ns": 33623200,
+      "latency_ns": 31707200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -14178,7 +14178,7 @@
     {
       "query_idx": 288,
       "split": "admission",
-      "latency_ns": 32254400,
+      "latency_ns": 34132000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -14227,7 +14227,7 @@
     {
       "query_idx": 289,
       "split": "admission",
-      "latency_ns": 31816900,
+      "latency_ns": 33103100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -14276,7 +14276,7 @@
     {
       "query_idx": 290,
       "split": "admission",
-      "latency_ns": 32591200,
+      "latency_ns": 32309700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -14325,7 +14325,7 @@
     {
       "query_idx": 291,
       "split": "admission",
-      "latency_ns": 32662400,
+      "latency_ns": 32262900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -14374,7 +14374,7 @@
     {
       "query_idx": 292,
       "split": "admission",
-      "latency_ns": 32325500,
+      "latency_ns": 31832000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -14423,7 +14423,7 @@
     {
       "query_idx": 293,
       "split": "admission",
-      "latency_ns": 33060900,
+      "latency_ns": 33503000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -14472,7 +14472,7 @@
     {
       "query_idx": 294,
       "split": "admission",
-      "latency_ns": 32727000,
+      "latency_ns": 33284400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -14521,7 +14521,7 @@
     {
       "query_idx": 295,
       "split": "admission",
-      "latency_ns": 38105100,
+      "latency_ns": 31761600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -14570,7 +14570,7 @@
     {
       "query_idx": 296,
       "split": "admission",
-      "latency_ns": 33143100,
+      "latency_ns": 32417100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -14619,7 +14619,7 @@
     {
       "query_idx": 297,
       "split": "admission",
-      "latency_ns": 33016400,
+      "latency_ns": 36071700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -14668,7 +14668,7 @@
     {
       "query_idx": 298,
       "split": "admission",
-      "latency_ns": 33202400,
+      "latency_ns": 31693800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -14717,7 +14717,7 @@
     {
       "query_idx": 299,
       "split": "admission",
-      "latency_ns": 32755700,
+      "latency_ns": 31544300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -14766,7 +14766,7 @@
     {
       "query_idx": 300,
       "split": "admission",
-      "latency_ns": 33521100,
+      "latency_ns": 32391000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -14815,7 +14815,7 @@
     {
       "query_idx": 301,
       "split": "admission",
-      "latency_ns": 33331100,
+      "latency_ns": 31898500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -14864,7 +14864,7 @@
     {
       "query_idx": 302,
       "split": "admission",
-      "latency_ns": 34390900,
+      "latency_ns": 32952500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -14913,7 +14913,7 @@
     {
       "query_idx": 303,
       "split": "admission",
-      "latency_ns": 38077900,
+      "latency_ns": 32391600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -14962,7 +14962,7 @@
     {
       "query_idx": 304,
       "split": "admission",
-      "latency_ns": 32674100,
+      "latency_ns": 32067900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -15011,7 +15011,7 @@
     {
       "query_idx": 305,
       "split": "admission",
-      "latency_ns": 33357400,
+      "latency_ns": 32383500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -15060,7 +15060,7 @@
     {
       "query_idx": 306,
       "split": "admission",
-      "latency_ns": 33723400,
+      "latency_ns": 32608900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -15109,7 +15109,7 @@
     {
       "query_idx": 307,
       "split": "admission",
-      "latency_ns": 33857000,
+      "latency_ns": 34472100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -15158,7 +15158,7 @@
     {
       "query_idx": 308,
       "split": "admission",
-      "latency_ns": 33861900,
+      "latency_ns": 32482600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -15207,7 +15207,7 @@
     {
       "query_idx": 309,
       "split": "admission",
-      "latency_ns": 32185500,
+      "latency_ns": 32815200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -15256,7 +15256,7 @@
     {
       "query_idx": 310,
       "split": "admission",
-      "latency_ns": 31314500,
+      "latency_ns": 32133500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -15305,7 +15305,7 @@
     {
       "query_idx": 311,
       "split": "admission",
-      "latency_ns": 31599100,
+      "latency_ns": 32560900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -15354,7 +15354,7 @@
     {
       "query_idx": 312,
       "split": "admission",
-      "latency_ns": 32724000,
+      "latency_ns": 32443400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -15403,7 +15403,7 @@
     {
       "query_idx": 313,
       "split": "admission",
-      "latency_ns": 33811300,
+      "latency_ns": 32154300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -15452,7 +15452,7 @@
     {
       "query_idx": 314,
       "split": "admission",
-      "latency_ns": 35709900,
+      "latency_ns": 31998200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -15501,7 +15501,7 @@
     {
       "query_idx": 315,
       "split": "admission",
-      "latency_ns": 37831000,
+      "latency_ns": 32090600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -15550,7 +15550,7 @@
     {
       "query_idx": 316,
       "split": "admission",
-      "latency_ns": 35126700,
+      "latency_ns": 32007800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -15599,7 +15599,7 @@
     {
       "query_idx": 317,
       "split": "admission",
-      "latency_ns": 33035000,
+      "latency_ns": 32129500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -15648,7 +15648,7 @@
     {
       "query_idx": 318,
       "split": "admission",
-      "latency_ns": 36865900,
+      "latency_ns": 31768600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -15697,7 +15697,7 @@
     {
       "query_idx": 319,
       "split": "admission",
-      "latency_ns": 36778900,
+      "latency_ns": 32379000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -15746,7 +15746,7 @@
     {
       "query_idx": 320,
       "split": "admission",
-      "latency_ns": 32442300,
+      "latency_ns": 38083300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -15795,7 +15795,7 @@
     {
       "query_idx": 321,
       "split": "admission",
-      "latency_ns": 34597800,
+      "latency_ns": 31326000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -15844,7 +15844,7 @@
     {
       "query_idx": 322,
       "split": "admission",
-      "latency_ns": 33492200,
+      "latency_ns": 31658900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -15893,7 +15893,7 @@
     {
       "query_idx": 323,
       "split": "admission",
-      "latency_ns": 34773900,
+      "latency_ns": 31346200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -15942,7 +15942,7 @@
     {
       "query_idx": 324,
       "split": "admission",
-      "latency_ns": 34438400,
+      "latency_ns": 33262400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -15991,7 +15991,7 @@
     {
       "query_idx": 325,
       "split": "admission",
-      "latency_ns": 34046800,
+      "latency_ns": 31189500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -16040,7 +16040,7 @@
     {
       "query_idx": 326,
       "split": "admission",
-      "latency_ns": 32639500,
+      "latency_ns": 36184600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -16089,7 +16089,7 @@
     {
       "query_idx": 327,
       "split": "admission",
-      "latency_ns": 33196000,
+      "latency_ns": 31245900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -16138,7 +16138,7 @@
     {
       "query_idx": 328,
       "split": "admission",
-      "latency_ns": 32477100,
+      "latency_ns": 31118000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -16187,7 +16187,7 @@
     {
       "query_idx": 329,
       "split": "admission",
-      "latency_ns": 32742100,
+      "latency_ns": 31779700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -16236,7 +16236,7 @@
     {
       "query_idx": 330,
       "split": "admission",
-      "latency_ns": 41138600,
+      "latency_ns": 31082700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -16285,7 +16285,7 @@
     {
       "query_idx": 331,
       "split": "admission",
-      "latency_ns": 37715000,
+      "latency_ns": 31453200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -16334,7 +16334,7 @@
     {
       "query_idx": 332,
       "split": "admission",
-      "latency_ns": 32061700,
+      "latency_ns": 33585000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -16383,7 +16383,7 @@
     {
       "query_idx": 333,
       "split": "admission",
-      "latency_ns": 32228400,
+      "latency_ns": 34432200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -16432,7 +16432,7 @@
     {
       "query_idx": 334,
       "split": "admission",
-      "latency_ns": 31935300,
+      "latency_ns": 32631200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -16481,7 +16481,7 @@
     {
       "query_idx": 335,
       "split": "admission",
-      "latency_ns": 32962100,
+      "latency_ns": 32809900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -16530,7 +16530,7 @@
     {
       "query_idx": 336,
       "split": "admission",
-      "latency_ns": 33673300,
+      "latency_ns": 33966900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -16579,7 +16579,7 @@
     {
       "query_idx": 337,
       "split": "admission",
-      "latency_ns": 34607300,
+      "latency_ns": 35026600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -16628,7 +16628,7 @@
     {
       "query_idx": 338,
       "split": "admission",
-      "latency_ns": 34021900,
+      "latency_ns": 32573300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -16677,7 +16677,7 @@
     {
       "query_idx": 339,
       "split": "admission",
-      "latency_ns": 38865300,
+      "latency_ns": 37997900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -16726,7 +16726,7 @@
     {
       "query_idx": 340,
       "split": "admission",
-      "latency_ns": 33258100,
+      "latency_ns": 42375300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -16775,7 +16775,7 @@
     {
       "query_idx": 341,
       "split": "admission",
-      "latency_ns": 33026500,
+      "latency_ns": 40927300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -16824,7 +16824,7 @@
     {
       "query_idx": 342,
       "split": "admission",
-      "latency_ns": 33651500,
+      "latency_ns": 43954800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -16873,7 +16873,7 @@
     {
       "query_idx": 343,
       "split": "admission",
-      "latency_ns": 32866100,
+      "latency_ns": 39682900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -16922,7 +16922,7 @@
     {
       "query_idx": 344,
       "split": "admission",
-      "latency_ns": 33462200,
+      "latency_ns": 42096300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -16971,7 +16971,7 @@
     {
       "query_idx": 345,
       "split": "admission",
-      "latency_ns": 34031300,
+      "latency_ns": 41207600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -17020,7 +17020,7 @@
     {
       "query_idx": 346,
       "split": "admission",
-      "latency_ns": 33029400,
+      "latency_ns": 41152700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -17069,7 +17069,7 @@
     {
       "query_idx": 347,
       "split": "admission",
-      "latency_ns": 32985800,
+      "latency_ns": 35333600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -17118,7 +17118,7 @@
     {
       "query_idx": 348,
       "split": "admission",
-      "latency_ns": 33381000,
+      "latency_ns": 32389900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -17167,7 +17167,7 @@
     {
       "query_idx": 349,
       "split": "admission",
-      "latency_ns": 36267200,
+      "latency_ns": 32651600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -17216,7 +17216,7 @@
     {
       "query_idx": 350,
       "split": "admission",
-      "latency_ns": 33715600,
+      "latency_ns": 33258600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -17265,7 +17265,7 @@
     {
       "query_idx": 351,
       "split": "admission",
-      "latency_ns": 35257700,
+      "latency_ns": 33201200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -17314,7 +17314,7 @@
     {
       "query_idx": 352,
       "split": "admission",
-      "latency_ns": 33788500,
+      "latency_ns": 37458900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -17363,7 +17363,7 @@
     {
       "query_idx": 353,
       "split": "admission",
-      "latency_ns": 34178500,
+      "latency_ns": 37262500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -17412,7 +17412,7 @@
     {
       "query_idx": 354,
       "split": "admission",
-      "latency_ns": 33912900,
+      "latency_ns": 34984800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -17461,7 +17461,7 @@
     {
       "query_idx": 355,
       "split": "admission",
-      "latency_ns": 33481700,
+      "latency_ns": 36299300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -17510,7 +17510,7 @@
     {
       "query_idx": 356,
       "split": "admission",
-      "latency_ns": 35518600,
+      "latency_ns": 34030600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -17559,7 +17559,7 @@
     {
       "query_idx": 357,
       "split": "admission",
-      "latency_ns": 36105600,
+      "latency_ns": 31641900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -17608,7 +17608,7 @@
     {
       "query_idx": 358,
       "split": "admission",
-      "latency_ns": 36858900,
+      "latency_ns": 31857100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -17657,7 +17657,7 @@
     {
       "query_idx": 359,
       "split": "admission",
-      "latency_ns": 33956900,
+      "latency_ns": 31753100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -17706,7 +17706,7 @@
     {
       "query_idx": 360,
       "split": "admission",
-      "latency_ns": 40981300,
+      "latency_ns": 31880800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -17755,7 +17755,7 @@
     {
       "query_idx": 361,
       "split": "admission",
-      "latency_ns": 43543400,
+      "latency_ns": 36601300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -17804,7 +17804,7 @@
     {
       "query_idx": 362,
       "split": "admission",
-      "latency_ns": 44138100,
+      "latency_ns": 31959500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -17853,7 +17853,7 @@
     {
       "query_idx": 363,
       "split": "admission",
-      "latency_ns": 44172700,
+      "latency_ns": 32894000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -17902,7 +17902,7 @@
     {
       "query_idx": 364,
       "split": "admission",
-      "latency_ns": 43435300,
+      "latency_ns": 32942800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -17951,7 +17951,7 @@
     {
       "query_idx": 365,
       "split": "admission",
-      "latency_ns": 46974800,
+      "latency_ns": 33313900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -18000,7 +18000,7 @@
     {
       "query_idx": 366,
       "split": "admission",
-      "latency_ns": 36295000,
+      "latency_ns": 38412200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -18049,7 +18049,7 @@
     {
       "query_idx": 367,
       "split": "admission",
-      "latency_ns": 34386600,
+      "latency_ns": 34582900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -18098,7 +18098,7 @@
     {
       "query_idx": 368,
       "split": "admission",
-      "latency_ns": 33166800,
+      "latency_ns": 35320200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -18147,7 +18147,7 @@
     {
       "query_idx": 369,
       "split": "admission",
-      "latency_ns": 41678600,
+      "latency_ns": 32445500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -18196,7 +18196,7 @@
     {
       "query_idx": 370,
       "split": "admission",
-      "latency_ns": 34643000,
+      "latency_ns": 32142900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -18245,7 +18245,7 @@
     {
       "query_idx": 371,
       "split": "admission",
-      "latency_ns": 38411300,
+      "latency_ns": 32721300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -18294,7 +18294,7 @@
     {
       "query_idx": 372,
       "split": "admission",
-      "latency_ns": 34619000,
+      "latency_ns": 32477300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -18343,7 +18343,7 @@
     {
       "query_idx": 373,
       "split": "admission",
-      "latency_ns": 33234200,
+      "latency_ns": 33627000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -18392,7 +18392,7 @@
     {
       "query_idx": 374,
       "split": "admission",
-      "latency_ns": 31831700,
+      "latency_ns": 32949100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -18441,7 +18441,7 @@
     {
       "query_idx": 375,
       "split": "admission",
-      "latency_ns": 39231700,
+      "latency_ns": 36172300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -18490,7 +18490,7 @@
     {
       "query_idx": 376,
       "split": "admission",
-      "latency_ns": 41334100,
+      "latency_ns": 35594400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -18539,7 +18539,7 @@
     {
       "query_idx": 377,
       "split": "admission",
-      "latency_ns": 42809500,
+      "latency_ns": 37690100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -18588,7 +18588,7 @@
     {
       "query_idx": 378,
       "split": "admission",
-      "latency_ns": 37695400,
+      "latency_ns": 43296600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -18637,7 +18637,7 @@
     {
       "query_idx": 379,
       "split": "admission",
-      "latency_ns": 39039700,
+      "latency_ns": 41817100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -18686,7 +18686,7 @@
     {
       "query_idx": 380,
       "split": "admission",
-      "latency_ns": 39639900,
+      "latency_ns": 43095600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -18735,7 +18735,7 @@
     {
       "query_idx": 381,
       "split": "admission",
-      "latency_ns": 41279500,
+      "latency_ns": 42569000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -18784,7 +18784,7 @@
     {
       "query_idx": 382,
       "split": "admission",
-      "latency_ns": 37372300,
+      "latency_ns": 42607100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -18833,7 +18833,7 @@
     {
       "query_idx": 383,
       "split": "admission",
-      "latency_ns": 33045800,
+      "latency_ns": 41142200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -18882,7 +18882,7 @@
     {
       "query_idx": 384,
       "split": "admission",
-      "latency_ns": 34046500,
+      "latency_ns": 40237200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -18931,7 +18931,7 @@
     {
       "query_idx": 385,
       "split": "admission",
-      "latency_ns": 34936200,
+      "latency_ns": 40035300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -18980,7 +18980,7 @@
     {
       "query_idx": 386,
       "split": "admission",
-      "latency_ns": 33195500,
+      "latency_ns": 35252300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -19029,7 +19029,7 @@
     {
       "query_idx": 387,
       "split": "admission",
-      "latency_ns": 39712900,
+      "latency_ns": 39370200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -19078,7 +19078,7 @@
     {
       "query_idx": 388,
       "split": "admission",
-      "latency_ns": 33919200,
+      "latency_ns": 38262100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -19127,7 +19127,7 @@
     {
       "query_idx": 389,
       "split": "admission",
-      "latency_ns": 35547600,
+      "latency_ns": 39065600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -19176,7 +19176,7 @@
     {
       "query_idx": 390,
       "split": "admission",
-      "latency_ns": 34583700,
+      "latency_ns": 40602800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -19225,7 +19225,7 @@
     {
       "query_idx": 391,
       "split": "admission",
-      "latency_ns": 34660100,
+      "latency_ns": 37919400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -19274,7 +19274,7 @@
     {
       "query_idx": 392,
       "split": "admission",
-      "latency_ns": 32396400,
+      "latency_ns": 32453100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -19323,7 +19323,7 @@
     {
       "query_idx": 393,
       "split": "admission",
-      "latency_ns": 33232300,
+      "latency_ns": 32050200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -19372,7 +19372,7 @@
     {
       "query_idx": 394,
       "split": "admission",
-      "latency_ns": 35563400,
+      "latency_ns": 32184900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -19421,7 +19421,7 @@
     {
       "query_idx": 395,
       "split": "admission",
-      "latency_ns": 34431100,
+      "latency_ns": 33123800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -19470,7 +19470,7 @@
     {
       "query_idx": 396,
       "split": "admission",
-      "latency_ns": 33992700,
+      "latency_ns": 31641500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -19519,7 +19519,7 @@
     {
       "query_idx": 397,
       "split": "admission",
-      "latency_ns": 32757900,
+      "latency_ns": 31615400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -19568,7 +19568,7 @@
     {
       "query_idx": 398,
       "split": "admission",
-      "latency_ns": 32561200,
+      "latency_ns": 31746500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -19617,7 +19617,7 @@
     {
       "query_idx": 399,
       "split": "admission",
-      "latency_ns": 37226900,
+      "latency_ns": 31636400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -19666,7 +19666,7 @@
     {
       "query_idx": 400,
       "split": "admission",
-      "latency_ns": 41481800,
+      "latency_ns": 32344000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -19715,7 +19715,7 @@
     {
       "query_idx": 401,
       "split": "admission",
-      "latency_ns": 36228200,
+      "latency_ns": 31941100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -19764,7 +19764,7 @@
     {
       "query_idx": 402,
       "split": "admission",
-      "latency_ns": 34138000,
+      "latency_ns": 32783400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -19813,7 +19813,7 @@
     {
       "query_idx": 403,
       "split": "admission",
-      "latency_ns": 38441400,
+      "latency_ns": 31792900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -19862,7 +19862,7 @@
     {
       "query_idx": 404,
       "split": "admission",
-      "latency_ns": 33218900,
+      "latency_ns": 32581600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -19911,7 +19911,7 @@
     {
       "query_idx": 405,
       "split": "admission",
-      "latency_ns": 35469300,
+      "latency_ns": 33202700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -19960,7 +19960,7 @@
     {
       "query_idx": 406,
       "split": "admission",
-      "latency_ns": 35263700,
+      "latency_ns": 31805300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -20009,7 +20009,7 @@
     {
       "query_idx": 407,
       "split": "admission",
-      "latency_ns": 38820300,
+      "latency_ns": 32121800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -20058,7 +20058,7 @@
     {
       "query_idx": 408,
       "split": "admission",
-      "latency_ns": 43901500,
+      "latency_ns": 38437900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -20107,7 +20107,7 @@
     {
       "query_idx": 409,
       "split": "admission",
-      "latency_ns": 42753400,
+      "latency_ns": 37919700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -20156,7 +20156,7 @@
     {
       "query_idx": 410,
       "split": "admission",
-      "latency_ns": 43774100,
+      "latency_ns": 32850000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -20205,7 +20205,7 @@
     {
       "query_idx": 411,
       "split": "admission",
-      "latency_ns": 43170000,
+      "latency_ns": 34319100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -20254,7 +20254,7 @@
     {
       "query_idx": 412,
       "split": "admission",
-      "latency_ns": 41173100,
+      "latency_ns": 32728700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -20303,7 +20303,7 @@
     {
       "query_idx": 413,
       "split": "admission",
-      "latency_ns": 43721300,
+      "latency_ns": 32170300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -20352,7 +20352,7 @@
     {
       "query_idx": 414,
       "split": "admission",
-      "latency_ns": 42881800,
+      "latency_ns": 34881000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -20401,7 +20401,7 @@
     {
       "query_idx": 415,
       "split": "admission",
-      "latency_ns": 44365500,
+      "latency_ns": 32697500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -20450,7 +20450,7 @@
     {
       "query_idx": 416,
       "split": "admission",
-      "latency_ns": 45546700,
+      "latency_ns": 32166200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -20499,7 +20499,7 @@
     {
       "query_idx": 417,
       "split": "admission",
-      "latency_ns": 33692400,
+      "latency_ns": 34867000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -20548,7 +20548,7 @@
     {
       "query_idx": 418,
       "split": "admission",
-      "latency_ns": 40444700,
+      "latency_ns": 37844300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -20597,7 +20597,7 @@
     {
       "query_idx": 419,
       "split": "admission",
-      "latency_ns": 38073400,
+      "latency_ns": 31813200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -20646,7 +20646,7 @@
     {
       "query_idx": 420,
       "split": "admission",
-      "latency_ns": 33996700,
+      "latency_ns": 33971000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -20695,7 +20695,7 @@
     {
       "query_idx": 421,
       "split": "admission",
-      "latency_ns": 37214800,
+      "latency_ns": 32185700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -20744,7 +20744,7 @@
     {
       "query_idx": 422,
       "split": "admission",
-      "latency_ns": 32926700,
+      "latency_ns": 34094000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -20793,7 +20793,7 @@
     {
       "query_idx": 423,
       "split": "admission",
-      "latency_ns": 34144500,
+      "latency_ns": 33209500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -20842,7 +20842,7 @@
     {
       "query_idx": 424,
       "split": "admission",
-      "latency_ns": 38463600,
+      "latency_ns": 32373700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -20891,7 +20891,7 @@
     {
       "query_idx": 425,
       "split": "admission",
-      "latency_ns": 32677100,
+      "latency_ns": 32399300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -20940,7 +20940,7 @@
     {
       "query_idx": 426,
       "split": "admission",
-      "latency_ns": 33555200,
+      "latency_ns": 33395000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -20989,7 +20989,7 @@
     {
       "query_idx": 427,
       "split": "admission",
-      "latency_ns": 38856100,
+      "latency_ns": 32659700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -21038,7 +21038,7 @@
     {
       "query_idx": 428,
       "split": "admission",
-      "latency_ns": 35604700,
+      "latency_ns": 32937700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -21087,7 +21087,7 @@
     {
       "query_idx": 429,
       "split": "admission",
-      "latency_ns": 37887100,
+      "latency_ns": 32354000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -21136,7 +21136,7 @@
     {
       "query_idx": 430,
       "split": "admission",
-      "latency_ns": 32186900,
+      "latency_ns": 39607700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -21185,7 +21185,7 @@
     {
       "query_idx": 431,
       "split": "admission",
-      "latency_ns": 35238800,
+      "latency_ns": 33460600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -21234,7 +21234,7 @@
     {
       "query_idx": 432,
       "split": "admission",
-      "latency_ns": 43507100,
+      "latency_ns": 37823900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -21283,7 +21283,7 @@
     {
       "query_idx": 433,
       "split": "admission",
-      "latency_ns": 34020700,
+      "latency_ns": 33488500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -21332,7 +21332,7 @@
     {
       "query_idx": 434,
       "split": "admission",
-      "latency_ns": 42497500,
+      "latency_ns": 32779400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -21381,7 +21381,7 @@
     {
       "query_idx": 435,
       "split": "admission",
-      "latency_ns": 39710400,
+      "latency_ns": 32058800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -21430,7 +21430,7 @@
     {
       "query_idx": 436,
       "split": "admission",
-      "latency_ns": 38429900,
+      "latency_ns": 32608700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -21479,7 +21479,7 @@
     {
       "query_idx": 437,
       "split": "admission",
-      "latency_ns": 36228100,
+      "latency_ns": 32503800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -21528,7 +21528,7 @@
     {
       "query_idx": 438,
       "split": "admission",
-      "latency_ns": 33543200,
+      "latency_ns": 32520700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -21577,7 +21577,7 @@
     {
       "query_idx": 439,
       "split": "admission",
-      "latency_ns": 45619500,
+      "latency_ns": 32117300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -21626,7 +21626,7 @@
     {
       "query_idx": 440,
       "split": "admission",
-      "latency_ns": 45742100,
+      "latency_ns": 32004700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -21675,7 +21675,7 @@
     {
       "query_idx": 441,
       "split": "admission",
-      "latency_ns": 36915000,
+      "latency_ns": 31170700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -21724,7 +21724,7 @@
     {
       "query_idx": 442,
       "split": "admission",
-      "latency_ns": 37714100,
+      "latency_ns": 38358100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -21773,7 +21773,7 @@
     {
       "query_idx": 443,
       "split": "admission",
-      "latency_ns": 35842800,
+      "latency_ns": 38502800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -21822,7 +21822,7 @@
     {
       "query_idx": 444,
       "split": "admission",
-      "latency_ns": 36033400,
+      "latency_ns": 51224400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -21871,7 +21871,7 @@
     {
       "query_idx": 445,
       "split": "admission",
-      "latency_ns": 33119900,
+      "latency_ns": 39467400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -21920,7 +21920,7 @@
     {
       "query_idx": 446,
       "split": "admission",
-      "latency_ns": 32333500,
+      "latency_ns": 34954400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -21969,7 +21969,7 @@
     {
       "query_idx": 447,
       "split": "admission",
-      "latency_ns": 36682800,
+      "latency_ns": 34097000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -22018,7 +22018,7 @@
     {
       "query_idx": 448,
       "split": "admission",
-      "latency_ns": 34130500,
+      "latency_ns": 34237000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -22067,7 +22067,7 @@
     {
       "query_idx": 449,
       "split": "admission",
-      "latency_ns": 34627300,
+      "latency_ns": 35974400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -22116,7 +22116,7 @@
     {
       "query_idx": 450,
       "split": "admission",
-      "latency_ns": 36805200,
+      "latency_ns": 39661700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -22165,7 +22165,7 @@
     {
       "query_idx": 451,
       "split": "admission",
-      "latency_ns": 31890000,
+      "latency_ns": 39774900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -22214,7 +22214,7 @@
     {
       "query_idx": 452,
       "split": "admission",
-      "latency_ns": 34443100,
+      "latency_ns": 34583700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -22263,7 +22263,7 @@
     {
       "query_idx": 453,
       "split": "admission",
-      "latency_ns": 34413600,
+      "latency_ns": 33078000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -22312,7 +22312,7 @@
     {
       "query_idx": 454,
       "split": "admission",
-      "latency_ns": 32356100,
+      "latency_ns": 33253800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -22361,7 +22361,7 @@
     {
       "query_idx": 455,
       "split": "admission",
-      "latency_ns": 32038400,
+      "latency_ns": 35692700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -22410,7 +22410,7 @@
     {
       "query_idx": 456,
       "split": "admission",
-      "latency_ns": 35723900,
+      "latency_ns": 31204200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -22459,7 +22459,7 @@
     {
       "query_idx": 457,
       "split": "admission",
-      "latency_ns": 31758600,
+      "latency_ns": 32345900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -22508,7 +22508,7 @@
     {
       "query_idx": 458,
       "split": "admission",
-      "latency_ns": 36949600,
+      "latency_ns": 37926500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -22557,7 +22557,7 @@
     {
       "query_idx": 459,
       "split": "admission",
-      "latency_ns": 32905200,
+      "latency_ns": 34741600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -22606,7 +22606,7 @@
     {
       "query_idx": 460,
       "split": "admission",
-      "latency_ns": 35238800,
+      "latency_ns": 33918000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -22655,7 +22655,7 @@
     {
       "query_idx": 461,
       "split": "admission",
-      "latency_ns": 35734900,
+      "latency_ns": 36550200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -22704,7 +22704,7 @@
     {
       "query_idx": 462,
       "split": "admission",
-      "latency_ns": 42071700,
+      "latency_ns": 31671600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -22753,7 +22753,7 @@
     {
       "query_idx": 463,
       "split": "admission",
-      "latency_ns": 47051700,
+      "latency_ns": 31208100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -22802,7 +22802,7 @@
     {
       "query_idx": 464,
       "split": "admission",
-      "latency_ns": 42791200,
+      "latency_ns": 33044900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -22851,7 +22851,7 @@
     {
       "query_idx": 465,
       "split": "admission",
-      "latency_ns": 36597100,
+      "latency_ns": 34797200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -22900,7 +22900,7 @@
     {
       "query_idx": 466,
       "split": "admission",
-      "latency_ns": 32795300,
+      "latency_ns": 32609500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -22949,7 +22949,7 @@
     {
       "query_idx": 467,
       "split": "admission",
-      "latency_ns": 38734100,
+      "latency_ns": 31348700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -22998,7 +22998,7 @@
     {
       "query_idx": 468,
       "split": "admission",
-      "latency_ns": 34583200,
+      "latency_ns": 32121200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -23047,7 +23047,7 @@
     {
       "query_idx": 469,
       "split": "admission",
-      "latency_ns": 35833300,
+      "latency_ns": 31730800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -23096,7 +23096,7 @@
     {
       "query_idx": 470,
       "split": "admission",
-      "latency_ns": 37502800,
+      "latency_ns": 31833200,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -23145,7 +23145,7 @@
     {
       "query_idx": 471,
       "split": "admission",
-      "latency_ns": 33036700,
+      "latency_ns": 32047100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -23194,7 +23194,7 @@
     {
       "query_idx": 472,
       "split": "admission",
-      "latency_ns": 34489600,
+      "latency_ns": 31814100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -23243,7 +23243,7 @@
     {
       "query_idx": 473,
       "split": "admission",
-      "latency_ns": 33029900,
+      "latency_ns": 32056500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -23292,7 +23292,7 @@
     {
       "query_idx": 474,
       "split": "admission",
-      "latency_ns": 32347100,
+      "latency_ns": 31455600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -23341,7 +23341,7 @@
     {
       "query_idx": 475,
       "split": "admission",
-      "latency_ns": 35511600,
+      "latency_ns": 31916000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -23390,7 +23390,7 @@
     {
       "query_idx": 476,
       "split": "admission",
-      "latency_ns": 39779400,
+      "latency_ns": 31779700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -23439,7 +23439,7 @@
     {
       "query_idx": 477,
       "split": "admission",
-      "latency_ns": 33482300,
+      "latency_ns": 32533600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -23488,7 +23488,7 @@
     {
       "query_idx": 478,
       "split": "admission",
-      "latency_ns": 32918300,
+      "latency_ns": 31964600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -23537,7 +23537,7 @@
     {
       "query_idx": 479,
       "split": "admission",
-      "latency_ns": 33780200,
+      "latency_ns": 31889400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -23586,7 +23586,7 @@
     {
       "query_idx": 480,
       "split": "admission",
-      "latency_ns": 35046100,
+      "latency_ns": 38099600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -23635,7 +23635,7 @@
     {
       "query_idx": 481,
       "split": "admission",
-      "latency_ns": 37192700,
+      "latency_ns": 31647800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -23684,7 +23684,7 @@
     {
       "query_idx": 482,
       "split": "admission",
-      "latency_ns": 37857300,
+      "latency_ns": 32517100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -23733,7 +23733,7 @@
     {
       "query_idx": 483,
       "split": "admission",
-      "latency_ns": 36821800,
+      "latency_ns": 36808500,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -23782,7 +23782,7 @@
     {
       "query_idx": 484,
       "split": "admission",
-      "latency_ns": 44070900,
+      "latency_ns": 36543300,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -23831,7 +23831,7 @@
     {
       "query_idx": 485,
       "split": "admission",
-      "latency_ns": 36536700,
+      "latency_ns": 36842800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -23880,7 +23880,7 @@
     {
       "query_idx": 486,
       "split": "admission",
-      "latency_ns": 36869400,
+      "latency_ns": 41075100,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -23929,7 +23929,7 @@
     {
       "query_idx": 487,
       "split": "admission",
-      "latency_ns": 34360100,
+      "latency_ns": 36240000,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -23978,7 +23978,7 @@
     {
       "query_idx": 488,
       "split": "admission",
-      "latency_ns": 38407600,
+      "latency_ns": 32139400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -24027,7 +24027,7 @@
     {
       "query_idx": 489,
       "split": "admission",
-      "latency_ns": 35531300,
+      "latency_ns": 33110600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -24076,7 +24076,7 @@
     {
       "query_idx": 490,
       "split": "admission",
-      "latency_ns": 34874400,
+      "latency_ns": 31467700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -24125,7 +24125,7 @@
     {
       "query_idx": 491,
       "split": "admission",
-      "latency_ns": 37684600,
+      "latency_ns": 32013800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -24174,7 +24174,7 @@
     {
       "query_idx": 492,
       "split": "admission",
-      "latency_ns": 37415400,
+      "latency_ns": 32931900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -24223,7 +24223,7 @@
     {
       "query_idx": 493,
       "split": "admission",
-      "latency_ns": 35664000,
+      "latency_ns": 37438700,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -24272,7 +24272,7 @@
     {
       "query_idx": 494,
       "split": "admission",
-      "latency_ns": 33418500,
+      "latency_ns": 31411600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -24321,7 +24321,7 @@
     {
       "query_idx": 495,
       "split": "admission",
-      "latency_ns": 37083000,
+      "latency_ns": 31402900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -24370,7 +24370,7 @@
     {
       "query_idx": 496,
       "split": "admission",
-      "latency_ns": 34228300,
+      "latency_ns": 32794800,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -24419,7 +24419,7 @@
     {
       "query_idx": 497,
       "split": "admission",
-      "latency_ns": 32550600,
+      "latency_ns": 32451400,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -24468,7 +24468,7 @@
     {
       "query_idx": 498,
       "split": "admission",
-      "latency_ns": 37446600,
+      "latency_ns": 31120600,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [
@@ -24517,7 +24517,7 @@
     {
       "query_idx": 499,
       "split": "admission",
-      "latency_ns": 46242500,
+      "latency_ns": 31193900,
       "exact_scores": 1183514,
       "bytes_read": 473405600,
       "top_k": [

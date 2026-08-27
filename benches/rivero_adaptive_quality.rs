@@ -32,10 +32,10 @@ fn main() {
     .expect("Snapshot must open successfully");
 
     let workloads = [
-        ("Real Semantic", &corpus.folded_queries),
-        ("Hard Negatives", &corpus.hard_negatives),
-        ("OOD Queries", &corpus.ood_queries),
-        ("Random Isotropic", &corpus.isotropic_queries),
+        ("Native partition A", &corpus.folded_queries),
+        ("Native partition B", &corpus.hard_negatives),
+        ("Native partition C", &corpus.ood_queries),
+        ("Native partition D", &corpus.isotropic_queries),
     ];
 
     println!(
@@ -56,8 +56,11 @@ fn main() {
         let mut false_confident_count = 0usize;
 
         for q in *q_set {
-            let (strict_res, _) = index.search_indices_strict(q, 10, None).unwrap();
-            let exact_top10: Vec<NodeIndex> = strict_res.iter().map(|(idx, _)| *idx).collect();
+            // Canonical false-confidence oracle: exhaustive results under the
+            // same index metric. Comparing Adaptive with Strict Rivero only
+            // measures agreement between two approximate paths.
+            let exact_res = index.search_indices_exact(q, 10, None).unwrap();
+            let exact_top10: Vec<NodeIndex> = exact_res.iter().map(|(idx, _)| *idx).collect();
 
             let (adapt_res, diag) = index
                 .search_indices_adaptive(q, 10, None, AdaptivePolicy::AllowGraphFallback)
@@ -79,7 +82,7 @@ fn main() {
                     _ => strict_count += 1,
                 }
 
-                if recall < 0.90 {
+                if recall < 0.999 {
                     false_confident_count += 1;
                 }
             }

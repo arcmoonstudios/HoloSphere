@@ -12,6 +12,7 @@
 pub mod corpus;
 pub mod error;
 pub mod export;
+pub mod primitives;
 pub mod version;
 
 pub use corpus::create_v1_golden_fixture;
@@ -20,6 +21,7 @@ pub use export::{
     CanonicalExportArchive, ExportedEntity, ExportedExperience, ExportedLearningRecord,
     ExportedRelation,
 };
+pub use primitives::*;
 pub use version::{
     CANONICAL_EXPORT_VERSION, ENTITY_SCHEMA_VERSION, EXPERIENCE_SCHEMA_VERSION,
     INFERENCE_TRACE_VERSION, LEARNING_SCHEMA_VERSION, RAFT_LOG_RECORD_VERSION,

@@ -56,6 +56,8 @@ The layers are intentionally distinct. The property graph is a traversal project
 canonical relation model is N-ary. The MCP server exposes governed knowledge operations;
 it does not replace the evidence, authorization, or admission rules underneath them.
 
+For the formal mathematical specifications, invariants, and optimization policies governing all subsystems, see [HoloSphere Engineering Doctrine: 13 Reusable Primitives](docs/ARCHITECTURE_PRIMITIVES.md).
+
 ---
 
 ## Token Efficiency & Context Compression

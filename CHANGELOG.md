@@ -33,7 +33,10 @@ All notable changes to HoloSphere are documented here. The format follows [Keep 
   - Added TypeScript and Python SDK support for `status` and `run_case`; orchestration no longer labels callback-only outcomes as empirical verification.
   - Generalized MCP integration tests to assert required capabilities rather than a fixed tool count.
 - **Universal Test & Certification Suite (`tests/contextgraph_universal_test.rs`)**:
-  - 7 rigorous integration tests verifying all 10 architectural gates, determinism, AST rationale extraction, atomic LSN snapshots, query planning, differential analysis, and workspace self-compilation.
+  - 8 rigorous integration tests verifying all 10 architectural gates, determinism, AST rationale extraction, atomic LSN snapshots, query planning, differential analysis, scalability hardening, and workspace self-compilation.
+- **Engineering Doctrine & Reusable Primitives (`docs/ARCHITECTURE_PRIMITIVES.md`)**:
+  - Formalized the 13 domain-neutral engineering primitives (P1–P13) across planning, multi-objective admission, funnel tracing, counterexample corpus, baseline regression gates, contract equivalence, and incremental state parity.
+  - Documented core state and persistence invariants ($\text{FULL} \equiv \text{INCREMENTAL}$ and $\text{ATTACH} \ne \text{EAGER TOUCH}$) and the governing process rule of evidence-ordered optimization.
 - Repository governance, support, security, contribution, and GitHub automation artifacts.
 
 ### Changed

@@ -268,8 +268,8 @@ fn main() {
         );
         let plan_str = match &plan {
             ExecutionPlan::ExactScan { .. } => "ExactScan",
-            ExecutionPlan::LutzGlobalCertified { .. } => "LutzGlobalCertified",
-            ExecutionPlan::LutzPacRelaxed { .. } => "LutzPacRelaxed",
+            ExecutionPlan::ProofTreeCertified { .. } => "ProofTreeCertified",
+            ExecutionPlan::ProofTreePacRelaxed { .. } => "ProofTreePacRelaxed",
             ExecutionPlan::RiveroRetrieval { .. } => "RiveroRetrieval",
             ExecutionPlan::SparseLexical { .. } => "SparseLexical",
             ExecutionPlan::MultiVectorMaxSim => "MultiVectorMaxSim",

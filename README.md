@@ -475,7 +475,7 @@ Client ACK ◄── CommitReceipt ◄── ShardStateMachine Apply ◄── Q
 ## Wire Protocols, Web Console & API Docs
 
 * **QIR0 Binary TCP Protocol (`:9090`)**: High-throughput async protocol supporting `OpCode::Ping`, `Insert`, `Search`, `BatchSearch`, `Stats`, and `OpCode::GraphQuery`.
-* **Model Context Protocol (`POST :8080/mcp`)**: MCP `2025-06-18` Streamable HTTP server for OpenAI, Gemini, Claude, and compatible agents. It exposes tenant-isolated evidence primitives (`search`, `traverse`, `resolve`, `remember`, `record_outcome`), live public-web retrieval (`web_search`), and a native model-agnostic case workflow (`task_begin`, `task_context`, `task_complete`) with role checks and closed JSON schemas. Dotted aliases (`web.search`, `task.begin`, etc.) are retained for backward compatibility.
+* **Model Context Protocol (`POST :8080/mcp` & STDIO)**: MCP `2025-06-18` Streamable HTTP / stdio server for Antigravity, Claude Desktop, Cursor, OpenAI, Gemini, and compatible agents. It exposes 10 universal cognitive substrate tools: tenant-isolated evidence primitives (`search`, `traverse`, `resolve`, `remember`, `record_outcome`), situational discovery (`explore`), live public-web retrieval (`web_search`), and native model-agnostic case lifecycle (`task_begin`, `task_context`, `task_complete`) with zero-boilerplate polymorphic ingestion, token-efficient dual-channel Markdown rendering, and strict closed JSON schemas. Dotted aliases (`web.search`, `task.begin`, etc.) are retained for backward compatibility.
 * **Redis RESP Protocol (`:6379`)**: Native RESP2/RESP3 server with `PING`, `SET`, `GET`, `INCR`, `DEL`, `PUBLISH`, `SUBSCRIBE`, `XADD`, and `XREAD`.
 * **Arrow-shaped batch socket (`:50051`)**: Project-local `ARROW1`-framed schema and batch payload; full gRPC Arrow Flight SQL compatibility is not yet claimed.
 * **HTTP REST Gateway (`:8080`)**: Axum-based JSON REST API for vector collections plus `/v1/knowledge/search`, `/traverse`, `/resolve`, `/remember`, and `/outcomes`. Collection search accepts exactly one of a raw `query`/`vector` or `query_text`; text-only operations use the configured embedding provider and collections pin its model identity. Human-readable metadata accepts natural JSON string, integer, float, and Boolean scalars. Model responses carry a pinned LSN, proof status, and an explicit untrusted-content marker.
@@ -516,7 +516,7 @@ Add a `holosphere` entry to that file:
 {
   "mcpServers": {
     "holosphere": {
-      "command": "X:\\_Repos\\holosphere\\target\\agent-integrations\\hnsqr_mcp_stdio-96e59d65d8058633.exe",
+      "command": "X:\\_Repos\\holosphere\\target\\agent-integrations\\hnsqr_mcp_stdio-v2.exe",
       "args": [],
       "env": {
         "HNSQR_MCP_ROLE": "readwrite",

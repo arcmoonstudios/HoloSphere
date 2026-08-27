@@ -2222,21 +2222,25 @@ impl HNSQRIndex {
         v_norm_sq: f32,
         dist_fn: DistanceFunction,
     ) -> SimilarityScore {
-        let ip = dot_product_complex_simd(q, v);
         let denom = (q_norm_sq * v_norm_sq).max(1e-12);
         match dist_fn {
-            DistanceFunction::Cosine => (ip.re / denom.sqrt()).clamp(-1.0, 1.0),
-            DistanceFunction::ProjectiveOverlap => (ip.norm_sqr() / denom).clamp(0.0, 1.0),
+            DistanceFunction::Cosine => {
+                (dot_product_real_complex_simd(q, v) / denom.sqrt()).clamp(-1.0, 1.0)
+            }
+            DistanceFunction::ProjectiveOverlap => {
+                (dot_product_complex_simd(q, v).norm_sqr() / denom).clamp(0.0, 1.0)
+            }
             DistanceFunction::ProjectiveSineDistance => {
-                let p = (ip.norm_sqr() / denom).clamp(0.0, 1.0);
+                let p = (dot_product_complex_simd(q, v).norm_sqr() / denom).clamp(0.0, 1.0);
                 1.0 - (1.0 - p).max(0.0).sqrt()
             }
             DistanceFunction::PhaseAlignedChordalDistance => {
-                let p = (ip.norm_sqr() / denom).clamp(0.0, 1.0);
+                let p = (dot_product_complex_simd(q, v).norm_sqr() / denom).clamp(0.0, 1.0);
                 2.0 - (2.0 * (1.0 - p.sqrt())).max(0.0).sqrt()
             }
             DistanceFunction::Euclidean => {
-                let dist_sq = (q_norm_sq + v_norm_sq - 2.0 * ip.re).max(0.0);
+                let dot = dot_product_real_complex_simd(q, v);
+                let dist_sq = (q_norm_sq + v_norm_sq - 2.0 * dot).max(0.0);
                 -dist_sq.sqrt()
             }
         }
@@ -5612,7 +5616,9 @@ impl HNSQRIndex {
                         crate::planning::planner::RetrievalContract::Certified,
                     )?,
                 crate::planning::planner::ExecutionPlan::ProofTreePacRelaxed {
-                    epsilon, delta, ..
+                    epsilon,
+                    delta,
+                    ..
                 } => self.search_indices_with_contract(
                     query,
                     k * 3,

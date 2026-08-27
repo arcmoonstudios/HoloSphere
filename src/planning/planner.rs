@@ -361,7 +361,10 @@ mod tests {
             false,
             &explore_affect,
         );
-        assert!(matches!(plan_explore, ExecutionPlan::ProofTreePacRelaxed { .. }));
+        assert!(matches!(
+            plan_explore,
+            ExecutionPlan::ProofTreePacRelaxed { .. }
+        ));
     }
 
     #[test]

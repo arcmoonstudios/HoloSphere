@@ -77,6 +77,9 @@ impl ReferenceResolver for UniversalReferenceResolver {
             });
         }
 
+        candidate_ids.sort();
+        candidate_ids.dedup();
+
         if candidate_ids.is_empty() {
             return Vec::new();
         }

@@ -17,6 +17,7 @@ pub struct GraphFingerprinter;
 
 impl GraphFingerprinter {
     /// Computes canonical fingerprint of sorted entities and relations.
+    /// Invariant: Guarantee bit-exact identity across arbitrary execution order, thread counts, and build modes.
     #[must_use]
     pub fn compute_fingerprint(entities: &[Entity], relations: &[Relation]) -> [u8; 32] {
         let mut sorted_entities: Vec<&Entity> = entities.iter().collect();
@@ -26,7 +27,7 @@ impl GraphFingerprinter {
         sorted_relations.sort_by(|a, b| a.id.cmp(&b.id));
 
         let mut hasher = Sha256::new();
-        hasher.update(b"HOLOSPHERE_CANONICAL_GRAPH_V1:\n");
+        hasher.update(b"HOLOSPHERE_CANONICAL_GRAPH_V2:\n");
 
         for entity in sorted_entities {
             hasher.update(b"ENTITY:");
@@ -37,6 +38,10 @@ impl GraphFingerprinter {
             hasher.update(entity.label.as_bytes());
             hasher.update(b"|");
             hasher.update(&entity.fingerprint);
+            hasher.update(b"|");
+            if let Some(loc) = &entity.locator {
+                hasher.update(loc.uri.as_bytes());
+            }
             hasher.update(b"\n");
         }
 
@@ -47,6 +52,14 @@ impl GraphFingerprinter {
             hasher.update(relation.kind.as_str().as_bytes());
             hasher.update(b"|");
             hasher.update(relation.origin.as_str().as_bytes());
+            hasher.update(b"|");
+            hasher.update(relation.confidence.to_le_bytes());
+            for p in &relation.participants {
+                hasher.update(b"#");
+                hasher.update(p.role.as_bytes());
+                hasher.update(b":");
+                hasher.update(p.entity_id.as_str().as_bytes());
+            }
             hasher.update(b"\n");
         }
 

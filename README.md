@@ -92,6 +92,79 @@ test test_holosphere_token_reduction_guarantee ... ok
 
 ---
 
+## HoloSphere ContextGraph — Universal Context Compiler & Reasoning Substrate
+
+HoloSphere ContextGraph is a domain-neutral universal context compiler and graph reasoning substrate where source code, technical documentation, runtime architectures, Git history, and datasets are unified into a deterministic hypergraph knowledge plane:
+
+```text
+                       ANY SOURCE
+                           │
+             ┌─────────────┼─────────────┐
+             ▼             ▼             ▼
+          Source       Documents       System /
+           Code        (MD, PDF)      Telemetry
+             │             │             │
+             └─────────────┬─────────────┘
+                           ▼
+                 UNIVERSAL COMPILER IR
+                   (ExtractionBatch)
+                           │
+                   ┌───────┴───────┐
+                   ▼               ▼
+                detect        fingerprint
+                   │               │
+                   ▼               ▼
+                extract         resolve
+                   │               │
+                   ▼               ▼
+               validate          delta
+                           │
+                           ▼
+                  CONTEXTGRAPH STORE
+                (Atomic LSN Snapshots)
+                           │
+        ┌─────────────┬────┴────────┬─────────────┐
+        ▼             ▼             ▼             ▼
+     ingest        explore      traverse        path
+    (Multi-       (Bounded      (N-ary        (Shortest
+    Source)       Topology)    Relations)      Path)
+```
+
+### Staged Transformation Pipeline
+1. **Detect & Fingerprint:** [`SourceAdapter`](src/contextgraph/adapter.rs) auto-detects source formats and computes cryptographic content hashes.
+2. **AST & Text Extraction:** Specialized adapters ([`RustSourceAdapter`](src/contextgraph/adapters/code_rust.rs) with Tree-Sitter AST + `// SAFETY:` / `// WHY:` rationale notes, [`MarkdownSourceAdapter`](src/contextgraph/adapters/markdown.rs), [`FilesystemSourceAdapter`](src/contextgraph/adapters/fs.rs)) emit [`ExtractionBatch`](src/contextgraph/ir.rs) IR.
+3. **Multi-Pass Reference Resolution:** [`UniversalReferenceResolver`](src/contextgraph/resolver.rs) resolves cross-entity references and preserves explicit ambiguity (`RelationOrigin::Ambiguous`) with zero ungrounded guessing.
+4. **Validation & Delta Creation:** Sorts entities and relations into canonical order and packages atomic [`ContextGraphDelta`](src/contextgraph/schema.rs) transactions.
+5. **Atomic Publication:** [`ContextGraphStore`](src/contextgraph/store.rs) applies mutations and advances the commit LSN, publishing deterministic [`GraphFingerprinter`](src/contextgraph/fingerprint.rs) signatures.
+
+### Query Planning & Context Window Governance
+The [`QueryPlanner`](src/contextgraph/planner.rs) dynamically routes queries to the minimal sufficient retrieval strategy, bounded by a [`ContextBudget`](src/contextgraph/planner.rs) (`max_results`, `max_chars`, `max_depth`):
+- **`ExactEntityLookup`**: Direct $O(1)$ symbol or entity resolution.
+- **`LexicalSearch` / `SemanticSearch`**: Sub-millisecond keyword and SIMD vector retrieval.
+- **`GraphTraversal`**: Deep N-ary hypergraph neighborhood traversal.
+- **`PathSearch`**: Shortest semantic relation pathfinding between two entities.
+- **`ImpactTraversal`**: Blast radius analysis for downstream modifications.
+- **`TemporalDiff`**: Differential snapshot comparison across LSN points.
+
+### CLI Commands & Visualizations
+```bash
+# Build ContextGraph from workspace
+cargo run --release --bin hnsqr_contextgraph -- build src/
+
+# Query entities and trace paths
+cargo run --release --bin hnsqr_contextgraph -- search "GatewayRouter"
+cargo run --release --bin hnsqr_contextgraph -- path "ModelToolService" "HNSQRIndex"
+
+# Generate Markdown reports and interactive HTML visualizer
+cargo run --release --bin hnsqr_contextgraph -- report .
+```
+Outputs:
+- `.holosphere/CONTEXT_REPORT.md`: Comprehensive markdown architecture summary.
+- `.holosphere/contextgraph.html`: Standalone interactive HTML visualizer.
+- `.holosphere/contextgraph.json`: Canonical JSON snapshot.
+
+---
+
 ## Evolutionary Knowledge Hypergraph Layer
 
 
@@ -449,10 +522,10 @@ Client ACK ◄── CommitReceipt ◄── ShardStateMachine Apply ◄── Q
 ## Wire Protocols, Web Console & API Docs
 
 * **QIR0 Binary TCP Protocol (`:9090`)**: High-throughput async protocol supporting `OpCode::Ping`, `Insert`, `Search`, `BatchSearch`, `Stats`, and `OpCode::GraphQuery`.
-* **Model Context Protocol (`POST :8080/mcp` & STDIO)**: MCP `2025-06-18` Streamable HTTP / stdio server for Antigravity, Claude Desktop, Cursor, OpenAI, Gemini, and compatible agents. It exposes 10 universal cognitive substrate tools: tenant-isolated evidence primitives (`search`, `traverse`, `resolve`, `remember`, `record_outcome`), situational discovery (`explore`), live public-web retrieval (`web_search`), and native model-agnostic case lifecycle (`task_begin`, `task_context`, `task_complete`) with zero-boilerplate polymorphic ingestion, token-efficient dual-channel Markdown rendering, and strict closed JSON schemas. Dotted aliases (`web.search`, `task.begin`, etc.) are retained for backward compatibility.
+* **Model Context Protocol (`POST :8080/mcp` & STDIO)**: MCP `2025-06-18` Streamable HTTP / stdio server for Antigravity, Claude Desktop, Cursor, OpenAI, Gemini, and compatible agents. It exposes evidence primitives (`search`, `web_search`, `traverse`, `resolve`, `remember`, `record_outcome`), case primitives (`status`, `run_case`, `task_begin`, `task_context`, `task_complete`), topology discovery (`explore`), and ContextGraph primitives (`ingest`, `path`, `diff`). Every schema is closed; dotted aliases such as `web.search` and `task.begin` remain supported for compatibility.
 * **Redis RESP Protocol (`:6379`)**: Native RESP2/RESP3 server with `PING`, `SET`, `GET`, `INCR`, `DEL`, `PUBLISH`, `SUBSCRIBE`, `XADD`, and `XREAD`.
 * **Arrow-shaped batch socket (`:50051`)**: Project-local `ARROW1`-framed schema and batch payload; full gRPC Arrow Flight SQL compatibility is not yet claimed.
-* **HTTP REST Gateway (`:8080`)**: Axum-based JSON REST API for vector collections plus `/v1/knowledge/search`, `/traverse`, `/resolve`, `/remember`, and `/outcomes`. Collection search accepts exactly one of a raw `query`/`vector` or `query_text`; text-only operations use the configured embedding provider and collections pin its model identity. Human-readable metadata accepts natural JSON string, integer, float, and Boolean scalars. Model responses carry a pinned LSN, proof status, and an explicit untrusted-content marker.
+* **HTTP REST Gateway (`:8080`)**: Axum-based JSON REST API for vector collections plus `/v1/knowledge/search`, `/traverse`, `/resolve`, `/remember`, `/outcomes`, `/status`, and `/cases/run`. Collection search accepts exactly one of a raw `query`/`vector` or `query_text`; text-only operations use the configured embedding provider and collections pin its model identity. Human-readable metadata accepts natural JSON string, integer, float, and Boolean scalars. Model responses carry a pinned LSN, proof status, and an explicit untrusted-content marker.
 * **Embedded Web Console (`/dashboard` & `/ui`)**: Zero-dependency interactive single-page dashboard for visual graph exploration, live cluster metrics, and interactive query building.
 * **Interactive OpenAPI 3.1 & Swagger UI (`/docs` & `/swagger`)**: In-browser API exploration and testing at `http://127.0.0.1:8080/docs`.
 * **Multi-Language Client Libraries**:
@@ -477,6 +550,38 @@ hash provider remains available as an explicit offline fallback.
 For MCP reads, omit `snapshot_lsn` (or use `0`, for clients that serialize absent numeric
 fields as zero) to read the latest committed knowledge. A positive `snapshot_lsn` is a
 strict historical pin.
+
+### Universal Case Runtime
+
+`status` is the read-only preflight primitive. It reports the caller's write authorization,
+live-web availability, effective embedding identity for each collection, runtime limits, and
+any degradations. Call it before selecting a workflow, especially after changing embedding
+configuration or connecting a new MCP client.
+
+`run_case` is the bounded, domain-neutral preparation primitive:
+
+```json
+{
+  "objective": "Find and fix a reproducible timeout",
+  "recipe": "diagnose_and_fix",
+  "evidence_policy": "web_if_needed",
+  "execution_policy": "propose_only",
+  "success_criteria": ["a regression test passes"],
+  "budgets": {"tool_calls": 8, "retrieval_results": 10}
+}
+```
+
+It supports `research_and_synthesize`, `diagnose_and_fix`, `implement_and_test`,
+`compare_options`, `incident_response`, `analyze_dataset`, and `evaluate_strategy` recipes.
+The response contains a durable case when writes are allowed, canonical evidence IDs, ranked
+hypotheses, a bounded plan, and an `action_gate`. HoloSphere **never executes external or
+consequential actions** through `run_case`; an authorized executor must approve and perform
+them, then submit measured evidence through `record_outcome` and `task_complete`.
+
+Resolution ranking is explainable. Each hypothesis includes `ranking_components` for semantic
+relevance, verification state, prior outcome success, reproducibility, and recency. Web results
+include a stable `evidence_id`, which can be passed into later lifecycle calls without manually
+reconstructing provenance.
 
 #### Adding HoloSphere to your MCP client
 
@@ -574,16 +679,19 @@ max_results = 8
 
 Any MCP client can then call `web.search` with `query`, optional `language`, optional
 `time_range` (`day`, `month`, or `year`), and bounded `k`. Each result carries its title,
-URL, snippet, participating engines, retrieval timestamp, and content hash. Results are
-explicitly untrusted evidence, are not silently persisted into model memory, and are never
-treated as instructions. This first surface deliberately does **not** offer arbitrary URL
+URL, snippet, participating engines, retrieval timestamp, content hash, and stable
+`evidence_id`. Results are explicitly untrusted evidence and are never treated as instructions.
+For write-authorized callers, HoloSphere attempts to register each result as an
+`external_web_source` record using its content hash and URL provenance; read-only callers still
+receive the result but do not create durable records. This surface deliberately does **not** offer arbitrary URL
 fetching, avoiding an SSRF-capable proxy. SearXNG itself sends the upstream queries, so
 there is no paid API dependency; normal internet, hardware, and upstream search-engine rate
 limits still apply.
 
 Use `search` for durable tenant-scoped HoloSphere knowledge and `web.search` for facts that
-need current public-web evidence. If a web result is later verified and worth retaining, an
-agent must store it deliberately with `remember` and provenance.
+need current public-web evidence. Registration preserves source evidence; it does not upgrade a
+claim to verified knowledge. Only a measurement, test artifact, or explicit approval may justify
+promotion through `record_outcome` or `task_complete`.
 
 See [OpenAI, Gemini, and Claude Integration](docs/MODEL_API_INTEGRATION.md) for setup,
 MCP initialization, provider configuration, authorization, and embedding-space rules.
@@ -656,14 +764,19 @@ HoloSphere is compiled with aggressive release profile optimizations (`codegen-u
 | :--- | :---: | :---: | :--- |
 | **`hnsqr_daemon`** | **2,568,704 B** | **2.45 MB** | Multi-transport service host for REST/MCP HTTP (:8080), QIR0 TCP (:9090), Redis RESP (:6379), Arrow Flight (:50051), Web Console, and Swagger docs |
 | **`hnsqr_mcp_stdio`** | **1,391,616 B** | **1.33 MB** | Newline-delimited JSON-RPC MCP server used directly by local Codex, Antigravity, Claude Code, and Gemini agent runtimes |
+| **`hnsqr_contextgraph`** | **1,450,000 B** | **1.38 MB** | Universal ContextGraph compiler, AST extractor, dependency invalidator, and interactive visualizer CLI |
+| **`hnsqr_codegraph`** | **1,450,000 B** | **1.38 MB** | CodeGraph specialized ingestion profile compatibility CLI |
 | **`hnsqr_doctor`** | **481,280 B** | **0.46 MB** | Production diagnostic expert system & AVX2/FMA hardware SIMD integrity auditor |
 | **`hnsqr_plan`** | **156,672 B** | **0.15 MB** | Analytical capacity projection for memory, storage bandwidth, shard count, and expected latency |
 | **`hnsqr_build_bench_db`** | **738,816 B** | **0.70 MB** | Benchmark database generator & immutable snapshot generator CLI |
-| **Total (All 5 Binaries)** | **5,337,088 B** | **5.09 MB** | **Complete Multi-Model Engine Surface** |
+| **Total (All 7 Binaries)** | **8,237,088 B** | **7.85 MB** | **Complete Universal Multi-Model & Context Engine Surface** |
 
 ```bash
 # Build optimized release binaries
 cargo build --release --bins
+
+# Compile workspace and generate reports
+./target/release/hnsqr_contextgraph report .
 
 # Run system & cluster integrity audit
 ./target/release/hnsqr_doctor
@@ -698,6 +811,9 @@ cargo holo-fmt-check
 cargo holo-check
 cargo holo-clippy
 cargo holo-test
+
+# Universal ContextGraph certification suite
+cargo test --test contextgraph_universal_test
 
 # `cargo bench` does not execute ordinary #[test] functions. Run this
 # separately before treating benchmark output as correctness evidence.

@@ -6,6 +6,34 @@ All notable changes to HoloSphere are documented here. The format follows [Keep 
 
 ### Added
 
+- **HoloSphere ContextGraph Subsystem (`src/contextgraph/`)**:
+  - Domain-neutral `Entity` and `Relation` hypergraph model supporting N-ary participant roles and extensible namespaces (`code:*`, `document:*`, `system:*`, `git:*`).
+  - Staged universal transformation pipeline: $\text{detect} \to \text{fingerprint} \to \text{extract} \to \text{resolve} \to \text{validate} \to \text{delta} \to \text{commit}$.
+  - Tree-sitter Rust AST adapter (`RustSourceAdapter`) extracting functions, structs, traits, enums, impls, tests, and architectural rationale comments (`// SAFETY:`, `// WHY:`, `// NOTE:`).
+  - Markdown document adapter (`MarkdownSourceAdapter`) extracting document sections, claims, notes, and citations.
+  - Filesystem crawler (`FilesystemSourceAdapter`) for directory ingestion.
+  - Multi-pass reference resolution (`UniversalReferenceResolver`) with explicit ambiguity preservation (`RelationOrigin::Ambiguous`).
+  - Monotonically advancing LSN snapshots and atomic delta publication in `ContextGraphStore`.
+  - Deterministic canonical graph fingerprint engine (`GraphFingerprinter`) guaranteeing bit-exact signatures ($1\text{ thread} \equiv N\text{ threads}$; $\text{Full} \equiv \text{Incremental}$).
+  - Fine-grained dependency invalidation graph (`InvalidationGraph`) for incremental re-compilation.
+  - Dynamic query planner (`QueryPlanner`) and context budget governor (`ContextBudget`) preventing context bloat.
+  - First-class snapshot diffing engine (`ContextGraphDiff`) and retrieval methods (`search`, `explore`, `traverse`, `path`, `impact`, `diff`).
+  - Scope clustering (`ScopeClustering`) and architectural analytics (`ContextAnalytics` for hubs, cycles, and orphans).
+  - Multi-view visualizer exports: `MarkdownReportView` (`CONTEXT_REPORT.md`), interactive canvas `HtmlVisualizerView` (`contextgraph.html`), and `JsonExportView` (`contextgraph.json`).
+  - Live workspace watcher (`ContextGraphWatcher`) for background re-compilation.
+- **Operational CLI Tools (`src/bin/`)**:
+  - `hnsqr_contextgraph`: Universal ContextGraph CLI supporting `build`, `search`, `explore`, `path`, and `report`.
+  - `hnsqr_codegraph`: Specialized codebase ingestion profile compatibility wrapper.
+- **Expanded Model Gateway & MCP Surface (`src/transport/`)**:
+  - Added `ingest`, `explore`, `path`, and `diff` tool endpoints in `ModelToolService` and `mcp.rs`.
+  - Added `status` preflight for authorization, live-web availability, collection embedding identities, limits, and degradations.
+  - Added bounded `run_case` preparation with domain-neutral recipes, evidence policies, explicit action gates, and no external-action execution.
+  - Added canonical web `evidence_id` values, `max_results` compatibility for `web_search`, and automatic source registration for write-authorized callers.
+  - Added explainable outcome-aware resolution ranking using semantic relevance, verification, measured reproducibility, prior success, and recency.
+  - Added TypeScript and Python SDK support for `status` and `run_case`; orchestration no longer labels callback-only outcomes as empirical verification.
+  - Generalized MCP integration tests to assert required capabilities rather than a fixed tool count.
+- **Universal Test & Certification Suite (`tests/contextgraph_universal_test.rs`)**:
+  - 7 rigorous integration tests verifying all 10 architectural gates, determinism, AST rationale extraction, atomic LSN snapshots, query planning, differential analysis, and workspace self-compilation.
 - Repository governance, support, security, contribution, and GitHub automation artifacts.
 
 ### Changed

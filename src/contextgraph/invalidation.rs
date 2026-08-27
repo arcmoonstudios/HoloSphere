@@ -88,6 +88,9 @@ impl InvalidationGraph {
                     self.entity_to_locator.remove(id);
                     self.entity_dependencies.remove(id);
                     self.entity_to_dependent_relations.remove(id);
+                    for referrers in self.entity_dependencies.values_mut() {
+                        referrers.remove(id);
+                    }
                 }
             }
         }

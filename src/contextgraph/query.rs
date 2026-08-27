@@ -364,4 +364,78 @@ impl ContextQueryEngine {
             commit_lsn: state.commit_lsn,
         }
     }
+
+    /// Compares two ContextGraph states and computes a fine-grained structural diff.
+    #[must_use]
+    pub fn diff(
+        old_state: &ContextGraphStoreState,
+        new_state: &ContextGraphStoreState,
+    ) -> ContextGraphDiff {
+        let mut diff = ContextGraphDiff {
+            from_lsn: old_state.commit_lsn,
+            to_lsn: new_state.commit_lsn,
+            ..Default::default()
+        };
+
+        // Check entities
+        for (id, new_ent) in &new_state.entities {
+            if let Some(old_ent) = old_state.entities.get(id) {
+                if old_ent.fingerprint != new_ent.fingerprint || old_ent.label != new_ent.label {
+                    diff.modified_entities.push(id.clone());
+                } else {
+                    diff.unchanged_entities_count += 1;
+                }
+            } else {
+                diff.added_entities.push(new_ent.clone());
+            }
+        }
+
+        for id in old_state.entities.keys() {
+            if !new_state.entities.contains_key(id) {
+                diff.deleted_entities.push(id.clone());
+            }
+        }
+
+        // Check relations
+        for (rid, new_rel) in &new_state.relations {
+            if old_state.relations.contains_key(rid) {
+                diff.unchanged_relations_count += 1;
+            } else {
+                diff.added_relations.push(new_rel.clone());
+            }
+        }
+
+        for rid in old_state.relations.keys() {
+            if !new_state.relations.contains_key(rid) {
+                diff.deleted_relations.push(rid.clone());
+            }
+        }
+
+        diff
+    }
+}
+
+/// Structural diff between two ContextGraph snapshots.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ContextGraphDiff {
+    pub from_lsn: u64,
+    pub to_lsn: u64,
+    pub added_entities: Vec<Entity>,
+    pub deleted_entities: Vec<EntityId>,
+    pub modified_entities: Vec<EntityId>,
+    pub added_relations: Vec<Relation>,
+    pub deleted_relations: Vec<RelationId>,
+    pub unchanged_entities_count: usize,
+    pub unchanged_relations_count: usize,
+}
+
+impl ContextGraphDiff {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.added_entities.is_empty()
+            && self.deleted_entities.is_empty()
+            && self.modified_entities.is_empty()
+            && self.added_relations.is_empty()
+            && self.deleted_relations.is_empty()
+    }
 }

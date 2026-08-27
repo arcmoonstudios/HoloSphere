@@ -294,3 +294,82 @@ fn test_gate_10_end_to_end_workspace_self_compilation() {
     assert!(html.contains("<!DOCTYPE html>"));
     assert!(html.contains("HoloSphere ContextGraph"));
 }
+
+#[test]
+fn test_graph_diff_and_upsert_invariants() {
+    let store = ContextGraphStore::new();
+    let ns = Namespace::new("test_diff_ns");
+
+    let ent1 = Entity {
+        id: EntityId("ent_alpha".to_string()),
+        kind: EntityKind::code_function(),
+        label: "Alpha".to_string(),
+        namespace: ns.clone(),
+        locator: None,
+        attributes: BTreeMap::new(),
+        provenance: Vec::new(),
+        evidence_class: EvidenceClass::Observation,
+        verification_state: VerificationState::Verified,
+        fingerprint: [100u8; 32],
+        valid_from_lsn: 0,
+    };
+
+    let delta1 = ContextGraphDelta {
+        namespace: ns.clone(),
+        insert_entities: vec![ent1.clone()],
+        delete_entities: Vec::new(),
+        insert_relations: Vec::new(),
+        delete_relations: Vec::new(),
+        touched_locators: Vec::new(),
+    };
+    store.commit_delta(delta1);
+    let state_v1 = store.snapshot();
+
+    // Modify ent1 and add ent2
+    let mut ent1_modified = ent1.clone();
+    ent1_modified.label = "AlphaModified".to_string();
+    ent1_modified.fingerprint = [101u8; 32];
+
+    let ent2 = Entity {
+        id: EntityId("ent_beta".to_string()),
+        kind: EntityKind::code_struct(),
+        label: "Beta".to_string(),
+        namespace: ns.clone(),
+        locator: None,
+        attributes: BTreeMap::new(),
+        provenance: Vec::new(),
+        evidence_class: EvidenceClass::Observation,
+        verification_state: VerificationState::Verified,
+        fingerprint: [200u8; 32],
+        valid_from_lsn: 0,
+    };
+
+    let rel = Relation::call(&ent1.id, &ent2.id, RelationOrigin::Extracted);
+
+    let delta2 = ContextGraphDelta {
+        namespace: ns,
+        insert_entities: vec![ent1_modified, ent2],
+        delete_entities: Vec::new(),
+        insert_relations: vec![rel],
+        delete_relations: Vec::new(),
+        touched_locators: Vec::new(),
+    };
+    store.commit_delta(delta2);
+    let state_v2 = store.snapshot();
+
+    let diff = ContextQueryEngine::diff(&state_v1, &state_v2);
+    assert_eq!(diff.from_lsn, 1);
+    assert_eq!(diff.to_lsn, 2);
+    assert_eq!(diff.added_entities.len(), 1);
+    assert_eq!(diff.added_entities[0].id, EntityId("ent_beta".to_string()));
+    assert_eq!(diff.modified_entities.len(), 1);
+    assert_eq!(diff.modified_entities[0], EntityId("ent_alpha".to_string()));
+    assert_eq!(diff.added_relations.len(), 1);
+
+    // Verify index cleanliness on update: "Alpha" should not return "ent_alpha" anymore, only "AlphaModified"
+    let old_lookup = store.lookup_by_label("Alpha");
+    assert!(old_lookup.is_empty(), "Old label 'Alpha' must be cleaned up on upsert");
+    let new_lookup = store.lookup_by_label("AlphaModified");
+    assert_eq!(new_lookup.len(), 1);
+}
+

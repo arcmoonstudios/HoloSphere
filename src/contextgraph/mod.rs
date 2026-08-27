@@ -40,7 +40,7 @@ pub use ir::{
 };
 pub use manifest::{ContextGraphManifest, SourceDiff, SourceManifestEntry};
 pub use planner::{ContextBudget, ContextQueryRequest, QueryPlan, QueryPlanner};
-pub use query::{ContextQueryEngine, ContextSlice};
+pub use query::{ContextGraphDiff, ContextQueryEngine, ContextSlice};
 pub use resolver::{ReferenceResolver, UniversalReferenceResolver};
 pub use schema::{
     ContextGraphDelta, Entity, EntityId, EntityKind, Namespace, ProvenanceRef, Relation,

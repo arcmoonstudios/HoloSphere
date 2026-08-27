@@ -96,24 +96,47 @@ impl ContextGraphStore {
             entity.valid_from_lsn = lsn;
             let id = entity.id.clone();
 
-            state
-                .entities_by_label
-                .entry(entity.label.clone())
-                .or_default()
-                .push(id.clone());
+            // If entity already exists, clean up its prior index entries
+            let old_meta = state
+                .entities
+                .get(&id)
+                .map(|e| (e.label.clone(), e.kind.clone(), e.locator.as_ref().map(|l| l.uri.clone())));
 
-            state
-                .entities_by_kind
-                .entry(entity.kind.clone())
-                .or_default()
-                .push(id.clone());
+            if let Some((old_label, old_kind, old_loc_uri)) = old_meta {
+                if old_label != entity.label {
+                    if let Some(ids) = state.entities_by_label.get_mut(&old_label) {
+                        ids.retain(|existing_id| existing_id != &id);
+                    }
+                }
+                if old_kind != entity.kind {
+                    if let Some(ids) = state.entities_by_kind.get_mut(&old_kind) {
+                        ids.retain(|existing_id| existing_id != &id);
+                    }
+                }
+                if let (Some(old_uri), Some(new_loc)) = (&old_loc_uri, &entity.locator) {
+                    if old_uri != &new_loc.uri {
+                        if let Some(ids) = state.entities_by_locator.get_mut(old_uri) {
+                            ids.retain(|existing_id| existing_id != &id);
+                        }
+                    }
+                }
+            }
+
+            let label_entry = state.entities_by_label.entry(entity.label.clone()).or_default();
+            if !label_entry.contains(&id) {
+                label_entry.push(id.clone());
+            }
+
+            let kind_entry = state.entities_by_kind.entry(entity.kind.clone()).or_default();
+            if !kind_entry.contains(&id) {
+                kind_entry.push(id.clone());
+            }
 
             if let Some(loc) = &entity.locator {
-                state
-                    .entities_by_locator
-                    .entry(loc.uri.clone())
-                    .or_default()
-                    .push(id.clone());
+                let loc_entry = state.entities_by_locator.entry(loc.uri.clone()).or_default();
+                if !loc_entry.contains(&id) {
+                    loc_entry.push(id.clone());
+                }
             }
 
             state.entities.insert(id, entity);
@@ -123,11 +146,10 @@ impl ContextGraphStore {
         for rel in delta.insert_relations {
             let rel_id = rel.id.clone();
             for p in &rel.participants {
-                state
-                    .entity_relations
-                    .entry(p.entity_id.clone())
-                    .or_default()
-                    .push(rel_id.clone());
+                let r_list = state.entity_relations.entry(p.entity_id.clone()).or_default();
+                if !r_list.contains(&rel_id) {
+                    r_list.push(rel_id.clone());
+                }
             }
             state.relations.insert(rel_id, rel);
         }

@@ -77,7 +77,10 @@ fn stdio_server_initializes_persists_and_retrieves_shared_agent_knowledge() {
         .filter_map(|tool| tool["name"].as_str())
         .collect();
     for required in ["search", "task_begin", "status", "run_case"] {
-        assert!(tool_names.contains(&required), "missing required tool {required}");
+        assert!(
+            tool_names.contains(&required),
+            "missing required tool {required}"
+        );
     }
 
     let remembered = server.request(serde_json::json!({

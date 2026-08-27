@@ -15,8 +15,8 @@ use std::path::{Path, PathBuf};
 use super::super::adapter::{AdapterCapabilities, SourceAdapter, SourceInput};
 use super::super::ir::{ExtractedEntity, ExtractedRelation, ExtractionBatch, SourceDescriptor};
 use super::super::schema::{EntityKind, Namespace, RelationKind, RelationOrigin, ResourceLocator};
-use crate::HNSQRResult;
 use crate::transport::model_gateway::{EvidenceClass, VerificationState};
+use crate::HNSQRResult;
 
 pub struct FilesystemSourceAdapter;
 
@@ -82,8 +82,10 @@ impl FilesystemSourceAdapter {
                 let source_type = match ext {
                     "rs" => "rust",
                     "md" | "markdown" => "markdown",
-                    "ts" | "tsx" => "typescript",
-                    "js" | "jsx" => "javascript",
+                    "ts" => "typescript",
+                    "tsx" => "tsx",
+                    "js" => "javascript",
+                    "jsx" => "jsx",
                     "py" => "python",
                     "json" => "json",
                     "toml" => "toml",

@@ -948,10 +948,23 @@ mod tests {
             .map(|tool| tool["name"].as_str().unwrap())
             .collect();
         for required in [
-            "search", "web_search", "traverse", "resolve", "task_begin", "task_context",
-            "remember", "task_complete", "record_outcome", "explore", "status", "run_case",
+            "search",
+            "web_search",
+            "traverse",
+            "resolve",
+            "task_begin",
+            "task_context",
+            "remember",
+            "task_complete",
+            "record_outcome",
+            "explore",
+            "status",
+            "run_case",
         ] {
-            assert!(names.contains(&required), "missing required tool {required}");
+            assert!(
+                names.contains(&required),
+                "missing required tool {required}"
+            );
         }
         assert!(tools.iter().all(|tool| {
             tool["inputSchema"]["additionalProperties"] == serde_json::Value::Bool(false)

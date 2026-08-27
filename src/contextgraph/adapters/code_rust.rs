@@ -8,6 +8,7 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -15,11 +16,19 @@ use tree_sitter::{Node, Parser};
 
 use super::super::adapter::{AdapterCapabilities, SourceAdapter, SourceInput};
 use super::super::ir::{
-    ExtractedEntity, ExtractedRelation, ExtractionBatch, SourceDescriptor, UnresolvedReference,
+    Diagnostic, DiagnosticSeverity, ExtractedEntity, ExtractedRelation, ExtractionBatch,
+    SourceDescriptor, UnresolvedReference,
 };
 use super::super::schema::{EntityKind, Namespace, RelationKind, RelationOrigin, ResourceLocator};
 use crate::transport::model_gateway::{EvidenceClass, VerificationState};
 use crate::{HNSQRError, HNSQRResult};
+
+thread_local! {
+    static RUST_PARSER: RefCell<Option<Parser>> = const { RefCell::new(None) };
+}
+
+/// Hard limit on AST parsing buffer to prevent C-FFI stack overflow on massive generated files.
+const MAX_PARSEABLE_BYTES: usize = 2 * 1024 * 1024; // 2 MB
 
 pub struct RustSourceAdapter;
 
@@ -35,12 +44,30 @@ impl RustSourceAdapter {
         Self
     }
 
-    fn init_parser() -> HNSQRResult<Parser> {
-        let mut parser = Parser::new();
-        parser
-            .set_language(&tree_sitter_rust::LANGUAGE.into())
-            .map_err(|e| HNSQRError::Internal(format!("tree-sitter-rust init error: {e:?}")))?;
-        Ok(parser)
+    /// Acquires thread-local pooled Parser instance without recurring allocation overhead.
+    fn with_parser<F, R>(f: F) -> HNSQRResult<R>
+    where
+        F: FnOnce(&mut Parser) -> HNSQRResult<R>,
+    {
+        RUST_PARSER.with(|cell| {
+            let mut opt = cell.borrow_mut();
+            if opt.is_none() {
+                let mut parser = Parser::new();
+                parser
+                    .set_language(&tree_sitter_rust::LANGUAGE.into())
+                    .map_err(|e| {
+                        HNSQRError::Internal(format!("tree-sitter-rust init error: {e:?}"))
+                    })?;
+                *opt = Some(parser);
+            }
+            if let Some(parser) = opt.as_mut() {
+                f(parser)
+            } else {
+                Err(HNSQRError::Internal(
+                    "Failed to acquire thread-local tree-sitter parser".to_string(),
+                ))
+            }
+        })
     }
 
     fn text_of<'a>(node: &Node, source: &'a str) -> &'a str {
@@ -85,14 +112,7 @@ impl SourceAdapter for RustSourceAdapter {
             }
         };
 
-        let mut parser = Self::init_parser()?;
-        let tree = parser.parse(text, None).ok_or_else(|| {
-            HNSQRError::InvalidRequest(format!("Failed to parse {}", source.locator))
-        })?;
-
-        let root_node = tree.root_node();
         let content_hash = source.compute_fingerprint();
-
         let desc = SourceDescriptor {
             source_type: "rust".to_string(),
             locator: source.locator.clone(),
@@ -115,20 +135,46 @@ impl SourceAdapter for RustSourceAdapter {
             fingerprint: content_hash,
         });
 
-        // 2. Walk items
-        let mut visitor = RustAstVisitor {
-            source: text,
-            source_locator: &source.locator,
-            file_temp_id: &file_temp_id,
-            content_hash,
-            batch: &mut batch,
-            scope: Vec::new(),
-            current_impl: None,
-            pending_doc: Vec::new(),
-            pending_rationale: Vec::new(),
-        };
+        // 2. File size safety guard: Skip full AST tree parsing for oversized files (> 2MB)
+        if text.len() > MAX_PARSEABLE_BYTES {
+            batch.diagnostics.push(Diagnostic {
+                code: "source_too_large".to_string(),
+                severity: DiagnosticSeverity::Warning,
+                message: format!(
+                    "File {} exceeds max parseable limit ({} bytes > {} max); full AST extraction skipped.",
+                    source.locator,
+                    text.len(),
+                    MAX_PARSEABLE_BYTES
+                ),
+                locator: Some(ResourceLocator::uri(source.locator.clone())),
+                recoverable: true,
+            });
+            return Ok(batch);
+        }
 
-        visitor.walk(&root_node);
+        // 3. Walk items using thread-local pooled Parser
+        Self::with_parser(|parser| {
+            let tree = parser.parse(text, None).ok_or_else(|| {
+                HNSQRError::InvalidRequest(format!("Failed to parse {}", source.locator))
+            })?;
+
+            let root_node = tree.root_node();
+
+            let mut visitor = RustAstVisitor {
+                source: text,
+                source_locator: &source.locator,
+                file_temp_id: &file_temp_id,
+                content_hash,
+                batch: &mut batch,
+                scope: Vec::new(),
+                current_impl: None,
+                pending_doc: Vec::new(),
+                pending_rationale: Vec::new(),
+            };
+
+            visitor.walk(&root_node);
+            Ok(())
+        })?;
 
         Ok(batch)
     }

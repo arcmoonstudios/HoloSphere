@@ -97,10 +97,13 @@ impl ContextGraphStore {
             let id = entity.id.clone();
 
             // If entity already exists, clean up its prior index entries
-            let old_meta = state
-                .entities
-                .get(&id)
-                .map(|e| (e.label.clone(), e.kind.clone(), e.locator.as_ref().map(|l| l.uri.clone())));
+            let old_meta = state.entities.get(&id).map(|e| {
+                (
+                    e.label.clone(),
+                    e.kind.clone(),
+                    e.locator.as_ref().map(|l| l.uri.clone()),
+                )
+            });
 
             if let Some((old_label, old_kind, old_loc_uri)) = old_meta {
                 if old_label != entity.label {
@@ -122,18 +125,27 @@ impl ContextGraphStore {
                 }
             }
 
-            let label_entry = state.entities_by_label.entry(entity.label.clone()).or_default();
+            let label_entry = state
+                .entities_by_label
+                .entry(entity.label.clone())
+                .or_default();
             if !label_entry.contains(&id) {
                 label_entry.push(id.clone());
             }
 
-            let kind_entry = state.entities_by_kind.entry(entity.kind.clone()).or_default();
+            let kind_entry = state
+                .entities_by_kind
+                .entry(entity.kind.clone())
+                .or_default();
             if !kind_entry.contains(&id) {
                 kind_entry.push(id.clone());
             }
 
             if let Some(loc) = &entity.locator {
-                let loc_entry = state.entities_by_locator.entry(loc.uri.clone()).or_default();
+                let loc_entry = state
+                    .entities_by_locator
+                    .entry(loc.uri.clone())
+                    .or_default();
                 if !loc_entry.contains(&id) {
                     loc_entry.push(id.clone());
                 }
@@ -146,7 +158,10 @@ impl ContextGraphStore {
         for rel in delta.insert_relations {
             let rel_id = rel.id.clone();
             for p in &rel.participants {
-                let r_list = state.entity_relations.entry(p.entity_id.clone()).or_default();
+                let r_list = state
+                    .entity_relations
+                    .entry(p.entity_id.clone())
+                    .or_default();
                 if !r_list.contains(&rel_id) {
                     r_list.push(rel_id.clone());
                 }
@@ -214,5 +229,29 @@ impl ContextGraphStore {
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    /// Persists snapshot state to disk.
+    pub fn save_snapshot_to_file(&self, path: impl AsRef<std::path::Path>) -> crate::HNSQRResult<()> {
+        if let Some(parent) = path.as_ref().parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let state = self.inner.read();
+        let bytes = serde_json::to_vec_pretty(&*state)
+            .map_err(|e| crate::HNSQRError::SerializationError(e.to_string()))?;
+        std::fs::write(path, bytes)?;
+        Ok(())
+    }
+
+    /// Loads store state from a serialized snapshot on disk.
+    pub fn load_snapshot_from_file(path: impl AsRef<std::path::Path>) -> crate::HNSQRResult<Self> {
+        let bytes = std::fs::read(path)?;
+        let state: ContextGraphStoreState = serde_json::from_slice(&bytes)
+            .map_err(|e| crate::HNSQRError::SerializationError(e.to_string()))?;
+        let next_lsn = state.commit_lsn + 1;
+        Ok(Self {
+            inner: Arc::new(RwLock::new(state)),
+            next_lsn: AtomicU64::new(next_lsn),
+        })
     }
 }

@@ -29,6 +29,9 @@ pub struct ContextSlice {
     pub commit_lsn: u64,
 }
 
+/// Maximum relations branched from a single mega-hub node to prevent combinatorial explosion.
+const MAX_HUB_BRANCHING_FACTOR: usize = 250;
+
 pub struct ContextQueryEngine;
 
 impl ContextQueryEngine {
@@ -172,7 +175,7 @@ impl ContextQueryEngine {
             }
 
             if let Some(rel_ids) = state.entity_relations.get(&curr_id) {
-                for rid in rel_ids {
+                for rid in rel_ids.iter().take(MAX_HUB_BRANCHING_FACTOR) {
                     if let Some(rel) = state.relations.get(rid) {
                         if let Some(kinds) = relation_kinds {
                             if !kinds.iter().any(|k| *k == rel.kind.as_str()) {
@@ -250,7 +253,7 @@ impl ContextQueryEngine {
             }
 
             if let Some(rel_ids) = state.entity_relations.get(&curr_id) {
-                for rid in rel_ids {
+                for rid in rel_ids.iter().take(MAX_HUB_BRANCHING_FACTOR) {
                     if let Some(rel) = state.relations.get(rid) {
                         for p in &rel.participants {
                             if visited.insert(p.entity_id.clone()) {
@@ -328,7 +331,7 @@ impl ContextQueryEngine {
             }
 
             if let Some(rel_ids) = state.entity_relations.get(&curr_id) {
-                for rid in rel_ids {
+                for rid in rel_ids.iter().take(MAX_HUB_BRANCHING_FACTOR) {
                     if let Some(rel) = state.relations.get(rid) {
                         for p in &rel.participants {
                             if p.role == "source" || p.role == "caller" {

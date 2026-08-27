@@ -49,9 +49,19 @@ impl InvalidationGraph {
             .insert(referrer.clone());
     }
 
-    /// Computes all transitively affected entities and locators when a set of locators changes.
+    /// Computes all transitively affected entities with a safety cap on cascade depth (default depth 16).
     #[must_use]
     pub fn compute_affected_scope(&self, changed_locators: &[String]) -> HashSet<EntityId> {
+        self.compute_affected_scope_bounded(changed_locators, 16)
+    }
+
+    /// Computes transitively affected entities bounded by a maximum cascade depth.
+    #[must_use]
+    pub fn compute_affected_scope_bounded(
+        &self,
+        changed_locators: &[String],
+        max_depth: usize,
+    ) -> HashSet<EntityId> {
         let mut affected_entities = HashSet::new();
         let mut queue = std::collections::VecDeque::new();
 
@@ -60,18 +70,21 @@ impl InvalidationGraph {
             if let Some(entities) = self.locator_to_entities.get(loc) {
                 for id in entities {
                     if affected_entities.insert(id.clone()) {
-                        queue.push_back(id.clone());
+                        queue.push_back((id.clone(), 0));
                     }
                 }
             }
         }
 
-        // 2. Transitive dependents
-        while let Some(curr) = queue.pop_front() {
+        // 2. Transitive dependents bounded by max_depth
+        while let Some((curr, depth)) = queue.pop_front() {
+            if depth >= max_depth {
+                continue;
+            }
             if let Some(dependents) = self.entity_dependencies.get(&curr) {
                 for dep in dependents {
                     if affected_entities.insert(dep.clone()) {
-                        queue.push_back(dep.clone());
+                        queue.push_back((dep.clone(), depth + 1));
                     }
                 }
             }

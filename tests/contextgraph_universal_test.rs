@@ -8,11 +8,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use hnsqr::contextgraph::{
-    ContextBudget, ContextCompiler, ContextGraphStore, ContextQueryEngine,
-    GraphFingerprinter, HtmlVisualizerView, JsonExportView, MarkdownReportView,
-    Namespace, QueryPlan, QueryPlanner, ContextQueryRequest, SourceAdapter, SourceInput,
-    adapters::code_rust::RustSourceAdapter, adapters::fs::FilesystemSourceAdapter,
-    adapters::markdown::MarkdownSourceAdapter, schema::*,
+    ContextBudget, ContextCompiler, ContextGraphStore, ContextQueryEngine, ContextQueryRequest,
+    GraphFingerprinter, HtmlVisualizerView, JsonExportView, MarkdownReportView, Namespace,
+    QueryPlan, QueryPlanner, SourceAdapter, SourceInput, adapters::code_rust::RustSourceAdapter,
+    adapters::fs::FilesystemSourceAdapter, adapters::markdown::MarkdownSourceAdapter, schema::*,
 };
 use hnsqr::transport::model_gateway::{EvidenceClass, VerificationState};
 
@@ -71,22 +70,34 @@ fn score_candidates(&self, query: &[f32], k: usize) -> Vec<usize> {
     let input = SourceInput::from_text(source_code, "file:///src/test_index.rs", "rust");
     let ns = Namespace::new("test_ns");
 
-    let batch = adapter.extract(&input, &ns).expect("Rust extraction should succeed");
+    let batch = adapter
+        .extract(&input, &ns)
+        .expect("Rust extraction should succeed");
 
-    assert!(batch.entities.len() >= 3, "Should extract file, search_internal, score_candidates, rationale");
+    assert!(
+        batch.entities.len() >= 3,
+        "Should extract file, search_internal, score_candidates, rationale"
+    );
 
     let rationale_entities: Vec<_> = batch
         .entities
         .iter()
         .filter(|e| e.kind == EntityKind::code_rationale())
         .collect();
-    assert_eq!(rationale_entities.len(), 2, "Should extract SAFETY and WHY rationale notes");
+    assert_eq!(
+        rationale_entities.len(),
+        2,
+        "Should extract SAFETY and WHY rationale notes"
+    );
 
     let justifies_rel = batch
         .relations
         .iter()
         .find(|r| r.kind == RelationKind::justifies());
-    assert!(justifies_rel.is_some(), "Should emit justifies relation for SAFETY note");
+    assert!(
+        justifies_rel.is_some(),
+        "Should emit justifies relation for SAFETY note"
+    );
 }
 
 #[test]
@@ -174,10 +185,14 @@ fn test_gate_6_deterministic_canonical_graph_fingerprint() {
     let rel_ab = Relation::call(&ent_a.id, &ent_b.id, RelationOrigin::Extracted);
 
     // Feed in reverse order
-    let fp1 = GraphFingerprinter::compute_fingerprint(&[ent_b.clone(), ent_a.clone()], &[rel_ab.clone()]);
+    let fp1 =
+        GraphFingerprinter::compute_fingerprint(&[ent_b.clone(), ent_a.clone()], &[rel_ab.clone()]);
     let fp2 = GraphFingerprinter::compute_fingerprint(&[ent_a, ent_b], &[rel_ab]);
 
-    assert_eq!(fp1, fp2, "Fingerprint MUST be bit-exact regardless of evaluation or array order");
+    assert_eq!(
+        fp1, fp2,
+        "Fingerprint MUST be bit-exact regardless of evaluation or array order"
+    );
 }
 
 #[test]
@@ -248,16 +263,29 @@ fn test_gate_7_and_8_query_planner_and_budget_governed_navigation() {
     assert_eq!(search_res.entities[0].id, e_router.id);
 
     // 2. Explore
-    let explore_res = ContextQueryEngine::explore(&state, &e_router.id, &budget).expect("Explore should find entity");
-    assert_eq!(explore_res.relations.len(), 2, "Router has 1 incoming call and 1 outgoing call");
+    let explore_res = ContextQueryEngine::explore(&state, &e_router.id, &budget)
+        .expect("Explore should find entity");
+    assert_eq!(
+        explore_res.relations.len(),
+        2,
+        "Router has 1 incoming call and 1 outgoing call"
+    );
 
     // 3. Path
-    let path_res = ContextQueryEngine::path(&state, &e_gateway.id, &e_index.id, &budget).expect("Path should be found");
-    assert_eq!(path_res.relations.len(), 2, "Path from Gateway -> Router -> Index should be 2 hops");
+    let path_res = ContextQueryEngine::path(&state, &e_gateway.id, &e_index.id, &budget)
+        .expect("Path should be found");
+    assert_eq!(
+        path_res.relations.len(),
+        2,
+        "Path from Gateway -> Router -> Index should be 2 hops"
+    );
 
     // 4. Impact
     let impact_res = ContextQueryEngine::impact(&state, &e_index.id, &budget);
-    assert!(impact_res.entities.len() >= 2, "Impact of changing HNSQRIndex includes Router and Gateway");
+    assert!(
+        impact_res.entities.len() >= 2,
+        "Impact of changing HNSQRIndex includes Router and Gateway"
+    );
 
     // 5. Query Planner
     let plan = QueryPlanner::plan(&ContextQueryRequest {
@@ -271,15 +299,28 @@ fn test_gate_7_and_8_query_planner_and_budget_governed_navigation() {
 #[test]
 fn test_gate_10_end_to_end_workspace_self_compilation() {
     let fs_adapter = FilesystemSourceAdapter::new();
-    let sources = fs_adapter.crawl_directory("src/contextgraph").expect("Directory crawl should succeed");
-    assert!(!sources.is_empty(), "Should discover source files in src/contextgraph");
+    let sources = fs_adapter
+        .crawl_directory("src/contextgraph")
+        .expect("Directory crawl should succeed");
+    assert!(
+        !sources.is_empty(),
+        "Should discover source files in src/contextgraph"
+    );
 
     let compiler = ContextCompiler::default();
     let ns = Namespace::new("workspace:holosphere_contextgraph");
-    let output = compiler.compile(&ns, &sources).expect("Compilation must succeed without errors");
+    let output = compiler
+        .compile(&ns, &sources)
+        .expect("Compilation must succeed without errors");
 
-    assert!(output.entities.len() >= 10, "Should extract dozens of entities from contextgraph sources");
-    assert!(output.relations.len() >= 5, "Should resolve and extract structural relations");
+    assert!(
+        output.entities.len() >= 10,
+        "Should extract dozens of entities from contextgraph sources"
+    );
+    assert!(
+        output.relations.len() >= 5,
+        "Should resolve and extract structural relations"
+    );
 
     let store = ContextGraphStore::new();
     let lsn = store.commit_delta(output.into_delta());
@@ -368,8 +409,52 @@ fn test_graph_diff_and_upsert_invariants() {
 
     // Verify index cleanliness on update: "Alpha" should not return "ent_alpha" anymore, only "AlphaModified"
     let old_lookup = store.lookup_by_label("Alpha");
-    assert!(old_lookup.is_empty(), "Old label 'Alpha' must be cleaned up on upsert");
+    assert!(
+        old_lookup.is_empty(),
+        "Old label 'Alpha' must be cleaned up on upsert"
+    );
     let new_lookup = store.lookup_by_label("AlphaModified");
     assert_eq!(new_lookup.len(), 1);
+}
+
+#[test]
+fn test_scalability_hardening_and_persistence() {
+    let store = ContextGraphStore::new();
+    let ns = Namespace::new("test_persistence_ns");
+
+    let ent = Entity {
+        id: EntityId("ent_persistent".to_string()),
+        kind: EntityKind::code_function(),
+        label: "PersistentFn".to_string(),
+        namespace: ns.clone(),
+        locator: None,
+        attributes: BTreeMap::new(),
+        provenance: Vec::new(),
+        evidence_class: EvidenceClass::Observation,
+        verification_state: VerificationState::Verified,
+        fingerprint: [77u8; 32],
+        valid_from_lsn: 0,
+    };
+
+    store.commit_delta(ContextGraphDelta {
+        namespace: ns,
+        insert_entities: vec![ent.clone()],
+        delete_entities: Vec::new(),
+        insert_relations: Vec::new(),
+        delete_relations: Vec::new(),
+        touched_locators: Vec::new(),
+    });
+
+    let temp_snapshot_path = std::env::temp_dir().join("holosphere_test_snapshot.json");
+    store.save_snapshot_to_file(&temp_snapshot_path).expect("Saving snapshot should succeed");
+
+    let restored_store = ContextGraphStore::load_snapshot_from_file(&temp_snapshot_path)
+        .expect("Loading snapshot should succeed");
+    let _ = std::fs::remove_file(&temp_snapshot_path);
+
+    let restored_state = restored_store.snapshot();
+    assert_eq!(restored_state.commit_lsn, 1);
+    assert_eq!(restored_state.entities.len(), 1);
+    assert_eq!(restored_state.entities.get(&ent.id).unwrap().label, "PersistentFn");
 }
 

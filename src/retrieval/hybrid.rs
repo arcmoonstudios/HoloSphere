@@ -71,7 +71,9 @@ impl HybridFusionEngine {
 
         let mut fused: Vec<(Arc<str>, SimilarityScore)> = doc_scores.into_iter().collect();
         if fused.len() > top_k {
-            fused.select_nth_unstable_by(top_k, |a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+            fused.select_nth_unstable_by(top_k, |a, b| {
+                b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0))
+            });
             fused.truncate(top_k);
         }
         fused.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
@@ -123,7 +125,9 @@ impl HybridFusionEngine {
 
         let mut fused: Vec<(Arc<str>, SimilarityScore)> = doc_scores.into_iter().collect();
         if fused.len() > top_k {
-            fused.select_nth_unstable_by(top_k, |a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+            fused.select_nth_unstable_by(top_k, |a, b| {
+                b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0))
+            });
             fused.truncate(top_k);
         }
         fused.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));

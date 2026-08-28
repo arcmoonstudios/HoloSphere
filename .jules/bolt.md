@@ -17,3 +17,7 @@ Action: Maintain the sorted invariant with `binary_search_by` and in-place inser
 2026-08-27 - [Batched dependency invalidation]
 Learning: Removing several entities from a locator repeatedly scanned every reverse-dependency set, making invalidation scale with removed entities times graph edges.
 Action: Collect invalidated IDs first, then prune reverse dependencies in one pass whenever a bulk operation updates the ContextGraph.
+
+2026-08-27 - Double-Buffered Row Memory Reduction in Wagner-Fischer Fuzzy Automata
+Learning: Computing Levenshtein edit distance via 2D dynamic programming matrices (`Vec<Vec<usize>>`) causes $O(M)$ heap vector allocations per string comparison. Using a double-buffered 2-row vector swap (`prev` and `curr`) reduces dynamic memory overhead from $M + 1$ heap allocations to 2 row buffers while preserving exact Wagner-Fischer edit distances.
+Action: In sequence alignment and string edit distance loops, double-buffer row state using `std::mem::swap` rather than allocating full 2D matrix vectors.

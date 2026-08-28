@@ -63,8 +63,6 @@ pub(crate) struct ReciprocalInsert {
     pub evicted: Option<ScoredWitness>,
 }
 
-
-
 #[inline]
 pub(crate) const fn bounded_degree(requested: usize) -> usize {
     if requested > RIVERO_WITNESS_MAX_DEGREE {
@@ -117,7 +115,8 @@ pub fn select_top(
     }
 
     scored.sort_unstable_by(witness_order);
-    let mut selected = SmallVec::new();
+    // DERIVED: Allocates capacity upfront for the bounded degree ceiling to avoid inline vector growth.
+    let mut selected = SmallVec::with_capacity(degree);
     for candidate in scored.iter().copied() {
         if selected
             .iter()

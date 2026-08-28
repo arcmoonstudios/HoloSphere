@@ -44,29 +44,26 @@ impl FuzzyLevenshteinAutomaton {
             return (false, usize::MAX);
         }
 
-        let mut dp = vec![vec![0usize; n + 1]; m + 1];
-
-        for i in 0..=m {
-            dp[i][0] = i;
-        }
-        for j in 0..=n {
-            dp[0][j] = j;
-        }
+        // DERIVED: Replaces O(M * N) 2D matrix allocations (m + 1 heap vectors) with 2 row buffer vectors.
+        let mut prev = (0..=n).collect::<Vec<usize>>();
+        let mut curr = vec![0usize; n + 1];
 
         for i in 1..=m {
+            curr[0] = i;
             for j in 1..=n {
                 let cost = if self.query_chars[i - 1] == cand_chars[j - 1] {
                     0
                 } else {
                     1
                 };
-                dp[i][j] = (dp[i - 1][j] + 1) // deletion
-                    .min(dp[i][j - 1] + 1) // insertion
-                    .min(dp[i - 1][j - 1] + cost); // substitution
+                curr[j] = (prev[j] + 1) // deletion
+                    .min(curr[j - 1] + 1) // insertion
+                    .min(prev[j - 1] + cost); // substitution
             }
+            std::mem::swap(&mut prev, &mut curr);
         }
 
-        let dist = dp[m][n];
+        let dist = prev[n];
         (dist <= self.max_edit_distance, dist)
     }
 }

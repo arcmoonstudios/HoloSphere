@@ -127,14 +127,12 @@ impl ComplexWeaver {
     #[inline(always)]
     pub fn unfold_llm_embedding(embedding: &VectorEmbedding, target_real_dim: usize) -> Vec<f32> {
         let mut reals = Vec::with_capacity(target_real_dim);
+        // DERIVED: Unconditionally pushes real/imaginary pairs and truncates, eliminating per-element length branching.
         for z in embedding.complex_data() {
-            if reals.len() < target_real_dim {
-                reals.push(z.re);
-            }
-            if reals.len() < target_real_dim {
-                reals.push(z.im);
-            }
+            reals.push(z.re);
+            reals.push(z.im);
         }
+        reals.truncate(target_real_dim);
         reals
     }
 
@@ -169,13 +167,12 @@ impl ComplexWeaver {
         let cdata = complex_vector.complex_data();
         let mut real_data = Vec::with_capacity(original_dim);
 
+        // DERIVED: Unconditionally pushes real/imaginary pairs and truncates, eliminating per-element length branching.
         for z in cdata {
             real_data.push(z.re);
-            if real_data.len() < original_dim {
-                real_data.push(z.im);
-            }
+            real_data.push(z.im);
         }
-
+        real_data.truncate(original_dim);
         real_data
     }
 }

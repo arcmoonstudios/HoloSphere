@@ -75,6 +75,10 @@ impl ColumnarFloatArray {
             None
         };
 
+        // DERIVED: Only evaluates min/max branches if required by the aggregation operator.
+        let track_min = matches!(op, OlapAggregationOp::Min | OlapAggregationOp::Variance);
+        let track_max = matches!(op, OlapAggregationOp::Max | OlapAggregationOp::Variance);
+
         for (i, &v) in self.values.iter().enumerate() {
             if self.null_bitmap[i] {
                 continue;
@@ -91,10 +95,10 @@ impl ColumnarFloatArray {
             if let Some(ref mut acc) = accumulator {
                 acc.update(val_f64);
             }
-            if val_f64 < min {
+            if track_min && val_f64 < min {
                 min = val_f64;
             }
-            if val_f64 > max {
+            if track_max && val_f64 > max {
                 max = val_f64;
             }
         }

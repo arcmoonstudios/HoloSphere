@@ -78,11 +78,41 @@ impl Language {
             Self::Unknown => "unknown",
         }
     }
+
+    /// Whether the built-in CodeGraph registry has a concrete extractor for this language.
+    #[must_use]
+    pub const fn has_builtin_extractor(self) -> bool {
+        matches!(
+            self,
+            Self::Rust
+                | Self::TypeScript
+                | Self::Tsx
+                | Self::JavaScript
+                | Self::Jsx
+                | Self::Python
+                | Self::Markdown
+                | Self::Json
+                | Self::Toml
+        )
+    }
 }
 
 impl fmt::Display for Language {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.as_str())
+    }
+}
+
+#[cfg(test)]
+mod language_tests {
+    use super::Language;
+
+    #[test]
+    fn contextgraph_language_extensions_have_builtin_extractors() {
+        for extension in ["rs", "ts", "tsx", "js", "jsx", "py", "md", "json", "toml"] {
+            assert!(Language::from_extension(extension).has_builtin_extractor());
+        }
+        assert!(!Language::from_extension("go").has_builtin_extractor());
     }
 }
 

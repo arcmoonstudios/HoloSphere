@@ -14,7 +14,9 @@ use std::collections::BTreeMap;
 
 use tree_sitter::{Language as TreeSitterLanguage, Node, Parser};
 
-use super::super::parser::{ExtractionContext, ExtractionResult, LanguageExtractor};
+use super::super::parser::{
+    ExtractionContext, ExtractionResult, LanguageExtractor, UnresolvedCall,
+};
 use super::super::schema::{
     CodeEdge, CodeEdgeId, CodeNode, CodeNodeId, CodeNodeKind, CodeRelation, Language,
     RelationOrigin, SourceSpan,
@@ -84,6 +86,13 @@ impl LanguageExtractor for TreeSitterExtractor {
                 context.relative_path.display()
             ))
         })?;
+        if tree.root_node().has_error() {
+            return Err(HNSQRError::InvalidRequest(format!(
+                "Syntax error while parsing {} as {}",
+                context.relative_path.display(),
+                self.language
+            )));
+        }
 
         let mut result = ExtractionResult::default();
         let file_id = push_file_node(context, self.language, &mut result, &tree.root_node());
@@ -92,6 +101,7 @@ impl LanguageExtractor for TreeSitterExtractor {
             language: self.language,
             file_id: &file_id,
             result: &mut result,
+            current_callable: None,
         };
         visitor.walk(&tree.root_node());
         Ok(result)
@@ -103,38 +113,54 @@ struct SymbolVisitor<'a, 'b> {
     language: Language,
     file_id: &'a CodeNodeId,
     result: &'b mut ExtractionResult,
+    current_callable: Option<CodeNodeId>,
 }
 
 impl<'a, 'b> SymbolVisitor<'a, 'b> {
     fn walk(&mut self, node: &Node) {
+        let mut callable_scope = None;
         if let Some(kind) = symbol_kind(node.kind()) {
             if let Some(name_node) = node.child_by_field_name("name") {
                 let name = text_of(&name_node, self.context.source_code).trim();
                 if !name.is_empty() {
-                    self.push_symbol(node, name, kind);
+                    let symbol_id = self.push_symbol(node, name, kind);
+                    if matches!(kind, CodeNodeKind::Function | CodeNodeKind::Method) {
+                        callable_scope = Some(std::mem::replace(
+                            &mut self.current_callable,
+                            Some(symbol_id),
+                        ));
+                    }
                 }
             }
+        }
+
+        if node.kind() == "call_expression" {
+            self.extract_call(node);
         }
 
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             self.walk(&child);
         }
+
+        if let Some(previous_callable) = callable_scope {
+            self.current_callable = previous_callable;
+        }
     }
 
-    fn push_symbol(&mut self, node: &Node, name: &str, kind: CodeNodeKind) {
+    fn push_symbol(&mut self, node: &Node, name: &str, kind: CodeNodeKind) -> CodeNodeId {
         let path = normalized_path(self.context);
         let qualified_name = format!("{path}::{name}");
+        let signature = text_of(node, self.context.source_code)
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
         let id = CodeNodeId::compute(
             self.context.workspace_id,
             &path,
             kind,
             &qualified_name,
-            text_of(node, self.context.source_code)
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ")
-                .as_str(),
+            &signature,
         );
         let span = span_of(node);
         self.result.nodes.push(CodeNode {
@@ -142,7 +168,7 @@ impl<'a, 'b> SymbolVisitor<'a, 'b> {
             kind,
             name: name.to_string(),
             qualified_name,
-            signature: Some(text_of(node, self.context.source_code).trim().to_string()),
+            signature: Some(signature),
             language: self.language,
             source_file: self.context.relative_path.clone(),
             source_span: span,
@@ -154,6 +180,31 @@ impl<'a, 'b> SymbolVisitor<'a, 'b> {
             verification_state: VerificationState::Verified,
         });
         push_contains_edge(self.result, self.file_id, &id, span);
+        id
+    }
+
+    fn extract_call(&mut self, node: &Node) {
+        let Some(caller_id) = &self.current_callable else {
+            return;
+        };
+        let Some(function) = node.child_by_field_name("function") else {
+            return;
+        };
+        let callee = text_of(&function, self.context.source_code).trim();
+        if callee.is_empty() {
+            return;
+        }
+        let (receiver, target_symbol) = callee
+            .rsplit_once('.')
+            .map_or((None, callee.to_string()), |(receiver, target)| {
+                (Some(receiver.to_string()), target.to_string())
+            });
+        self.result.unresolved_calls.push(UnresolvedCall {
+            caller_id: caller_id.clone(),
+            target_symbol,
+            receiver,
+            span: span_of(node),
+        });
     }
 }
 
@@ -422,7 +473,7 @@ mod tests {
         let context = ExtractionContext {
             workspace_id: "test",
             relative_path: &path,
-            source_code: "export function Banner() { return <main />; }",
+            source_code: "export function Banner() { renderMain(); return <main />; }",
             content_hash: [7; 32],
         };
         let extracted = TreeSitterExtractor::tsx().extract(&context).unwrap();
@@ -430,6 +481,10 @@ mod tests {
             .nodes
             .iter()
             .any(|node| node.name == "Banner" && node.kind == CodeNodeKind::Function));
+        assert!(extracted
+            .unresolved_calls
+            .iter()
+            .any(|call| call.target_symbol == "renderMain"));
     }
 
     #[test]
@@ -454,5 +509,80 @@ mod tests {
             .unwrap();
         assert!(json.nodes.iter().any(|node| node.name == "name"));
         assert!(markdown.nodes.iter().any(|node| node.name == "Overview"));
+    }
+
+    #[test]
+    fn every_tree_sitter_dialect_emits_its_declared_language() {
+        let cases = [
+            (
+                TreeSitterExtractor::typescript(),
+                "export function typed() {}",
+                "a.ts",
+            ),
+            (
+                TreeSitterExtractor::tsx(),
+                "export function view() { return <main />; }",
+                "a.tsx",
+            ),
+            (
+                TreeSitterExtractor::javascript(),
+                "function script() {}",
+                "a.js",
+            ),
+            (
+                TreeSitterExtractor::jsx(),
+                "function view() { return <main />; }",
+                "a.jsx",
+            ),
+            (
+                TreeSitterExtractor::python(),
+                "def pythonic():\n    return 1\n",
+                "a.py",
+            ),
+        ];
+        for (extractor, source_code, path) in cases {
+            let path = PathBuf::from(path);
+            let expected_language = extractor.language();
+            let context = ExtractionContext {
+                workspace_id: "test",
+                relative_path: &path,
+                source_code,
+                content_hash: [9; 32],
+            };
+            let extracted = extractor.extract(&context).unwrap();
+            assert!(extracted
+                .nodes
+                .iter()
+                .any(|node| node.language == expected_language));
+            assert!(extracted
+                .nodes
+                .iter()
+                .any(|node| node.kind == CodeNodeKind::Function));
+        }
+    }
+
+    #[test]
+    fn toml_extractor_emits_top_level_keys() {
+        let path = PathBuf::from("Cargo.toml");
+        let context = ExtractionContext {
+            workspace_id: "test",
+            relative_path: &path,
+            source_code: "name = 'holosphere'",
+            content_hash: [8; 32],
+        };
+        let extracted = StructuredExtractor::toml().extract(&context).unwrap();
+        assert!(extracted.nodes.iter().any(|node| node.name == "name"));
+    }
+
+    #[test]
+    fn syntax_errors_are_rejected_before_graph_ingestion() {
+        let path = PathBuf::from("broken.ts");
+        let context = ExtractionContext {
+            workspace_id: "test",
+            relative_path: &path,
+            source_code: "function incomplete(",
+            content_hash: [0; 32],
+        };
+        assert!(TreeSitterExtractor::typescript().extract(&context).is_err());
     }
 }

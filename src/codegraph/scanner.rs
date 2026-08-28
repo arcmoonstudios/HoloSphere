@@ -107,7 +107,7 @@ impl WorkspaceScanner {
                 }
                 let ext = rel_path.extension()?.to_str()?;
                 let language = Language::from_extension(ext);
-                if language == Language::Unknown {
+                if !language.has_builtin_extractor() {
                     return None;
                 }
                 let bytes = fs::read(&abs_path).ok()?;

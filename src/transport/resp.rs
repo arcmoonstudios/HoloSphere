@@ -30,9 +30,11 @@ pub enum RespFrame {
 }
 
 impl RespFrame {
-    /// Serializes a RESP frame to raw wire bytes.
-    pub fn serialize(&self) -> Vec<u8> {
-        let mut buf = Vec::new();
+    /// Serializes a RESP frame directly into an existing byte buffer.
+    ///
+    /// DERIVED: Eliminates O(N) intermediate Vec allocations for nested arrays and heap Strings for numbers.
+    pub fn serialize_into(&self, buf: &mut Vec<u8>) {
+        use std::io::Write;
         match self {
             RespFrame::SimpleString(s) => {
                 buf.push(b'+');
@@ -46,16 +48,14 @@ impl RespFrame {
             }
             RespFrame::Integer(i) => {
                 buf.push(b':');
-                buf.extend_from_slice(i.to_string().as_bytes());
-                buf.extend_from_slice(b"\r\n");
+                let _ = write!(buf, "{}\r\n", i);
             }
             RespFrame::BulkString(None) => {
                 buf.extend_from_slice(b"$-1\r\n");
             }
             RespFrame::BulkString(Some(bytes)) => {
                 buf.push(b'$');
-                buf.extend_from_slice(bytes.len().to_string().as_bytes());
-                buf.extend_from_slice(b"\r\n");
+                let _ = write!(buf, "{}\r\n", bytes.len());
                 buf.extend_from_slice(bytes);
                 buf.extend_from_slice(b"\r\n");
             }
@@ -64,16 +64,21 @@ impl RespFrame {
             }
             RespFrame::Array(Some(frames)) => {
                 buf.push(b'*');
-                buf.extend_from_slice(frames.len().to_string().as_bytes());
-                buf.extend_from_slice(b"\r\n");
+                let _ = write!(buf, "{}\r\n", frames.len());
                 for f in frames {
-                    buf.extend_from_slice(&f.serialize());
+                    f.serialize_into(buf);
                 }
             }
             RespFrame::Null => {
                 buf.extend_from_slice(b"$-1\r\n");
             }
         }
+    }
+
+    /// Serializes a RESP frame to raw wire bytes.
+    pub fn serialize(&self) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(64);
+        self.serialize_into(&mut buf);
         buf
     }
 }

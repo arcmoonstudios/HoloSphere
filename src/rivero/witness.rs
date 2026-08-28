@@ -155,27 +155,21 @@ pub(crate) fn insert_reciprocal(
         };
     }
 
-    let mut ranked = [ScoredWitness::EMPTY; RIVERO_WITNESS_MAX_DEGREE + 1];
-    let mut len = 0usize;
-    for existing in current.iter().copied() {
-        if existing.index == incoming.index || len == RIVERO_WITNESS_MAX_DEGREE {
-            continue;
-        }
-        ranked[len] = existing;
-        len += 1;
+    // DERIVED: Replaces O(D log D) stack array copy & full sort with O(D) binary search insertion.
+    if let Some(existing_pos) = current.iter().position(|edge| edge.index == incoming.index) {
+        current.remove(existing_pos);
     }
-    ranked[len] = incoming;
-    len += 1;
-    ranked[..len].sort_unstable_by(witness_order);
 
-    let keep_len = len.min(degree);
-    let evicted = (len > keep_len).then_some(ranked[keep_len]);
-    current.clear();
-    current.extend_from_slice(&ranked[..keep_len]);
-    ReciprocalInsert {
-        retained: current.iter().any(|edge| edge.index == incoming.index),
-        evicted,
-    }
+    let insert_pos = match current.binary_search_by(|edge| witness_order(edge, &incoming)) {
+        Ok(pos) | Err(pos) => pos,
+    };
+    current.insert(insert_pos, incoming);
+
+    let evicted = (current.len() > degree).then(|| current[degree]);
+    let retained = insert_pos < degree;
+    current.truncate(degree);
+
+    ReciprocalInsert { retained, evicted }
 }
 
 #[cfg(test)]

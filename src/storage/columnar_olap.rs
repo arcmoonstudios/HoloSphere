@@ -58,6 +58,8 @@ impl ColumnarFloatArray {
     }
 
     /// Vectorized aggregation over the columnar array.
+    ///
+    /// DERIVED: Bypasses Welford variance tracking for non-variance aggregations, eliminating redundant arithmetic.
     pub fn aggregate(&self, op: OlapAggregationOp, filter_mask: Option<&[bool]>) -> Option<f64> {
         if self.values.is_empty() {
             return None;
@@ -67,7 +69,11 @@ impl ColumnarFloatArray {
         let mut sum = 0.0f64;
         let mut min = f64::MAX;
         let mut max = f64::MIN;
-        let mut accumulator = crate::entity::stats::OnlineStatsAccumulator::new();
+        let mut accumulator = if op == OlapAggregationOp::Variance {
+            Some(crate::entity::stats::OnlineStatsAccumulator::new())
+        } else {
+            None
+        };
 
         for (i, &v) in self.values.iter().enumerate() {
             if self.null_bitmap[i] {
@@ -82,7 +88,9 @@ impl ColumnarFloatArray {
             let val_f64 = v as f64;
             count += 1;
             sum += val_f64;
-            accumulator.update(val_f64);
+            if let Some(ref mut acc) = accumulator {
+                acc.update(val_f64);
+            }
             if val_f64 < min {
                 min = val_f64;
             }
@@ -101,7 +109,7 @@ impl ColumnarFloatArray {
             OlapAggregationOp::Avg => Some(sum / count as f64),
             OlapAggregationOp::Min => Some(min),
             OlapAggregationOp::Max => Some(max),
-            OlapAggregationOp::Variance => Some(accumulator.variance()),
+            OlapAggregationOp::Variance => accumulator.map(|a| a.variance()),
         }
     }
 }

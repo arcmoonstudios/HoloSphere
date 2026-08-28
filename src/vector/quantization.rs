@@ -130,7 +130,7 @@ impl PolarQuantizedVector {
             }
         }
 
-        let mut min_r = min_r2.sqrt();
+        let min_r = min_r2.sqrt();
         let mut max_r = max_r2.sqrt();
 
         if (max_r - min_r).abs() < 1e-9 {
@@ -180,7 +180,7 @@ impl PolarQuantizedVector {
             }
         }
 
-        let mut min_r = min_r2.sqrt();
+        let min_r = min_r2.sqrt();
         let mut max_r = max_r2.sqrt();
 
         if (max_r - min_r).abs() < 1e-9 {

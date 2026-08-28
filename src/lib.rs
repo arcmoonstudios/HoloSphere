@@ -1283,8 +1283,10 @@ impl VectorEmbedding {
     /// Normalizes an owned embedding in place, retaining its existing allocation.
     ///
     /// Zero-copy: scales the owned buffer directly; no replacement vector is allocated.
+    /// DERIVED: Fuses sanitize and norm_sq passes into a single memory traversal, reducing memory passes from 3 to 2.
     #[inline]
     pub fn into_normalized(mut self) -> Self {
+        let mut sum_sq = 0.0f32;
         for z in &mut self.data {
             if !z.re.is_finite() {
                 z.re = 0.0;
@@ -1292,8 +1294,10 @@ impl VectorEmbedding {
             if !z.im.is_finite() {
                 z.im = 0.0;
             }
+            sum_sq += z.re * z.re + z.im * z.im;
         }
-        let n = self.norm();
+
+        let n = sum_sq.sqrt();
         if n < 1e-9 || !n.is_finite() {
             self.data.fill(Complex32::new(0.0, 0.0));
             return self;
@@ -1302,12 +1306,6 @@ impl VectorEmbedding {
         let inv_n = 1.0 / n;
         for z in &mut self.data {
             *z *= inv_n;
-            if !z.re.is_finite() {
-                z.re = 0.0;
-            }
-            if !z.im.is_finite() {
-                z.im = 0.0;
-            }
         }
         self
     }

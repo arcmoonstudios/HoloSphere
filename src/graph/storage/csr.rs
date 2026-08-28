@@ -84,16 +84,16 @@ impl CsrAdjacency {
         }
 
         // Sort each row by target for deterministic iteration and binary search.
+        // DERIVED: Reuses a single heap vector, reducing allocations from O(V) to O(1).
+        let mut scratch: Vec<(NodeIndex, RelTypeId, f32)> = Vec::new();
         for v in 0..node_count {
             let start = row_offsets[v] as usize;
             let end = row_offsets[v + 1] as usize;
             if end > start + 1 {
-                // Sort by (target, rel_type) to be deterministic.
-                let mut pairs: Vec<(NodeIndex, RelTypeId, f32)> = (start..end)
-                    .map(|i| (targets[i], rel_types[i], weights[i]))
-                    .collect();
-                pairs.sort_unstable_by_key(|&(t, r, _)| (t, r));
-                for (i, (t, r, w)) in pairs.into_iter().enumerate() {
+                scratch.clear();
+                scratch.extend((start..end).map(|i| (targets[i], rel_types[i], weights[i])));
+                scratch.sort_unstable_by_key(|&(t, r, _)| (t, r));
+                for (i, &(t, r, w)) in scratch.iter().enumerate() {
                     targets[start + i] = t;
                     rel_types[start + i] = r;
                     weights[start + i] = w;
@@ -312,15 +312,16 @@ impl CscAdjacency {
         }
 
         // Sort each column.
+        // DERIVED: Reuses a single heap vector, reducing allocations from O(V) to O(1).
+        let mut scratch: Vec<(NodeIndex, RelTypeId, f32)> = Vec::new();
         for v in 0..node_count {
             let start = col_offsets[v] as usize;
             let end = col_offsets[v + 1] as usize;
             if end > start + 1 {
-                let mut pairs: Vec<(NodeIndex, RelTypeId, f32)> = (start..end)
-                    .map(|i| (sources[i], rel_types[i], weights[i]))
-                    .collect();
-                pairs.sort_unstable_by_key(|&(s, r, _)| (s, r));
-                for (i, (s, r, w)) in pairs.into_iter().enumerate() {
+                scratch.clear();
+                scratch.extend((start..end).map(|i| (sources[i], rel_types[i], weights[i])));
+                scratch.sort_unstable_by_key(|&(s, r, _)| (s, r));
+                for (i, &(s, r, w)) in scratch.iter().enumerate() {
                     sources[start + i] = s;
                     rel_types[start + i] = r;
                     weights[start + i] = w;

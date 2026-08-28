@@ -44,6 +44,8 @@ pub struct HybridFusionEngine;
 
 impl HybridFusionEngine {
     /// Combines multiple search results using Reciprocal Rank Fusion (RRF).
+    ///
+    /// DERIVED: Eliminates Arc atomic refcount updates on hit paths and uses O(M + k log k) top-k selection.
     pub fn fuse_rrf(
         modalities: &[ModalityRankings],
         rrf_k: f32,
@@ -59,17 +61,26 @@ impl HybridFusionEngine {
             let weight = modality.weight.max(0.0);
             for (rank, (doc_id, _)) in modality.results.iter().enumerate() {
                 let rrf_score = weight / (rrf_k + (rank as f32) + 1.0);
-                *doc_scores.entry(doc_id.clone()).or_insert(0.0) += rrf_score;
+                if let Some(score) = doc_scores.get_mut(doc_id) {
+                    *score += rrf_score;
+                } else {
+                    doc_scores.insert(doc_id.clone(), rrf_score);
+                }
             }
         }
 
         let mut fused: Vec<(Arc<str>, SimilarityScore)> = doc_scores.into_iter().collect();
+        if fused.len() > top_k {
+            fused.select_nth_unstable_by(top_k, |a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+            fused.truncate(top_k);
+        }
         fused.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-        fused.truncate(top_k);
         fused
     }
 
     /// Combines multiple search results using weighted linear normalized score fusion.
+    ///
+    /// DERIVED: Single-pass min/max normalization, precomputed reciprocal range, and O(M + k log k) top-k selection.
     pub fn fuse_weighted(
         modalities: &[ModalityRankings],
         top_k: usize,
@@ -86,27 +97,36 @@ impl HybridFusionEngine {
                 continue;
             }
 
-            let min_score = modality
-                .results
-                .iter()
-                .map(|(_, s)| *s)
-                .fold(f32::INFINITY, f32::min);
-            let max_score = modality
-                .results
-                .iter()
-                .map(|(_, s)| *s)
-                .fold(f32::NEG_INFINITY, f32::max);
+            let mut min_score = f32::INFINITY;
+            let mut max_score = f32::NEG_INFINITY;
+            for (_, s) in &modality.results {
+                if *s < min_score {
+                    min_score = *s;
+                }
+                if *s > max_score {
+                    max_score = *s;
+                }
+            }
             let range = (max_score - min_score).max(1e-6);
+            let inv_range = 1.0 / range;
 
             for (doc_id, raw_score) in &modality.results {
-                let normalized = (raw_score - min_score) / range;
-                *doc_scores.entry(doc_id.clone()).or_insert(0.0) += weight * normalized;
+                let normalized = (raw_score - min_score) * inv_range;
+                let inc = weight * normalized;
+                if let Some(score) = doc_scores.get_mut(doc_id) {
+                    *score += inc;
+                } else {
+                    doc_scores.insert(doc_id.clone(), inc);
+                }
             }
         }
 
         let mut fused: Vec<(Arc<str>, SimilarityScore)> = doc_scores.into_iter().collect();
+        if fused.len() > top_k {
+            fused.select_nth_unstable_by(top_k, |a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+            fused.truncate(top_k);
+        }
         fused.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-        fused.truncate(top_k);
         fused
     }
 }

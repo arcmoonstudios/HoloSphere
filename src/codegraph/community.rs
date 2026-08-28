@@ -1,11 +1,11 @@
 /* holosphere/src/codegraph/community.rs */
 //!▫~•◦-------------------------------‣
-//! # Deterministic Modularity-Aware Community Detection & Architectural Labeling
+//! # Deterministic Modularity Community Detection & Architectural Labeling
 //!▫~•◦-------------------------------------------------------------------‣
 //!
 //! Partitions the codebase structural graph into dense, coherent architectural modules using
-//! deterministic Label Propagation / modularity clustering with neighbor density weighting,
-//! computing exact internal/cross-community edge density and heuristic architectural labels.
+//! deterministic Newman-Girvan modularity optimization, computing exact internal/cross-community
+//! edge density and heuristic architectural labels.
 /*▫~•◦------------------------------------------------------------------------------------‣
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
@@ -44,64 +44,90 @@ impl CommunityDetector {
 
         // Build undirected adjacency graph across structural relations
         let mut adj: HashMap<&CodeNodeId, Vec<&CodeNodeId>> = HashMap::new();
+        let mut total_edges_count = 0usize;
+
         for edge in state.edges.values() {
             adj.entry(&edge.source).or_default().push(&edge.target);
             adj.entry(&edge.target).or_default().push(&edge.source);
+            total_edges_count += 1;
         }
 
         let mut sorted_node_ids: Vec<&CodeNodeId> = state.nodes.keys().collect();
         sorted_node_ids.sort();
 
-        // Step 1: Initial partition (each node starts in a unique deterministic label)
+        let total_m2 = (total_edges_count * 2).max(1) as f64;
+
+        // Step 1: Initial partition (each node starts in its own unique community)
         let mut node_to_comm: HashMap<&CodeNodeId, usize> = HashMap::new();
+        let mut comm_tot_degree: HashMap<usize, usize> = HashMap::new();
+        let mut node_degrees: HashMap<&CodeNodeId, usize> = HashMap::new();
+
         for (idx, &node_id) in sorted_node_ids.iter().enumerate() {
+            let deg = adj.get(node_id).map_or(0, |nbrs| nbrs.len());
             node_to_comm.insert(node_id, idx);
+            comm_tot_degree.insert(idx, deg);
+            node_degrees.insert(node_id, deg);
         }
 
-        // Step 2: Deterministic Label Propagation with self-stabilization (up to 15 iterations)
-        let max_iterations = 15;
-        for _ in 0..max_iterations {
-            let mut changed = false;
+        // Step 2: Deterministic Modularity Optimization (Louvain greedy modularity passes)
+        let max_passes = 20;
+        for _ in 0..max_passes {
+            let mut moved = false;
 
             for &node_id in &sorted_node_ids {
-                let current_label = match node_to_comm.get(node_id) {
-                    Some(&lbl) => lbl,
+                let k_i = match node_degrees.get(node_id) {
+                    Some(&d) if d > 0 => d as f64,
+                    _ => continue,
+                };
+                let curr_comm = match node_to_comm.get(node_id) {
+                    Some(&c) => c,
                     None => continue,
                 };
 
                 let neighbors = match adj.get(node_id) {
-                    Some(nbrs) if !nbrs.is_empty() => nbrs,
-                    _ => continue,
+                    Some(nbrs) => nbrs,
+                    None => continue,
                 };
 
-                let mut label_weights: HashMap<usize, usize> = HashMap::new();
-                // Self-weight to avoid oscillation
-                label_weights.insert(current_label, 1);
-
+                // Compute edge weights to neighboring communities
+                let mut comm_edge_weights: HashMap<usize, usize> = HashMap::new();
                 for &nbr in neighbors {
-                    if let Some(&nbr_label) = node_to_comm.get(nbr) {
-                        *label_weights.entry(nbr_label).or_default() += 2;
+                    if let Some(&nbr_comm) = node_to_comm.get(nbr) {
+                        *comm_edge_weights.entry(nbr_comm).or_default() += 1;
                     }
                 }
 
-                // Pick highest frequency label, breaking ties deterministically by lowest numeric ID
-                let mut best_label = current_label;
-                let mut best_weight = 0;
+                // Remove node from current community totals
+                let curr_tot = comm_tot_degree.get(&curr_comm).copied().unwrap_or(0);
+                let sigma_tot_curr_without_i = curr_tot.saturating_sub(k_i as usize) as f64;
 
-                for (&lbl, &weight) in &label_weights {
-                    if weight > best_weight || (weight == best_weight && lbl < best_label) {
-                        best_weight = weight;
-                        best_label = lbl;
+                let mut best_comm = curr_comm;
+                let k_i_in_curr = comm_edge_weights.get(&curr_comm).copied().unwrap_or(0) as f64;
+                let mut max_delta_q = k_i_in_curr - (k_i * sigma_tot_curr_without_i) / total_m2;
+
+                for (&target_comm, &k_i_in_target) in &comm_edge_weights {
+                    if target_comm == curr_comm {
+                        continue;
+                    }
+                    let sigma_tot_target = comm_tot_degree.get(&target_comm).copied().unwrap_or(0) as f64;
+                    let delta_q = (k_i_in_target as f64) - (k_i * sigma_tot_target) / total_m2;
+
+                    if delta_q > max_delta_q || ( (delta_q - max_delta_q).abs() < 1e-9 && target_comm < best_comm ) {
+                        max_delta_q = delta_q;
+                        best_comm = target_comm;
                     }
                 }
 
-                if best_label != current_label {
-                    node_to_comm.insert(node_id, best_label);
-                    changed = true;
+                if best_comm != curr_comm {
+                    // Update totals
+                    *comm_tot_degree.entry(curr_comm).or_default() -= k_i as usize;
+                    *comm_tot_degree.entry(best_comm).or_default() += k_i as usize;
+                    node_to_comm.insert(node_id, best_comm);
+                    moved = true;
                 }
             }
 
-            if !changed {
+            if !moved {
                 break;
             }
         }
@@ -242,5 +268,87 @@ impl CommunityDetector {
         } else {
             "Core Architecture".to_string()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::codegraph::schema::{CodeEdge, CodeEdgeId, CodeNode, CodeRelation, Language, RelationOrigin, SourceSpan};
+
+    #[test]
+    fn test_community_detection_and_exact_edge_counts() {
+        let mut state = CodeGraphStoreState::default();
+
+        // Create 2 dense clusters connected by 1 cross edge:
+        // Cluster A: a1, a2, a3 (triangle: a1-a2, a2-a3, a3-a1)
+        // Cluster B: b1, b2, b3 (triangle: b1-b2, b2-b3, b3-b1)
+        // Bridge: a1 -> b1
+        let nodes = ["a1", "a2", "a3", "b1", "b2", "b3"];
+        for name in &nodes {
+            let id = CodeNodeId(name.to_string());
+            state.nodes.insert(id.clone(), CodeNode {
+                id: id.clone(),
+                name: name.to_string(),
+                qualified_name: name.to_string(),
+                kind: CodeNodeKind::Function,
+                language: Language::Rust,
+                source_file: PathBuf::from(format!("src/{name}.rs")),
+                source_span: SourceSpan::default(),
+                symbol_hash: [0; 32],
+                file_hash: [0; 32],
+                docstring: None,
+                signature: None,
+                attributes: BTreeMap::new(),
+                evidence_class: crate::transport::model_gateway::EvidenceClass::Observation,
+                verification_state: crate::transport::model_gateway::VerificationState::Verified,
+            });
+        }
+
+        let edges = [
+            ("a1", "a2"), ("a2", "a3"), ("a3", "a1"),
+            ("b1", "b2"), ("b2", "b3"), ("b3", "b1"),
+            ("a1", "b1"), // cross-cluster bridge
+        ];
+
+        for (src, tgt) in edges {
+            let src_id = CodeNodeId(src.to_string());
+            let tgt_id = CodeNodeId(tgt.to_string());
+            let edge_id = CodeEdgeId(format!("{src}->{tgt}"));
+
+            state.edges.insert(edge_id.clone(), CodeEdge {
+                id: edge_id.clone(),
+                source: src_id.clone(),
+                target: tgt_id.clone(),
+                relation: CodeRelation::Calls,
+                origin: RelationOrigin::Extracted,
+                confidence: 1.0,
+                evidence: SourceSpan::default(),
+                attributes: BTreeMap::new(),
+            });
+
+            state.outgoing_edges.entry(src_id.clone()).or_default().push(edge_id.clone());
+            state.incoming_edges.entry(tgt_id).or_default().push(edge_id);
+        }
+
+        let (summaries, node_map) = CommunityDetector::detect_community_map(&state);
+
+        // Should partition into 2 distinct communities of size 3 each
+        assert_eq!(summaries.len(), 2);
+        assert_eq!(summaries[0].symbol_count, 3);
+        assert_eq!(summaries[1].symbol_count, 3);
+
+        // Every node must be mapped to its respective community
+        assert_eq!(node_map.len(), 6);
+
+        let comm_a = node_map.get(&CodeNodeId("a1".to_string())).copied().unwrap();
+        let comm_b = node_map.get(&CodeNodeId("b1".to_string())).copied().unwrap();
+        assert_ne!(comm_a, comm_b);
+
+        // Verify internal and cross edge counts are exact
+        assert_eq!(summaries[0].internal_edges_count, 3);
+        assert_eq!(summaries[1].internal_edges_count, 3);
+        assert_eq!(summaries[0].cross_edges_count, 1);
+        assert_eq!(summaries[1].cross_edges_count, 1);
     }
 }

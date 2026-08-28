@@ -4,7 +4,7 @@
 //!▫~•◦-------------------------------------------------------------------‣
 //!
 //! Partitions multi-domain knowledge graphs into coherent architectural scopes and communities
-//! using deterministic Label Propagation clustering with neighbor density weighting.
+//! using deterministic Newman-Girvan modularity optimization.
 /*▫~•◦------------------------------------------------------------------------------------‣
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
@@ -28,7 +28,7 @@ pub struct ScopeSummary {
 pub struct ScopeClustering;
 
 impl ScopeClustering {
-    /// Detects topological scopes/communities over the graph using deterministic Label Propagation.
+    /// Detects topological scopes/communities over the graph using deterministic Modularity optimization.
     #[must_use]
     pub fn detect_scopes(state: &ContextGraphStoreState) -> Vec<ScopeSummary> {
         if state.entities.is_empty() {
@@ -36,6 +36,8 @@ impl ScopeClustering {
         }
 
         let mut adj: HashMap<&EntityId, Vec<&EntityId>> = HashMap::new();
+        let mut total_edges = 0usize;
+
         for rel in state.relations.values() {
             for i in 0..rel.participants.len() {
                 for j in (i + 1)..rel.participants.len() {
@@ -43,6 +45,7 @@ impl ScopeClustering {
                     let b = &rel.participants[j].entity_id;
                     adj.entry(a).or_default().push(b);
                     adj.entry(b).or_default().push(a);
+                    total_edges += 1;
                 }
             }
         }
@@ -50,54 +53,76 @@ impl ScopeClustering {
         let mut sorted_ids: Vec<&EntityId> = state.entities.keys().collect();
         sorted_ids.sort();
 
+        let total_m2 = (total_edges * 2).max(1) as f64;
+
         // Step 1: Initial unique partition
         let mut node_to_scope: HashMap<&EntityId, usize> = HashMap::new();
+        let mut comm_tot_degree: HashMap<usize, usize> = HashMap::new();
+        let mut node_degrees: HashMap<&EntityId, usize> = HashMap::new();
+
         for (idx, &id) in sorted_ids.iter().enumerate() {
+            let deg = adj.get(id).map_or(0, |nbrs| nbrs.len());
             node_to_scope.insert(id, idx);
+            comm_tot_degree.insert(idx, deg);
+            node_degrees.insert(id, deg);
         }
 
-        // Step 2: Deterministic Label Propagation (up to 15 iterations)
-        let max_iterations = 15;
-        for _ in 0..max_iterations {
-            let mut changed = false;
+        // Step 2: Deterministic Modularity Optimization (Louvain greedy modularity passes)
+        let max_passes = 20;
+        for _ in 0..max_passes {
+            let mut moved = false;
 
             for &id in &sorted_ids {
-                let current_label = match node_to_scope.get(id) {
-                    Some(&lbl) => lbl,
+                let k_i = match node_degrees.get(id) {
+                    Some(&d) if d > 0 => d as f64,
+                    _ => continue,
+                };
+                let curr_comm = match node_to_scope.get(id) {
+                    Some(&c) => c,
                     None => continue,
                 };
 
                 let neighbors = match adj.get(id) {
-                    Some(nbrs) if !nbrs.is_empty() => nbrs,
-                    _ => continue,
+                    Some(nbrs) => nbrs,
+                    None => continue,
                 };
 
-                let mut label_weights: HashMap<usize, usize> = HashMap::new();
-                label_weights.insert(current_label, 1);
-
+                let mut comm_edge_weights: HashMap<usize, usize> = HashMap::new();
                 for &nbr in neighbors {
-                    if let Some(&nbr_label) = node_to_scope.get(nbr) {
-                        *label_weights.entry(nbr_label).or_default() += 2;
+                    if let Some(&nbr_comm) = node_to_scope.get(nbr) {
+                        *comm_edge_weights.entry(nbr_comm).or_default() += 1;
                     }
                 }
 
-                let mut best_label = current_label;
-                let mut best_weight = 0;
+                let curr_tot = comm_tot_degree.get(&curr_comm).copied().unwrap_or(0);
+                let sigma_tot_curr_without_i = curr_tot.saturating_sub(k_i as usize) as f64;
 
-                for (&lbl, &weight) in &label_weights {
-                    if weight > best_weight || (weight == best_weight && lbl < best_label) {
-                        best_weight = weight;
-                        best_label = lbl;
+                let mut best_comm = curr_comm;
+                let k_i_in_curr = comm_edge_weights.get(&curr_comm).copied().unwrap_or(0) as f64;
+                let mut max_delta_q = k_i_in_curr - (k_i * sigma_tot_curr_without_i) / total_m2;
+
+                for (&target_comm, &k_i_in_target) in &comm_edge_weights {
+                    if target_comm == curr_comm {
+                        continue;
+                    }
+                    let sigma_tot_target = comm_tot_degree.get(&target_comm).copied().unwrap_or(0) as f64;
+                    let delta_q = (k_i_in_target as f64) - (k_i * sigma_tot_target) / total_m2;
+
+                    if delta_q > max_delta_q || ((delta_q - max_delta_q).abs() < 1e-9 && target_comm < best_comm) {
+                        max_delta_q = delta_q;
+                        best_comm = target_comm;
                     }
                 }
 
-                if best_label != current_label {
-                    node_to_scope.insert(id, best_label);
-                    changed = true;
+                if best_comm != curr_comm {
+                    *comm_tot_degree.entry(curr_comm).or_default() -= k_i as usize;
+                    *comm_tot_degree.entry(best_comm).or_default() += k_i as usize;
+                    node_to_scope.insert(id, best_comm);
+                    moved = true;
                 }
             }
 
-            if !changed {
+            if !moved {
                 break;
             }
         }

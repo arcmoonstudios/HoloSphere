@@ -9,7 +9,7 @@
 //! high-performance HTTP JSON REST API for RAG orchestration.
 //!
 //! ## Key Capabilities
-//! - **Pairwise Complex Isometric Folding:** Losslessly maps $2d$-dim real floats to $d$-dim complex vectors in one allocation, preserving $\text{Re}\langle\Phi(x),\Phi(y)\rangle = x^\top y$ (representation byte size is preserved; CPQ-8 polar quantization and LUTz codebooks provide downstream memory compression).
+//! - **Pairwise Complex Isometric Folding:** Losslessly maps $2d$-dim real floats to $d$-dim complex vectors in one allocation, preserving $\text{Re}\langle\Phi(x),\Phi(y)\rangle = x^\top y$ (representation byte size is preserved; CPQ-8 polar quantization provides downstream memory compression).
 //! - **Multi-Collection Namespace Management:** Dynamic persistent collection creation, deletion, and stats.
 //! - **Axum HTTP REST Engine:** High-concurrency async REST endpoints (`/insert`, `/search`, `/batch_search`, `/stats`).
 //!
@@ -162,18 +162,76 @@ impl ComplexWeaver {
         VectorEmbedding::from_complex(complex_data).into_normalized()
     }
 
-    /// Lossless inverse transformation: unfolds an $N/2$-dimensional complex vector back to $N$ real floats.
+    /// Lossless inverse transformation: unfolds an $N/2$-dimensional complex vector back to $N$ real floats using zero-copy slice reinterpretation.
+    #[inline(always)]
     pub fn unfold_to_real(complex_vector: &VectorEmbedding, original_dim: usize) -> Vec<f32> {
-        let cdata = complex_vector.complex_data();
-        let mut real_data = Vec::with_capacity(original_dim);
-
-        // DERIVED: Unconditionally pushes real/imaginary pairs and truncates, eliminating per-element length branching.
-        for z in cdata {
-            real_data.push(z.re);
-            real_data.push(z.im);
+        let real_slice = ComplexSliceCast::as_real_slice(complex_vector.complex_data());
+        let available = real_slice.len().min(original_dim);
+        let mut out = real_slice[..available].to_vec();
+        if out.len() < original_dim {
+            out.resize(original_dim, 0.0);
         }
-        real_data.truncate(original_dim);
-        real_data
+        out
+    }
+}
+
+/// Zero-allocation, bidirectional safe slice casting between contiguous real `f32` slices and `Complex32` slices.
+///
+/// Guaranteed by the C-compatible layout `#[repr(C)] struct Complex32 { pub re: f32, pub im: f32 }`,
+/// where `size_of::<Complex32>() == 2 * size_of::<f32>()` and `align_of::<Complex32>() == align_of::<f32>()`.
+pub struct ComplexSliceCast;
+
+impl ComplexSliceCast {
+    /// Reinterprets a slice of complex numbers as a contiguous flat slice of real numbers.
+    /// Length of resulting slice is `2 * complex_slice.len()`. Zero allocations.
+    #[inline(always)]
+    pub fn as_real_slice(complex_slice: &[Complex32]) -> &[f32] {
+        let ptr = complex_slice.as_ptr() as *const f32;
+        let len = complex_slice.len() * 2;
+        // SAFETY: Complex32 is #[repr(C)] with two consecutive f32 fields (re, im).
+        // Alignment and lifetime are identical to the input slice.
+        unsafe { std::slice::from_raw_parts(ptr, len) }
+    }
+
+    /// Reinterprets a mutable slice of complex numbers as a mutable contiguous flat slice of real numbers.
+    #[inline(always)]
+    pub fn as_real_slice_mut(complex_slice: &mut [Complex32]) -> &mut [f32] {
+        let ptr = complex_slice.as_mut_ptr() as *mut f32;
+        let len = complex_slice.len() * 2;
+        // SAFETY: Complex32 is #[repr(C)] with two consecutive f32 fields (re, im).
+        // Alignment and lifetime are identical to the input slice.
+        unsafe { std::slice::from_raw_parts_mut(ptr, len) }
+    }
+
+    /// Reinterprets an even-length slice of real numbers as a slice of complex numbers.
+    /// Returns `Err(HNSQRError::DimensionMismatch)` if `real_slice.len()` is odd.
+    #[inline(always)]
+    pub fn try_as_complex_slice(real_slice: &[f32]) -> HNSQRResult<&[Complex32]> {
+        if real_slice.len() % 2 != 0 {
+            return Err(HNSQRError::DimensionMismatch {
+                expected: real_slice.len() + 1,
+                actual: real_slice.len(),
+            });
+        }
+        let ptr = real_slice.as_ptr() as *const Complex32;
+        let len = real_slice.len() / 2;
+        // SAFETY: real_slice length is even, alignment of f32 is identical to Complex32.
+        Ok(unsafe { std::slice::from_raw_parts(ptr, len) })
+    }
+
+    /// Reinterprets an even-length mutable slice of real numbers as a mutable slice of complex numbers.
+    #[inline(always)]
+    pub fn try_as_complex_slice_mut(real_slice: &mut [f32]) -> HNSQRResult<&mut [Complex32]> {
+        if real_slice.len() % 2 != 0 {
+            return Err(HNSQRError::DimensionMismatch {
+                expected: real_slice.len() + 1,
+                actual: real_slice.len(),
+            });
+        }
+        let ptr = real_slice.as_mut_ptr() as *mut Complex32;
+        let len = real_slice.len() / 2;
+        // SAFETY: real_slice length is even, alignment of f32 is identical to Complex32.
+        Ok(unsafe { std::slice::from_raw_parts_mut(ptr, len) })
     }
 }
 

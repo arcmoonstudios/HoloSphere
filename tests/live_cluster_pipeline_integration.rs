@@ -15,7 +15,6 @@
 use hnsqr::VectorEmbedding;
 use hnsqr::cluster::DistributedCoordinator;
 use hnsqr::consensus::raft::RaftRole;
-use hnsqr::proof::lutz::SemanticRerankPlan;
 use hnsqr::security::auth::AccessRole;
 use hnsqr::service::{
     ClusterService, MutationService, ReadSnapshot, RequestContext, SearchService, UpsertRequest,
@@ -83,7 +82,7 @@ async fn test_live_cluster_end_to_end_mutation_pipeline_and_recovery() {
     let query = VectorEmbedding::from_complex(query_coords).into_normalized();
 
     let results = service
-        .search(&ctx_admin, &query, 3, SemanticRerankPlan::ExactSimd)
+        .search(&ctx_admin, &query, 3)
         .unwrap();
     assert_eq!(results[0].0.as_ref(), "live_doc_42");
     assert!(

@@ -29,12 +29,14 @@ use crate::{NodeIndex, SimilarityScore};
 
 pub mod bulk;
 pub mod funnel;
+pub mod radix;
 pub mod witness;
 
 pub use bulk::{BuiltRiveroState, BulkBuildTelemetry, RiveroBuildDescriptor, RiveroBulkBuilder};
 pub use funnel::{
     RIVERO_MAX_CANDIDATE_CEILING, RiveroBudgetParameters, ScaleAdaptiveFunnel,
 };
+pub use radix::PartitionedRadixBucketer;
 pub use witness::{
     RIVERO_WITNESS_DEFAULT_DEGREE, RIVERO_WITNESS_DEFAULT_SECOND_SEEDS,
     RIVERO_WITNESS_DEFAULT_SEEDS, RIVERO_WITNESS_INLINE_DEGREE, RIVERO_WITNESS_MAX_DEGREE,
@@ -343,9 +345,9 @@ pub struct RiveroExactProof {
     pub territories_pruned: usize,
     /// Number of vectors pruned by territory-level envelopes.
     pub vectors_territory_pruned: usize,
-    /// Number of vectors pruned by LUTz L0 Cauchy-Schwarz bounds.
+    /// Number of vectors pruned by L0 blockwise bounds.
     pub vectors_l0_pruned: usize,
-    /// Number of vectors pruned by LUTz L1 refinement bounds.
+    /// Number of vectors pruned by L1 refinement bounds.
     pub vectors_l1_pruned: usize,
     /// Number of vectors evaluated with exact SIMD inner product.
     pub vectors_exact_scored: usize,

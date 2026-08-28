@@ -20,7 +20,6 @@ use crate::cluster::ring::ShardId;
 use crate::consensus::pending::{DurabilityLevel, MutationId};
 use crate::consensus::read_index::ReadConsistency;
 use crate::metadata::index::MetadataValue;
-use crate::proof::lutz::SemanticRerankPlan;
 use crate::security::auth::AccessRole;
 use crate::{HNSQRError, HNSQRIndex, HNSQRResult, SimilarityScore, VectorEmbedding};
 
@@ -140,7 +139,6 @@ pub trait SearchService: Send + Sync {
         ctx: &RequestContext,
         query: &VectorEmbedding,
         k: usize,
-        rerank_plan: SemanticRerankPlan,
     ) -> HNSQRResult<Vec<(Arc<str>, SimilarityScore)>>;
 
     /// Executes a search together with any certificate produced by the planner.
@@ -153,9 +151,8 @@ pub trait SearchService: Send + Sync {
         ctx: &RequestContext,
         query: &VectorEmbedding,
         k: usize,
-        rerank_plan: SemanticRerankPlan,
     ) -> HNSQRResult<SearchResponse> {
-        self.search(ctx, query, k, rerank_plan)
+        self.search(ctx, query, k)
             .map(SearchResponse::uncertified)
     }
 
@@ -313,7 +310,6 @@ impl SearchService for StandaloneService {
         _ctx: &RequestContext,
         query: &VectorEmbedding,
         k: usize,
-        _rerank_plan: SemanticRerankPlan,
     ) -> HNSQRResult<Vec<(Arc<str>, SimilarityScore)>> {
         let res = self.index.search(query, k);
         if let Some(slo) = &self.slo_manager {
@@ -327,7 +323,6 @@ impl SearchService for StandaloneService {
         _ctx: &RequestContext,
         query: &VectorEmbedding,
         k: usize,
-        _rerank_plan: SemanticRerankPlan,
     ) -> HNSQRResult<SearchResponse> {
         let (results, proof) = self.index.search_indices_with_proof(query, k, None)?;
         let mapped = results
@@ -615,14 +610,13 @@ impl SearchService for ClusterService {
         _ctx: &RequestContext,
         query: &VectorEmbedding,
         k: usize,
-        rerank_plan: SemanticRerankPlan,
     ) -> HNSQRResult<Vec<(Arc<str>, SimilarityScore)>> {
         let pinned = self
             .coordinator
             .obtain_cluster_pinned_snapshot(ReadConsistency::Linearizable)?;
         let res = self
             .coordinator
-            .search_pinned(&pinned, query, k, rerank_plan);
+            .search_pinned(&pinned, query, k);
         if let Some(slo) = &self.slo_manager {
             slo.record_query_event(true);
         }
@@ -634,9 +628,8 @@ impl SearchService for ClusterService {
         ctx: &RequestContext,
         query: &VectorEmbedding,
         k: usize,
-        rerank_plan: SemanticRerankPlan,
     ) -> HNSQRResult<SearchResponse> {
-        let results = self.search(ctx, query, k, rerank_plan)?;
+        let results = self.search(ctx, query, k)?;
         Ok(SearchResponse {
             results,
             is_certified: true,

@@ -9,7 +9,6 @@
 
 use hnsqr::cluster::ConsistentHashRing;
 use hnsqr::metadata::index::{FilterExpr, MetadataInvertedIndex};
-use hnsqr::proof::lutz::{LutzCode, SemanticRerankPlan};
 use hnsqr::proof::{GlobalExactProofSearch, SegmentProofView, SemanticProofTree};
 use hnsqr::storage::segment::SegmentedEngine;
 use hnsqr::{NodeIndex, VectorEmbedding, dot_product_complex_simd};
@@ -157,7 +156,7 @@ fn test_streamed_compaction_memory_and_deduplication() {
     )
     .into_normalized();
 
-    let res = engine.search(&query_new_0, 5, SemanticRerankPlan::ExactSimd);
+    let res = engine.search(&query_new_0, 5);
     assert_eq!(res[0].0.as_ref(), "doc_0");
     assert!((res[0].1 - 1.0).abs() < 1e-4);
 
@@ -168,7 +167,7 @@ fn test_streamed_compaction_memory_and_deduplication() {
     )
     .into_normalized();
 
-    let res_del = engine.search(&query_deleted, 5, SemanticRerankPlan::ExactSimd);
+    let res_del = engine.search(&query_deleted, 5);
     for (id, _) in res_del {
         assert_ne!(
             id.as_ref(),
@@ -241,8 +240,6 @@ fn test_adversarial_degenerate_manifolds_and_non_finite_fuzzing() {
     let zero_vec = VectorEmbedding::from_complex(vec![Complex32::new(0.0, 0.0); dim]);
     let norm_zero = zero_vec.into_normalized();
     assert_eq!(norm_zero.norm(), 0.0);
-    let code_zero = LutzCode::encode(&norm_zero, true);
-    assert_eq!(code_zero.max_scale_l0, 0.0);
 
     // 2. Corrupted Vector with NaNs and Infs
     let mut corrupted_data = vec![Complex32::new(1.0, 2.0); dim];
@@ -281,7 +278,6 @@ fn test_adversarial_degenerate_manifolds_and_non_finite_fuzzing() {
     let seg_view = SegmentProofView {
         tree: &tree,
         vectors: &corpus,
-        lutz_codes: None,
         tombstones: None,
     };
     let (res, proof) = GlobalExactProofSearch::search(&query, 2, &[seg_view], &[], &[], None);
@@ -387,7 +383,7 @@ fn test_uncommitted_persisted_suffix_not_promoted_during_recovery() {
     assert_eq!(*node.commit_index.read(), 0);
     assert_eq!(*node.last_applied.read(), 0);
 
-    let search_res = fresh_engine.search(&vec, 1, SemanticRerankPlan::ExactSimd);
+    let search_res = fresh_engine.search(&vec, 1);
     assert!(
         search_res.is_empty(),
         "Uncommitted entry must not exist in state machine!"
@@ -536,7 +532,7 @@ fn test_atomic_batch_rollback_on_prevalidation_failure() {
     );
 
     // Verify batch_1 was NOT inserted (Zero partial visibility)
-    let search = engine.search(&v_valid, 10, SemanticRerankPlan::ExactSimd);
+    let search = engine.search(&v_valid, 10);
     assert!(
         search.is_empty(),
         "Failed batch must leave zero partial state!"

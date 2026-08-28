@@ -77,7 +77,6 @@ fn test_replicated_state_machine_sequential_model_equivalence() {
                 let search_res = engine.search(
                     expected_vec,
                     1,
-                    hnsqr::proof::lutz::SemanticRerankPlan::ExactSimd,
                 );
                 // The exact key must appear as the nearest neighbour.
                 let found = search_res.iter().any(|r| r.0.as_ref() == key);

@@ -45,7 +45,6 @@ pub struct MachineTelemetryProfile {
     pub simd_scan_gbps: f64,
     pub rivero_candidates_per_us: f64,
     pub proof_tree_nodes_per_us: f64,
-    pub lutz_candidates_per_us: f64,
     pub nvme_fsync_p99_ms: f64,
     pub nvme_sequential_mbps: f64,
     pub network_rtt_ms: f64,
@@ -57,7 +56,6 @@ impl Default for MachineTelemetryProfile {
             simd_scan_gbps: 45.0,
             rivero_candidates_per_us: 120.0,
             proof_tree_nodes_per_us: 85.0,
-            lutz_candidates_per_us: 250.0,
             nvme_fsync_p99_ms: 1.2,
             nvme_sequential_mbps: 3200.0,
             network_rtt_ms: 0.35,
@@ -81,7 +79,6 @@ impl CapacityPlanner {
             simd_scan_gbps: (profile.memory_bandwidth_gbps as f64).max(0.1),
             rivero_candidates_per_us: defaults.rivero_candidates_per_us * throughput_scale,
             proof_tree_nodes_per_us: defaults.proof_tree_nodes_per_us * throughput_scale,
-            lutz_candidates_per_us: defaults.lutz_candidates_per_us * throughput_scale,
             ..defaults
         }
     }
@@ -108,10 +105,9 @@ impl CapacityPlanner {
         let raw_vector_bytes = (req.total_vectors as f64) * bytes_per_vector;
         let total_vector_storage_gb = (raw_vector_bytes * req.replication_factor as f64) / 1e9;
 
-        // ProofTree (~64 bytes/vector) + LUTz 4-bit codes (~dimension/2 bytes/vector)
-        let lutz_bytes = (req.total_vectors as f64) * (req.dimension as f64 * 0.5);
+        // ProofTree (~64 bytes/vector)
         let proof_tree_bytes = (req.total_vectors as f64) * 64.0;
-        let total_index_memory_gb = (lutz_bytes + proof_tree_bytes) / 1e9;
+        let total_index_memory_gb = proof_tree_bytes / 1e9;
 
         // Recommended RAM with 95% confidence intervals
         let recommended_ram_gb = total_index_memory_gb * 1.3 + 2.0;

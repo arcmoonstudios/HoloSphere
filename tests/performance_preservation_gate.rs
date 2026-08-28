@@ -13,7 +13,6 @@
  *///•------------------------------------------------------------------------------------‣
 
 use hnsqr::metadata::store::{MetadataQuotaConfig, MetadataStore};
-use hnsqr::proof::lutz::LutzCode;
 use hnsqr::proof::search::GlobalExactProofSearch;
 use hnsqr::proof::tree::SemanticProofTree;
 use hnsqr::security::tenant::TenantNamespace;
@@ -36,7 +35,6 @@ fn test_gate_b3_performance_preservation_under_enterprise_layers() {
     }
 
     let slots: Vec<NodeIndex> = (0..n_corpus as NodeIndex).collect();
-    let lutz_codes: Vec<LutzCode> = vectors.iter().map(|v| LutzCode::encode(v, false)).collect();
     let proof_tree = SemanticProofTree::build(&vectors, &slots, dim_c);
 
     // Multi-tenant metadata index
@@ -51,7 +49,7 @@ fn test_gate_b3_performance_preservation_under_enterprise_layers() {
     let mut gt: Vec<(NodeIndex, f32)> = vectors
         .iter()
         .enumerate()
-        .map(|(i, v)| (i as NodeIndex, (v.dot_product_complex(query)).re))
+        .map(|(i, v)| (i as NodeIndex, v.dot_product_real(query)))
         .collect();
     gt.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     gt.truncate(k);
@@ -61,7 +59,6 @@ fn test_gate_b3_performance_preservation_under_enterprise_layers() {
         vectors: &vectors,
         tombstones: None,
         tree: &proof_tree,
-        lutz_codes: Some(&lutz_codes),
     };
 
     let (candidates, proof) = GlobalExactProofSearch::search(query, k, &[view], &[], &[], None);

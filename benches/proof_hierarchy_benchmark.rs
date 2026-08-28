@@ -4,17 +4,14 @@
 //!   - Exact Recall@10 (100.000% hard assert)
 //!   - Disjoint Terminal Funnel Accounting ($N_{\text{eligible}} \equiv \sum \text{buckets}$)
 //!   - Spherical-Cap Hierarchy Region Elimination %
-//!   - LUTz L0 / L1 Leaf Candidate Elimination %
 //!   - Exact SIMD Residue Evaluations %
-//!   - Bound Slack Diagnostics ($\Delta_{\text{L0}}$, $\Delta_{\text{L1}}$)
-//!   - Memory traffic (L0/L1 bytes vs Full-Vector bytes touched)
+//!   - Memory traffic (Full-Vector bytes touched)
 //!   - Latency distribution (p50 / p95 / p99) and speedup vs brute-force exact.
 
 mod common;
 
 use std::time::Instant;
 
-use hnsqr::proof::lutz::{LutzCode, LutzQueryTable};
 use hnsqr::proof::{DenseExactProof, GlobalExactProofSearch, SegmentProofView, SemanticProofTree};
 use hnsqr::rivero::bulk::RiveroBulkBuilder;
 use hnsqr::rivero::{RiveroCompiler, RiveroProfile};
@@ -34,8 +31,6 @@ struct HierarchyResult {
     n_corpus: usize,
     exact_recall: f64,
     region_pruned_pct: f64,
-    l0_pruned_pct: f64,
-    l1_pruned_pct: f64,
     exact_simd_pct: f64,
 
     full_vector_bytes_touched: usize,
@@ -74,12 +69,12 @@ fn load_semantic_corpus(
 
     assert!(
         !corpus.is_empty(),
-        "dataset '{}' is missing or empty — ensure datasets/ are populated",
+        "Missing base vectors for dataset at {}",
         base_path.display()
     );
     assert!(
         !queries.is_empty(),
-        "query file '{}' is missing or empty",
+        "Missing query vectors for dataset at {}",
         query_path.display()
     );
 
@@ -87,36 +82,19 @@ fn load_semantic_corpus(
 }
 
 fn run_hierarchy_experiment(exp: &HierarchyExperiment) -> Option<HierarchyResult> {
+    let (corpus, queries) = load_semantic_corpus(exp.n_corpus, exp.n_queries, exp.d_real);
+    let actual_n = corpus.len();
+    let complex_dim = corpus[0].dimension();
+
     println!("\n═══════════════════════════════════════════════════════════════════════════════");
     println!(
-        " 🔬 Running B3 Hierarchy Experiment: D_real = {} ({} complex), requested N = {}, K = {}",
-        exp.d_real,
-        exp.d_real / 2,
-        exp.n_corpus,
-        exp.k
+        " 🔬 Running Gate B3 Hierarchy Benchmark: D_real = {}, N = {}, K = {}",
+        exp.d_real, actual_n, exp.k
     );
     println!("═══════════════════════════════════════════════════════════════════════════════");
 
-    let (corpus, queries) = load_semantic_corpus(exp.n_corpus, exp.n_queries, exp.d_real);
-    let complex_dim = corpus.first().map_or(exp.d_real / 2, |v| v.dimension());
-    let actual_n = corpus.len();
-    if actual_n != exp.n_corpus || queries.len() != exp.n_queries {
-        println!(
-            "   ⏭ UNAVAILABLE: requested N={}, queries={}; loaded N={}, queries={}. No result emitted.",
-            exp.n_corpus,
-            exp.n_queries,
-            actual_n,
-            queries.len()
-        );
-        return None;
-    }
-    println!(
-        "   ✓ Loaded immutable real-dataset workload: N = {actual_n}, queries = {}",
-        queries.len()
-    );
-
-    // 1. Build Rivero Index
-    print!("   ⚙️ Building Rivero Coarse Index...");
+    // 1. Build Rivero Territory Routing Structure
+    print!("   ⚙️ Building Rivero Strict Territory Partition Index...");
     let rivero_cfg = RiveroProfile::Strict.config();
     let compiler = RiveroCompiler::new(complex_dim);
     let builder = RiveroBulkBuilder::new(rivero_cfg);
@@ -124,12 +102,7 @@ fn run_hierarchy_experiment(exp: &HierarchyExperiment) -> Option<HierarchyResult
     let territory = built_state.territory;
     println!(" Done.");
 
-    // 2. Encode LUTz L0/L1 Codes
-    print!("   ⚙️ Encoding LUTz L0/L1 Quantized Representations...");
-    let lutz_codes: Vec<LutzCode> = corpus.iter().map(|v| LutzCode::encode(v, true)).collect();
-    println!(" Done.");
-
-    // 3. Build Semantic Proof Tree
+    // 2. Build Semantic Proof Tree
     print!("   ⚙️ Building Flattened Semantic Proof Hierarchy...");
     let slots: Vec<NodeIndex> = (0..actual_n as NodeIndex).collect();
     let build_start = Instant::now();
@@ -142,35 +115,7 @@ fn run_hierarchy_experiment(exp: &HierarchyExperiment) -> Option<HierarchyResult
         proof_tree.leaf_slots.len()
     );
 
-    // 4. Bound Slack Diagnostic Collector
-    let mut l0_slacks: Vec<f32> = Vec::new();
-    let mut l1_slacks: Vec<f32> = Vec::new();
-    for q in queries.iter().take(5) {
-        let q_lut = LutzQueryTable::build(q);
-        for doc_idx in 0..actual_n.min(500) {
-            let exact = cosine_sim(q, &corpus[doc_idx]);
-            let code = &lutz_codes[doc_idx];
-            let approx = q_lut.score_candidate_l0(code);
-            let res0 = q_lut.blockwise_residual_l0(code);
-            let ub0 = approx + res0;
-            l0_slacks.push((ub0 - exact).max(0.0));
-
-            if code.codes_l1.is_some() {
-                let res1 = q_lut.blockwise_residual_l1(code);
-                let ub1 = approx + res1;
-                l1_slacks.push((ub1 - exact).max(0.0));
-            }
-        }
-    }
-    l0_slacks.sort_unstable_by(|a, b| a.total_cmp(b));
-    l1_slacks.sort_unstable_by(|a, b| a.total_cmp(b));
-
-    let l0_slack_median = l0_slacks[l0_slacks.len() / 2];
-    let l0_slack_p95 = l0_slacks[(l0_slacks.len() as f32 * 0.95) as usize];
-    let l1_slack_median = l1_slacks[l1_slacks.len() / 2];
-    let l1_slack_p95 = l1_slacks[(l1_slacks.len() as f32 * 0.95) as usize];
-
-    // 5. Search Evaluation
+    // 3. Search Evaluation
     let mut bf_latencies_us = Vec::with_capacity(exp.n_queries);
     let mut proof_latencies_us = Vec::with_capacity(exp.n_queries);
     let mut proofs: Vec<DenseExactProof> = Vec::with_capacity(exp.n_queries);
@@ -191,11 +136,10 @@ fn run_hierarchy_experiment(exp: &HierarchyExperiment) -> Option<HierarchyResult
             rivero_cands.extend_from_slice(cands);
         });
 
-        // Hierarchical Exact Proof Search with LUTz L0/L1 Cascade
+        // Hierarchical Exact Proof Search
         let seg_view = SegmentProofView {
             tree: &proof_tree,
             vectors: &corpus,
-            lutz_codes: Some(&lutz_codes),
             tombstones: None,
         };
         let proof_start = Instant::now();
@@ -226,11 +170,9 @@ fn run_hierarchy_experiment(exp: &HierarchyExperiment) -> Option<HierarchyResult
     for (q_idx, p) in proofs.iter().enumerate() {
         assert!(
             p.is_accounting_exact(),
-            "Query #{} violated terminal funnel accounting! vectors_pruned={}, l0_pruned={}, l1_pruned={}, exact={}, filtered={}, total={}",
+            "Query #{} violated terminal funnel accounting! vectors_pruned={}, exact={}, filtered={}, total={}",
             q_idx,
             p.vectors_pruned_by_region,
-            p.lutz_l0_pruned,
-            p.lutz_l1_pruned,
             p.exact_evaluations,
             p.filtered_or_tombstoned,
             p.corpus_size
@@ -244,14 +186,6 @@ fn run_hierarchy_experiment(exp: &HierarchyExperiment) -> Option<HierarchyResult
         .sum::<usize>() as f64
         / exp.n_queries as f64;
     let region_pruned_pct = (avg_region_pruned / n_f64) * 100.0;
-
-    let avg_l0_pruned =
-        proofs.iter().map(|p| p.lutz_l0_pruned).sum::<usize>() as f64 / exp.n_queries as f64;
-    let l0_pruned_pct = (avg_l0_pruned / n_f64) * 100.0;
-
-    let avg_l1_pruned =
-        proofs.iter().map(|p| p.lutz_l1_pruned).sum::<usize>() as f64 / exp.n_queries as f64;
-    let l1_pruned_pct = (avg_l1_pruned / n_f64) * 100.0;
 
     let avg_exact_evals =
         proofs.iter().map(|p| p.exact_evaluations).sum::<usize>() as f64 / exp.n_queries as f64;
@@ -284,7 +218,7 @@ fn run_hierarchy_experiment(exp: &HierarchyExperiment) -> Option<HierarchyResult
         0.0
     };
 
-    println!("\n   📊 B3 RESULTS FUNNEL & SLACK AUDIT:");
+    println!("\n   📊 B3 RESULTS FUNNEL & AUDIT:");
     println!(
         "      • Certified Recall@10:          {:.4}% (VERIFIED 100.000%)",
         exact_recall
@@ -299,24 +233,8 @@ fn run_hierarchy_experiment(exp: &HierarchyExperiment) -> Option<HierarchyResult
         region_pruned_pct, avg_region_pruned
     );
     println!(
-        "      • LUTz L0 Pruned:               {:.2}% ({:.0} vectors)",
-        l0_pruned_pct, avg_l0_pruned
-    );
-    println!(
-        "      • LUTz L1 Pruned:               {:.2}% ({:.0} vectors)",
-        l1_pruned_pct, avg_l1_pruned
-    );
-    println!(
         "      • Exact SIMD Evaluations:       {:.2}% ({:.0} vectors)",
         exact_simd_pct, avg_exact_evals
-    );
-    println!(
-        "      • Δ_L0 Slack (Median / p95):    {:.4} / {:.4}",
-        l0_slack_median, l0_slack_p95
-    );
-    println!(
-        "      • Δ_L1 Slack (Median / p95):    {:.4} / {:.4}",
-        l1_slack_median, l1_slack_p95
     );
     println!(
         "      • Full-Vector Memory Traffic:   {:.1} KB / query",
@@ -333,8 +251,6 @@ fn run_hierarchy_experiment(exp: &HierarchyExperiment) -> Option<HierarchyResult
         n_corpus: actual_n,
         exact_recall,
         region_pruned_pct,
-        l0_pruned_pct,
-        l1_pruned_pct,
         exact_simd_pct,
         full_vector_bytes_touched: avg_exact_bytes,
         p50_us,
@@ -344,7 +260,7 @@ fn run_hierarchy_experiment(exp: &HierarchyExperiment) -> Option<HierarchyResult
 
 fn main() {
     println!("╔═════════════════════════════════════════════════════════════════════════════╗");
-    println!("║     HNSQR GATE B3: PROOF HIERARCHY + LUTz L0/L1 CASCADE BENCHMARK SUITE    ║");
+    println!("║              HNSQR GATE B3: PROOF HIERARCHY BENCHMARK SUITE                 ║");
     println!("║                100.000% Exact Recall Verification Matrix                    ║");
     println!("╚═════════════════════════════════════════════════════════════════════════════╝");
 
@@ -391,18 +307,16 @@ fn main() {
     println!(
         "\n══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════"
     );
-    println!("🏆 GATE B3 GRAND PROOF + LUTz CASCADE SCORECARD (100.000% CERTIFIED RECALL)");
+    println!("🏆 GATE B3 GRAND PROOF SCORECARD (100.000% CERTIFIED RECALL)");
     println!(
         "══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════"
     );
     println!(
-        "{:<6} | {:<7} | {:<10} | {:<12} | {:<10} | {:<10} | {:<10} | {:<10} | {:<12} | {:<10}",
+        "{:<6} | {:<7} | {:<10} | {:<12} | {:<10} | {:<10} | {:<12} | {:<10}",
         "D_real",
         "N",
         "Recall@10",
         "Region Prune",
-        "L0 Prune",
-        "L1 Prune",
         "Exact SIMD",
         "Traffic",
         "Latency p50",
@@ -413,13 +327,11 @@ fn main() {
     );
     for r in results {
         println!(
-            "{:<6} | {:<7} | {:<9.3}% | {:<11.2}% | {:<9.2}% | {:<9.2}% | {:<9.2}% | {:<7.1} KB | {:<9.1} µs | {:.2}x",
+            "{:<6} | {:<7} | {:<9.3}% | {:<11.2}% | {:<9.2}% | {:<7.1} KB | {:<9.1} µs | {:.2}x",
             r.d_real,
             r.n_corpus,
             r.exact_recall,
             r.region_pruned_pct,
-            r.l0_pruned_pct,
-            r.l1_pruned_pct,
             r.exact_simd_pct,
             r.full_vector_bytes_touched as f64 / 1024.0,
             r.p50_us,

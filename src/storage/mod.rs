@@ -13,6 +13,7 @@ pub mod adaptive_prefault;
 pub mod backpressure;
 pub mod backup;
 pub mod columnar_olap;
+pub mod concurrency;
 pub mod io_budget;
 pub mod manifest;
 pub mod mmap_arena;
@@ -33,6 +34,7 @@ pub use backup::{BackupManager, BackupMetadata, BackupType, EncryptedBackupMetad
 pub use columnar_olap::{
     ColumnarFloatArray, ColumnarOlapEngine, EmbeddedMediaBlob, OlapAggregationOp,
 };
+pub use concurrency::{LsmConcurrencyConfig, LsmConcurrencyReport, LsmSegmentConcurrencyHarness};
 pub use io_budget::{IoBudgetManager, IoMaintenanceClass};
 pub use mmap_arena::{MmapArena, MmapHeader};
 pub use predictive_warming::{PredictiveWarmer, ProofHeatMap};

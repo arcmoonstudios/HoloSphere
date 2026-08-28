@@ -4,7 +4,7 @@
 //!▫~•◦-------------------------------------------------------------------‣
 //!
 //! Provides separated cache budgets:
-//!   - Tier 0: Eviction-resistant pinned budget for ProofTree, Rivero, and LUTz structures
+//!   - Tier 0: Eviction-resistant pinned budget for ProofTree and Rivero structures
 //!   - Tier 1: Frequency-aware TinyLFU + segmented recency cache for dense exact vectors
 //! Includes per-tenant quota protection and minimum shared pool guarantees.
 /*▫~•◦------------------------------------------------------------------------------------‣

@@ -46,8 +46,7 @@ All notable changes to HoloSphere are documented here. The format follows [Keep 
 - Replaced stale fixed benchmark scorecards and crossover tables with reproducible benchmark
   commands and explicit hardware/corpus calibration guidance.
 - Documented the mandatory separation between the correctness test gate and benchmark runs.
-- Renamed internal planner proof-plan variants from LUTz-branded names to proof-tree names and
-  removed LUTz encoding/storage from the primary index and segmented write/compaction paths.
+- Completely removed all legacy experimental quantization paths from the primary index and segmented write/compaction paths in favor of Exact SIMD and ProofTree hierarchies.
 - Optimized the Exact cosine/Euclidean hot path by hoisting the metric lookup and introducing a
   real-component-only SIMD inner-product primitive.
 

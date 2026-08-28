@@ -2,7 +2,6 @@ mod common;
 
 use std::time::Instant;
 
-use hnsqr::proof::lutz::{LutzCertifier, LutzCode, LutzQueryTable, exact_rerank_locality_sorted};
 use hnsqr::rivero::{RiveroCompiler, RiveroTerritoryIndex};
 use hnsqr::{NodeIndex, SimilarityScore};
 
@@ -22,10 +21,7 @@ struct ResidencyResult {
     exact_scattered_warm_us: f64,
     exact_scattered_locality_us: f64,
     exact_scattered_cold_mmap_us: f64,
-    lutz_cold_mmap_us: f64,
-    cold_speedup_lutz_vs_exact: f64,
     unique_pages_touched: usize,
-    lutz_exact_evals: usize,
 }
 
 fn run_residency_benchmark(
@@ -50,11 +46,6 @@ fn run_residency_benchmark(
         territory_index.insert(&addr, i as NodeIndex);
     }
 
-    let lutz_codes: Vec<LutzCode> = folded_corpus
-        .iter()
-        .map(|v| LutzCode::encode(v, true))
-        .collect();
-
     let vector_bytes = complex_dim * 8; // 8 bytes per Complex32
     let page_size = 4096;
     let cold_page_penalty_us = 2.5; // Estimated 2.5 µs NVMe / OS page fault overhead per cold page
@@ -63,9 +54,7 @@ fn run_residency_benchmark(
     let mut scattered_warm_times = Vec::with_capacity(num_queries);
     let mut scattered_locality_times = Vec::with_capacity(num_queries);
     let mut scattered_cold_times = Vec::with_capacity(num_queries);
-    let mut lutz_cold_times = Vec::with_capacity(num_queries);
     let mut unique_pages_list = Vec::with_capacity(num_queries);
-    let mut lutz_evals_list = Vec::with_capacity(num_queries);
 
     for q_idx in 0..folded_queries.len() {
         let folded_q = &folded_queries[q_idx];
@@ -108,16 +97,22 @@ fn run_residency_benchmark(
 
         // 3. Exact Scattered Locality Sorted (Real Rivero IDs reordered by memory slot ID)
         let t2 = Instant::now();
-        let _scored_loc = exact_rerank_locality_sorted(
-            &candidate_slots,
-            |s| (folded_q.dot_product_complex(&folded_corpus[s as usize])).re,
-            k,
-        );
+        let mut sorted_slots = candidate_slots.clone();
+        sorted_slots.sort_unstable();
+        let mut scored_loc: Vec<(NodeIndex, SimilarityScore)> = sorted_slots
+            .iter()
+            .map(|&s| {
+                (
+                    s,
+                    (folded_q.dot_product_complex(&folded_corpus[s as usize])).re,
+                )
+            })
+            .collect();
+        scored_loc.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        scored_loc.truncate(k);
         scattered_locality_times.push(t2.elapsed().as_secs_f64() * 1_000_000.0);
 
         // Count unique pages spanned by the candidate vectors
-        let mut sorted_slots = candidate_slots.clone();
-        sorted_slots.sort_unstable();
         let mut unique_pages = 0usize;
         let mut last_page = usize::MAX;
         for &slot in &sorted_slots {
@@ -133,34 +128,15 @@ fn run_residency_benchmark(
         let cold_exact_us = (t2.elapsed().as_secs_f64() * 1_000_000.0)
             + (unique_pages as f64 * cold_page_penalty_us);
         scattered_cold_times.push(cold_exact_us);
-
-        // 5. LUTz Cold Mmap (Continuous LUTz codes in cache + cold page penalties for only L exact finalists)
-        let t3 = Instant::now();
-        let query_lut = LutzQueryTable::build(folded_q);
-        let (_certified_topk, diag) = LutzCertifier::certify(
-            &query_lut,
-            &candidate_slots,
-            |s| Some(&lutz_codes[s as usize]),
-            |s| (folded_q.dot_product_complex(&folded_corpus[s as usize])).re,
-            k,
-        );
-        let lutz_compute_us = t3.elapsed().as_secs_f64() * 1_000_000.0;
-        let lutz_cold_pages = diag.exact_evaluations; // Each exact finalist touches at most 1 page
-        let lutz_cold_us = lutz_compute_us + (lutz_cold_pages as f64 * cold_page_penalty_us);
-
-        lutz_cold_times.push(lutz_cold_us);
-        lutz_evals_list.push(diag.exact_evaluations);
     }
 
     let exact_cont_p50 = percentile(contiguous_times, 50.0);
     let exact_scatt_warm_p50 = percentile(scattered_warm_times, 50.0);
     let exact_scatt_loc_p50 = percentile(scattered_locality_times, 50.0);
     let exact_scatt_cold_p50 = percentile(scattered_cold_times, 50.0);
-    let lutz_cold_p50 = percentile(lutz_cold_times, 50.0);
 
     let mean_unique_pages =
         unique_pages_list.iter().sum::<usize>() / unique_pages_list.len().max(1);
-    let mean_lutz_evals = lutz_evals_list.iter().sum::<usize>() / lutz_evals_list.len().max(1);
 
     ResidencyResult {
         real_dim,
@@ -169,10 +145,7 @@ fn run_residency_benchmark(
         exact_scattered_warm_us: exact_scatt_warm_p50,
         exact_scattered_locality_us: exact_scatt_loc_p50,
         exact_scattered_cold_mmap_us: exact_scatt_cold_p50,
-        lutz_cold_mmap_us: lutz_cold_p50,
-        cold_speedup_lutz_vs_exact: exact_scatt_cold_p50 / lutz_cold_p50.max(0.1),
         unique_pages_touched: mean_unique_pages,
-        lutz_exact_evals: mean_lutz_evals,
     }
 }
 
@@ -233,33 +206,30 @@ fn main() {
     println!(
         "════════════════════════════════════════════════════════════════════════════════════════"
     );
-    println!(" SECTION 2: COLD MMAP / DISK-PAGE REGIME (512 Scattered Vector Pages vs LUTz)");
+    println!(" SECTION 2: COLD MMAP / DISK-PAGE REGIME (512 Scattered Vector Pages)");
     println!(
         "════════════════════════════════════════════════════════════════════════════════════════"
     );
     println!(
-        "  ┌────────┬─────────┬──────────────────────┬──────────────────────┬──────────┬──────────────┬──────────────┐"
+        "  ┌────────┬─────────┬──────────────────────┬──────────────┐"
     );
     println!(
-        "  │ Real D │ Cmplx D │ Exact Cold Mmap      │ LUTz Cold Mmap       │ Speedup  │ Pages Touched│ LUTz Evals L │"
+        "  │ Real D │ Cmplx D │ Exact Cold Mmap      │ Pages Touched│"
     );
     println!(
-        "  ├────────┼─────────┼──────────────────────┼──────────────────────┼──────────┼──────────────┼──────────────┤"
+        "  ├────────┼─────────┼──────────────────────┼──────────────┤"
     );
 
     for res in &results {
         println!(
-            "  │ {:>6} │ {:>7} │ {:>18.1} µs │ {:>18.1} µs │ {:>7.2}x │ {:>9} pgs │ {:>9} evs │",
+            "  │ {:>6} │ {:>7} │ {:>18.1} µs │ {:>9} pgs │",
             res.real_dim,
             res.complex_dim,
             res.exact_scattered_cold_mmap_us,
-            res.lutz_cold_mmap_us,
-            res.cold_speedup_lutz_vs_exact,
-            res.unique_pages_touched,
-            res.lutz_exact_evals
+            res.unique_pages_touched
         );
     }
     println!(
-        "  └────────┴─────────┴──────────────────────┴──────────────────────┴──────────┴──────────────┴──────────────┘\n"
+        "  └────────┴─────────┴──────────────────────┴──────────────┘\n"
     );
 }

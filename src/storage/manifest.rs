@@ -9,7 +9,6 @@
 //!   - Metadata dictionaries & postings
 //!   - Tombstones
 //!   - Rivero routing directories
-//!   - LUTz quantized codes
 //!   - Semantic proof trees
 //!
 //! Follows strict Copy-On-Write publication:
@@ -25,7 +24,6 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::metadata::index::MetadataValue;
-use crate::proof::lutz::LutzCode;
 use crate::proof::tree::SemanticProofTree;
 use crate::rivero::bulk::BuiltRiveroState;
 use crate::{HNSQRError, HNSQRResult, VectorEmbedding};
@@ -46,7 +44,6 @@ pub enum SectionKind {
     MetadataStore = 3,
     TombstoneBitmap = 4,
     RiveroState = 5,
-    LutzCodes = 6,
     SemanticProofTree = 7,
     RebuildableGraphState = 8,
 }
@@ -142,7 +139,6 @@ impl UnifiedSnapshotEngine {
         metadata_map: Option<&[HashMap<String, MetadataValue>]>,
         tombstones: Option<&RoaringBitmap>,
         proof_tree: Option<&SemanticProofTree>,
-        lutz_codes: Option<&[LutzCode]>,
         rivero_state: Option<&BuiltRiveroState>,
     ) -> HNSQRResult<SnapshotManifest> {
         let snapshot_dir = snapshot_dir.as_ref().to_path_buf();
@@ -248,15 +244,7 @@ impl UnifiedSnapshotEngine {
             manifest.add_section(sec_tree);
         }
 
-        // 6. LUTz Codes Section
-        if let Some(codes) = lutz_codes {
-            let lutz_bytes = bincode::serialize(codes)
-                .map_err(|e| HNSQRError::CorruptedSnapshot(format!("LUTz serialize error: {e}")))?;
-            let sec_lutz = write_section(SectionKind::LutzCodes, &lutz_bytes, codes.len() as u64)?;
-            manifest.add_section(sec_lutz);
-        }
-
-        // 7. Rivero State Section
+        // 6. Rivero State Section
         if let Some(r_state) = rivero_state {
             let r_bytes =
                 bincode::serialize(&(&r_state.descriptor, &r_state.witnesses, &r_state.addresses))

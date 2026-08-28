@@ -1,18 +1,14 @@
-/* holosphere/src/segment.rs */
+/* holosphere/src/storage/segment.rs */
 //!▫~•◦-------------------------------‣
-//! # LSM-Style Mutable Segmented Storage Engine & Online Compaction
+//! # Dynamic LSM Vector Segments with Monotonic Epoch Isolation
 //!▫~•◦-------------------------------------------------------------------‣
 //!
-//! Provides high-throughput continuous inserts, deletions, and non-blocking background
-//! compaction for HNSQR vector collections.
-//!
-//! ## Architecture
-//! - **`MutableSegment`**: Lock-free/low-lock append-only buffer holding live incoming vectors,
-//!   tombstones and delta Rivero routing.
-//! - **`ImmutableSegment`**: Sealed, read-only segment with precomputed Rivero topology
-//!   and proof-tree metadata.
-//! - **`SegmentedEngine`**: Coordinates fan-out queries across active and immutable segments,
-//!   merges Top-K finalists, and performs atomic generation swaps during background compaction.
+//! Provides a two-tier LSM-like storage model:
+//!   1. `MutableSegment`: Append-only, lock-free indexed, real-time memory buffer.
+//!   2. `ImmutableSegment`: Fully optimized, contiguous columnar memory block backed
+//!      by pre-computed ProofTrees, exact SIMD dot-product routines, and pruned metadata postings.
+//!   3. `SegmentedEngine`: Coordinates active writes, background frozen segment compaction,
+//!      point-in-time snapshot isolation, and atomic durability state.
 /*▫~•◦------------------------------------------------------------------------------------‣
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
@@ -27,7 +23,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::metadata::index::MetadataValue;
 use crate::planning::planner::RetrievalContract;
-use crate::proof::lutz::SemanticRerankPlan;
 use crate::proof::{GlobalExactProofSearch, SegmentProofView, SemanticProofTree};
 use crate::rivero::{RiveroCompiler, RiveroProfile, RiveroTerritoryIndex};
 use crate::storage::wal::{DurabilityPolicy, WalManager, WalMutation};
@@ -66,6 +61,7 @@ pub struct MutableSegment {
     tombstones: PlRwLock<RoaringBitmap>,
     territories: RiveroTerritoryIndex,
     compiler: RiveroCompiler,
+    metadata_store: PlRwLock<HashMap<Arc<str>, HashMap<String, MetadataValue>>>,
 }
 
 impl MutableSegment {
@@ -81,6 +77,7 @@ impl MutableSegment {
             tombstones: PlRwLock::new(RoaringBitmap::new()),
             territories: RiveroTerritoryIndex::new(),
             compiler: RiveroCompiler::new(dimension),
+            metadata_store: PlRwLock::new(HashMap::with_capacity(max_capacity.min(4096))),
         }
     }
 
@@ -155,7 +152,6 @@ impl MutableSegment {
         &self,
         query: &VectorEmbedding,
         k: usize,
-        rerank_plan: SemanticRerankPlan,
     ) -> Vec<(Arc<str>, SimilarityScore)> {
         if k == 0 {
             return Vec::new();
@@ -164,7 +160,6 @@ impl MutableSegment {
         let vectors = self.vectors.read();
         let tombstones = self.tombstones.read();
         let slot_to_id = self.slot_to_id.read();
-        let _ = rerank_plan;
 
         let total = vectors.len();
         if total == 0 {
@@ -189,13 +184,9 @@ impl MutableSegment {
 
         let mut top_slots: Vec<(NodeIndex, SimilarityScore)> = candidate_slots
             .into_iter()
-            .map(|slot| {
-                (
-                    slot,
-                    (query.dot_product_complex(&vectors[slot as usize])).re,
-                )
-            })
+            .map(|slot| (slot, query.dot_product_real(&vectors[slot as usize])))
             .collect();
+
         top_slots.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
         top_slots.truncate(k);
 
@@ -228,12 +219,7 @@ impl MutableSegment {
             RetrievalContract::Exact | RetrievalContract::Certified => {
                 let mut scored: Vec<(NodeIndex, SimilarityScore)> = (0..total as NodeIndex)
                     .filter(|&slot| !tombstones.contains(slot))
-                    .map(|slot| {
-                        (
-                            slot,
-                            (query.dot_product_complex(&vectors[slot as usize])).re,
-                        )
-                    })
+                    .map(|slot| (slot, query.dot_product_real(&vectors[slot as usize])))
                     .collect();
                 scored.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
                 scored.truncate(k);
@@ -242,7 +228,7 @@ impl MutableSegment {
                     .map(|(s, score)| (slot_to_id[s as usize].clone(), score))
                     .collect()
             }
-            _ => self.search(query, k, SemanticRerankPlan::Auto),
+            _ => self.search(query, k),
         }
     }
 }
@@ -258,6 +244,7 @@ pub struct ImmutableSegment {
     territories: RiveroTerritoryIndex,
     compiler: RiveroCompiler,
     pub proof_tree: Arc<SemanticProofTree>,
+    pub metadata_store: HashMap<Arc<str>, HashMap<String, MetadataValue>>,
 }
 
 impl ImmutableSegment {
@@ -267,6 +254,7 @@ impl ImmutableSegment {
         let id_to_slot = mutable.id_to_slot.read().clone();
         let slot_to_id = mutable.slot_to_id.read().clone();
         let tombstones = mutable.tombstones.read().clone();
+        let metadata_store = mutable.metadata_store.read().clone();
 
         let compiler = RiveroCompiler::new(mutable.dimension);
         let territories = RiveroTerritoryIndex::new();
@@ -285,7 +273,7 @@ impl ImmutableSegment {
         let proof_tree = Arc::new(SemanticProofTree::build(
             &vectors,
             &live_slots,
-            mutable.dimension,
+            mutable.dimension.div_ceil(2),
         ));
 
         Self {
@@ -298,6 +286,7 @@ impl ImmutableSegment {
             territories,
             compiler,
             proof_tree,
+            metadata_store,
         }
     }
 
@@ -333,7 +322,6 @@ impl ImmutableSegment {
         &self,
         query: &VectorEmbedding,
         k: usize,
-        rerank_plan: SemanticRerankPlan,
     ) -> Vec<(Arc<str>, SimilarityScore)> {
         if k == 0 || self.vectors.is_empty() {
             return Vec::new();
@@ -357,16 +345,11 @@ impl ImmutableSegment {
             return Vec::new();
         }
 
-        let _ = rerank_plan;
         let mut top_slots: Vec<(NodeIndex, SimilarityScore)> = candidate_slots
             .into_iter()
-            .map(|slot| {
-                (
-                    slot,
-                    (query.dot_product_complex(&self.vectors[slot as usize])).re,
-                )
-            })
+            .map(|slot| (slot, query.dot_product_real(&self.vectors[slot as usize])))
             .collect();
+
         top_slots.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
         top_slots.truncate(k);
 
@@ -394,12 +377,7 @@ impl ImmutableSegment {
             RetrievalContract::Exact => {
                 let mut scored: Vec<(NodeIndex, SimilarityScore)> = (0..total as NodeIndex)
                     .filter(|&slot| !tombstones.contains(slot))
-                    .map(|slot| {
-                        (
-                            slot,
-                            (query.dot_product_complex(&self.vectors[slot as usize])).re,
-                        )
-                    })
+                    .map(|slot| (slot, query.dot_product_real(&self.vectors[slot as usize])))
                     .collect();
                 scored.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
                 scored.truncate(k);
@@ -412,6 +390,7 @@ impl ImmutableSegment {
                 let q_norm = query.clone().into_normalized();
                 let q_addr = self.compiler.compile(q_norm.complex_data());
                 let config = RiveroProfile::Strict.config();
+
                 let mut seed_cands: Vec<NodeIndex> = Vec::new();
                 self.territories
                     .with_candidates_config(&q_addr, &config, |cands, _| {
@@ -422,7 +401,6 @@ impl ImmutableSegment {
                 let seg_view = SegmentProofView {
                     tree: &self.proof_tree,
                     vectors: &self.vectors,
-                    lutz_codes: None,
                     tombstones: Some(&tombstones),
                 };
 
@@ -434,7 +412,7 @@ impl ImmutableSegment {
                     .map(|(s, score)| (self.slot_to_id[s as usize].clone(), score))
                     .collect()
             }
-            _ => self.search(query, k, SemanticRerankPlan::Auto),
+            _ => self.search(query, k),
         }
     }
 }
@@ -677,7 +655,6 @@ impl SegmentedEngine {
         &self,
         query: &VectorEmbedding,
         k: usize,
-        rerank_plan: SemanticRerankPlan,
     ) -> Vec<(Arc<str>, SimilarityScore)> {
         if k == 0 {
             return Vec::new();
@@ -687,11 +664,11 @@ impl SegmentedEngine {
         let immutables = self.immutable_segments.read().unwrap().clone();
 
         // Search active segment
-        let mut all_results = active.search(query, k, rerank_plan);
+        let mut all_results = active.search(query, k);
 
         // Search immutable segments
         for seg in immutables {
-            let seg_res = seg.search(query, k, rerank_plan);
+            let seg_res = seg.search(query, k);
             all_results.extend(seg_res);
         }
 
@@ -714,7 +691,7 @@ impl SegmentedEngine {
         unique_results
     }
 
-    /// Global search across all active and immutable segments enforcing a declared contract.
+    /// Contract-aware global retrieval executing exact or certified paths across all segments.
     pub fn search_with_contract(
         &self,
         query: &VectorEmbedding,
@@ -832,6 +809,7 @@ impl SegmentedEngine {
             territories,
             compiler,
             proof_tree,
+            metadata_store: HashMap::new(),
         });
 
         // Atomic swap of immutable segments list
@@ -865,7 +843,7 @@ impl SegmentedEngine {
         }
     }
 
-    /// Snapshot of current immutable segments for RAII read pinning.
+    /// Immutable segments reference for RAII read pinning.
     pub fn immutable_segments_snapshot(&self) -> Vec<Arc<ImmutableSegment>> {
         self.immutable_segments.read().unwrap().clone()
     }
@@ -882,13 +860,12 @@ impl SegmentedEngine {
         active: &MutableSegment,
         query: &VectorEmbedding,
         k: usize,
-        rerank_plan: SemanticRerankPlan,
     ) -> Vec<(Arc<str>, SimilarityScore)> {
         let mut all_results = Vec::new();
         for imm in immutables {
-            all_results.extend(imm.search(query, k, rerank_plan));
+            all_results.extend(imm.search(query, k));
         }
-        all_results.extend(active.search(query, k, rerank_plan));
+        all_results.extend(active.search(query, k));
         all_results
             .sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         all_results.truncate(k);
@@ -910,16 +887,15 @@ impl ImmutableVectorSnapshot {
         &self,
         query: &VectorEmbedding,
         k: usize,
-        rerank_plan: SemanticRerankPlan,
     ) -> Vec<(Arc<str>, SimilarityScore)> {
         if k == 0 {
             return Vec::new();
         }
         let mut all_results = Vec::new();
         for seg in &self.immutable_segments {
-            all_results.extend(seg.search(query, k, rerank_plan));
+            all_results.extend(seg.search(query, k));
         }
-        all_results.extend(self.active_snapshot.search(query, k, rerank_plan));
+        all_results.extend(self.active_snapshot.search(query, k));
 
         all_results.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
         let mut unique_results = Vec::with_capacity(k);
@@ -998,13 +974,13 @@ mod tests {
         )
         .into_normalized();
 
-        let topk = engine.search(&query, 5, SemanticRerankPlan::ExactSimd);
+        let topk = engine.search(&query, 5);
         assert_eq!(topk.len(), 5);
         assert_eq!(topk[0].0.as_ref(), "doc_5");
 
         // Delete doc_5
         assert!(engine.delete("doc_5"));
-        let topk_after = engine.search(&query, 5, SemanticRerankPlan::ExactSimd);
+        let topk_after = engine.search(&query, 5);
         assert_ne!(
             topk_after[0].0.as_ref(),
             "doc_5",

@@ -157,8 +157,7 @@ impl SemanticProofTree {
                     continue;
                 }
                 let vj = &vectors[slot_j];
-
-                let s = (vi.dot_product_complex(vj)).re;
+                let s = vi.dot_product_real(vj);
                 cos_sum += s;
                 cos_sq_sum += s * s;
                 samples += 1;

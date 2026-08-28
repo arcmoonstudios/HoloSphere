@@ -5,7 +5,7 @@
 //!
 //! Provides distributed trace context, W3C `traceparent` header propagation,
 //! and structured span instrumentation across retrieval stages:
-//!   `search_request -> rivero_route -> proof_tree_bound -> lutz_cascade -> simd_exact`
+//!   `search_request -> rivero_route -> proof_tree_bound -> simd_exact`
 /*▫~•◦------------------------------------------------------------------------------------‣
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣

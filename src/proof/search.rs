@@ -1,15 +1,13 @@
 /* holosphere/src/proof/search.rs */
 //!▫~•◦-------------------------------‣
-//! # Global Proof Search Engine with LUTz L0/L1 Leaf Cascade (Gate B3)
+//! # Global Proof Search Engine (Gate B3)
 //!▫~•◦-------------------------------------------------------------------‣
 //!
 //! Executes multi-segment branch-and-bound exact Top-K search with:
 //!   1. Spherical Proof Tree region elimination (83–93% corpus elimination)
-//!   2. Unresolved leaf LUTz L0 Cauchy-Schwarz bound pruning
-//!   3. Unresolved leaf LUTz L1 progressive bound pruning
-//!   4. Leaf-local winner-first scheduling to maximize early threshold elevation
-//!   5. Exact SIMD resolution on genuine residue
-//!   6. Strictly normalized terminal accounting: $N_{\text{eligible}} \equiv N_{\text{pruned}} + N_{\text{exact}} + N_{\text{filtered}}$
+//!   2. Branch-and-bound frontier expansion
+//!   3. Exact SIMD resolution on genuine residue
+//!   4. Strictly normalized terminal accounting: $N_{\text{eligible}} \equiv N_{\text{pruned}} + N_{\text{exact}} + N_{\text{filtered}}$
 /*▫~•◦------------------------------------------------------------------------------------‣
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
@@ -21,7 +19,6 @@ use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};
 
 use super::bounds::ProofQuery;
-use super::lutz::{LutzCode, LutzQueryTable};
 use super::tree::SemanticProofTree;
 use crate::{NodeIndex, SimilarityScore, VectorEmbedding};
 
@@ -47,16 +44,6 @@ pub struct DenseExactProof {
     /// Total vectors skipped entirely due to subtree region pruning.
     pub vectors_pruned_by_region: usize,
 
-    /// Number of leaf candidates evaluated against LUTz L0 Cauchy-Schwarz bound.
-    pub lutz_l0_evaluations: usize,
-    /// Number of leaf candidates eliminated by LUTz L0 bound.
-    pub lutz_l0_pruned: usize,
-
-    /// Number of leaf candidates evaluated against LUTz L1 Cauchy-Schwarz bound.
-    pub lutz_l1_evaluations: usize,
-    /// Number of leaf candidates eliminated by LUTz L1 bound.
-    pub lutz_l1_pruned: usize,
-
     /// Total candidate leaf vectors considered.
     pub leaf_vectors_considered: usize,
     /// Total vectors evaluated with full exact SIMD dot product.
@@ -64,10 +51,6 @@ pub struct DenseExactProof {
     /// Total vectors skipped due to tombstone or filter mask exclusion.
     pub filtered_or_tombstoned: usize,
 
-    /// Bytes of LUTz L0 quantized codes read during leaf bounding.
-    pub l0_bytes_touched: usize,
-    /// Bytes of LUTz L1 residual codes read during leaf bounding.
-    pub l1_bytes_touched: usize,
     /// Bytes of full float embeddings loaded into SIMD execution.
     pub exact_bytes_touched: usize,
 
@@ -77,44 +60,29 @@ pub struct DenseExactProof {
     pub max_remaining_upper_bound: f64,
 
     /// Formally proven $100.000\%$ globally exact flag.
-    /// `false` either means the search was aborted by a deadline or some
-    /// bookkeeping invariant was not satisfied.  Always check this alongside
-    /// `deadline_exceeded` to distinguish the two cases.
     pub globally_exact: bool,
 
     // ── Deadline telemetry ───────────────────────────────────────────────
     /// Set to `true` when the query deadline fired before the proof frontier
-    /// was fully exhausted.  Distinct from `globally_exact` so callers can
-    /// tell the difference between "proof incomplete due to budget" and any
-    /// other reason `globally_exact` might be false.
+    /// was fully exhausted.
     pub deadline_exceeded: bool,
 
-    /// Wall-clock microseconds consumed from the start of `search_with_deadline`
-    /// until the search returned.  Populated for both complete and aborted runs.
+    /// Wall-clock microseconds consumed from the start of search until return.
     pub elapsed_us: u64,
 
-    /// Estimated number of proof-frontier entries that remained in the heap
-    /// at the point of deadline abort.  Zero when the search completed normally.
-    /// Useful for diagnosing *why* the deadline fired:
-    ///   - Large value  → pathological proof geometry (isotropic distribution)
-    ///   - Small value  → CPU overload or very tight budget
+    /// Estimated number of proof-frontier entries that remained in the heap at deadline abort.
     pub frontier_nodes_remaining: usize,
 
     /// Fraction of total proof regions that were pruned without SIMD evaluation.
-    /// `pruned_regions / (pruned_regions + expanded_regions)`.
-    /// Low ratio near deadline expiry identifies isotropic / high-entropy corpora
-    /// where bounding envelopes collapse and force exhaustive traversal.
     pub region_prune_ratio: f64,
 }
 
 impl DenseExactProof {
     /// Validates the terminal funnel accounting invariant:
-    /// $$N_{\text{eligible}} \equiv N_{\text{region-pruned}} + N_{\text{L0-pruned}} + N_{\text{L1-pruned}} + N_{\text{exact}} + N_{\text{filtered}}$$
+    /// $$N_{\text{eligible}} \equiv N_{\text{region-pruned}} + N_{\text{exact}} + N_{\text{filtered}}$$
     #[inline]
     pub fn is_accounting_exact(&self) -> bool {
         let total = self.vectors_pruned_by_region
-            + self.lutz_l0_pruned
-            + self.lutz_l1_pruned
             + self.exact_evaluations
             + self.filtered_or_tombstoned;
         total == self.corpus_size
@@ -150,7 +118,6 @@ impl PartialOrd for ProofFrontierEntry {
 impl Ord for ProofFrontierEntry {
     #[inline(always)]
     fn cmp(&self, other: &Self) -> Ordering {
-        // Max-heap: highest upper bound comes first
         self.upper_bound
             .total_cmp(&other.upper_bound)
             .then_with(|| other.segment_idx.cmp(&self.segment_idx))
@@ -177,7 +144,6 @@ impl PartialOrd for Finalist {
 impl Ord for Finalist {
     #[inline(always)]
     fn cmp(&self, other: &Self) -> Ordering {
-        // Inverted min-heap: lowest score (or largest slot on tie) at peek() to be evicted first
         other
             .score
             .total_cmp(&self.score)
@@ -267,7 +233,6 @@ impl TopKAccumulator {
 pub struct SegmentProofView<'a> {
     pub tree: &'a SemanticProofTree,
     pub vectors: &'a [VectorEmbedding],
-    pub lutz_codes: Option<&'a [LutzCode]>,
     pub tombstones: Option<&'a RoaringBitmap>,
 }
 
@@ -276,10 +241,6 @@ pub struct GlobalExactProofSearch;
 
 impl GlobalExactProofSearch {
     /// Executes a global branch-and-bound exact Top-K search across multiple segment proof trees.
-    ///
-    /// `deadline` — optional `Instant` after which the frontier loop is aborted early.
-    /// When the deadline is hit, results are returned with `proof.globally_exact = false`.
-    /// Without a deadline the engine always produces a complete, verified proof.
     pub fn search(
         query_vector: &VectorEmbedding,
         k: usize,
@@ -300,17 +261,6 @@ impl GlobalExactProofSearch {
     }
 
     /// Same as [`search`] but with an explicit monotonic-clock deadline.
-    ///
-    /// The deadline is checked at every stage boundary (mutable scan, Rivero
-    /// seeding, frontier init) and then every 32 frontier pops during the
-    /// branch-and-bound loop.  Checking every 32 pops keeps clock-query
-    /// overhead well below 1% even on Windows where `Instant::now()` is
-    /// measured in ~100 ns; the maximum overshoot is bounded to ~32 region
-    /// evaluations, not 32 individual vectors.
-    ///
-    /// Returns `proof.deadline_exceeded = true` and `proof.globally_exact = false`
-    /// when aborted.  Best-effort partial results are always returned rather than
-    /// an empty set so that `hnsqr_doctor` / metrics can observe what was found.
     pub fn search_with_deadline(
         query_vector: &VectorEmbedding,
         k: usize,
@@ -330,8 +280,6 @@ impl GlobalExactProofSearch {
             + mutable_candidates.len();
         proof.corpus_size = total_corpus;
 
-        // Helper: fill elapsed + prune_ratio and return partial results.
-        // `frontier_remaining` is the number of entries still in the heap.
         macro_rules! abort_deadline {
             ($topk:expr, $frontier_remaining:expr) => {{
                 proof.deadline_exceeded = true;
@@ -349,8 +297,6 @@ impl GlobalExactProofSearch {
             }};
         }
 
-        // Inline deadline check used at stage boundaries where a single
-        // `Instant::now()` is acceptable (called at most a handful of times).
         macro_rules! check_deadline_stage {
             ($topk:expr) => {
                 if deadline.is_some_and(|d| std::time::Instant::now() >= d) {
@@ -365,7 +311,6 @@ impl GlobalExactProofSearch {
         }
 
         let query = ProofQuery::new(query_vector.complex_data());
-        let query_lut = LutzQueryTable::build(query_vector);
         let mut topk = TopKAccumulator::new(k);
         let mut evaluated_slots = RoaringBitmap::new();
 
@@ -402,7 +347,7 @@ impl GlobalExactProofSearch {
                         break;
                     }
                     evaluated_slots.insert(slot);
-                    let score = (query_vector.dot_product_complex(&seg.vectors[slot as usize])).re;
+                    let score = query_vector.dot_product_real(&seg.vectors[slot as usize]);
                     proof.rivero_seed_exact_evaluations += 1;
                     proof.exact_evaluations += 1;
                     proof.exact_bytes_touched += seg.tree.dimension * 8;
@@ -411,81 +356,27 @@ impl GlobalExactProofSearch {
                 }
             }
         }
-        // ── Stage 2.5: Fast Flat LUTz Sieve for Isotropic / Diffuse Segments ───
+
+        // ── Stage 2.5: Non-spatially prunable segments (Exhaustive Scan) ───
         for seg in segments {
             if !seg.tree.is_spatially_prunable() {
-                if let Some(lutz_codes) = seg.lutz_codes {
-                    let n_vecs = seg.vectors.len();
-                    proof.leaf_vectors_considered += n_vecs;
-                    proof.l0_bytes_touched += n_vecs * std::mem::size_of::<LutzCode>();
-
-                    for slot in 0..n_vecs as NodeIndex {
-                        if evaluated_slots.contains(slot) {
-                            continue;
-                        }
-                        if seg.tombstones.is_some_and(|t| t.contains(slot))
-                            || filter_mask.is_some_and(|m| !m.contains(slot))
-                        {
-                            evaluated_slots.insert(slot);
-                            proof.filtered_or_tombstoned += 1;
-                            continue;
-                        }
-
-                        let code = &lutz_codes[slot as usize];
-                        proof.lutz_l0_evaluations += 1;
-                        let approx0 = query_lut.score_candidate_l0(code);
-                        let res0 = query_lut.blockwise_residual_l0(code);
-                        let ub0 = approx0 + res0 + 1e-7;
-
-                        let curr_tau = topk.kth_score();
-                        if topk.is_full() && ub0 < curr_tau {
-                            proof.lutz_l0_pruned += 1;
-                            evaluated_slots.insert(slot);
-                            continue;
-                        }
-
-                        // L1 Progressive Refinement
-                        if code.codes_l1.is_some() {
-                            let res1 = query_lut.blockwise_residual_l1(code) as f64;
-                            let ub1 = (approx0 as f64) + res1 + 1e-7;
-                            proof.lutz_l1_evaluations += 1;
-                            proof.l1_bytes_touched +=
-                                code.codes_l1.as_deref().map_or(0, |c| c.len() * 2);
-
-                            if topk.is_full() && ub1 < curr_tau as f64 {
-                                proof.lutz_l1_pruned += 1;
-                                evaluated_slots.insert(slot);
-                                continue;
-                            }
-                        }
-
-                        // Escalates to exact SIMD evaluation
-                        let v = &seg.vectors[slot as usize];
-                        let score = (query_vector.dot_product_complex(v)).re;
-                        topk.offer(slot, score);
-                        proof.exact_evaluations += 1;
-                        proof.exact_bytes_touched += seg.tree.dimension * 8;
-                        evaluated_slots.insert(slot);
+                for slot in 0..seg.vectors.len() as NodeIndex {
+                    if evaluated_slots.contains(slot) {
+                        continue;
                     }
-                } else {
-                    for slot in 0..seg.vectors.len() as NodeIndex {
-                        if evaluated_slots.contains(slot) {
-                            continue;
-                        }
-                        if seg.tombstones.is_some_and(|t| t.contains(slot))
-                            || filter_mask.is_some_and(|m| !m.contains(slot))
-                        {
-                            evaluated_slots.insert(slot);
-                            proof.filtered_or_tombstoned += 1;
-                            continue;
-                        }
-                        let v = &seg.vectors[slot as usize];
-                        let score = (query_vector.dot_product_complex(v)).re;
-                        topk.offer(slot, score);
-                        proof.exact_evaluations += 1;
-                        proof.exact_bytes_touched += seg.tree.dimension * 8;
+                    if seg.tombstones.is_some_and(|t| t.contains(slot))
+                        || filter_mask.is_some_and(|m| !m.contains(slot))
+                    {
                         evaluated_slots.insert(slot);
+                        proof.filtered_or_tombstoned += 1;
+                        continue;
                     }
+                    let v = &seg.vectors[slot as usize];
+                    let score = query_vector.dot_product_real(v);
+                    topk.offer(slot, score);
+                    proof.exact_evaluations += 1;
+                    proof.exact_bytes_touched += seg.tree.dimension * 8;
+                    evaluated_slots.insert(slot);
                 }
             }
         }
@@ -524,16 +415,11 @@ impl GlobalExactProofSearch {
         check_deadline_stage!(topk);
 
         // ── Stage 4: Best-bound branch-and-bound ─────────────────────────
-        // Clock is queried every DEADLINE_CHECK_INTERVAL pops to amortise
-        // `Instant::now()` cost on platforms where it is non-trivial (Windows).
-        // At 32-region granularity the maximum overshoot is bounded to one
-        // leaf-batch, never the whole corpus.
         const DEADLINE_CHECK_INTERVAL: usize = 32;
 
         while let Some(entry) = frontier.pop() {
             proof.proof_regions_popped += 1;
 
-            // Amortised deadline check: once every 32 frontier pops.
             if proof.proof_regions_popped % DEADLINE_CHECK_INTERVAL == 0 {
                 if deadline.is_some_and(|d| std::time::Instant::now() >= d) {
                     abort_deadline!(topk, frontier.len());
@@ -541,15 +427,6 @@ impl GlobalExactProofSearch {
             }
 
             let tau = topk.kth_score() as f64;
-
-            let total_regions = proof.proof_regions_pruned + proof.proof_regions_expanded;
-            let _region_prune_ratio = if total_regions > 0 {
-                proof.proof_regions_pruned as f64 / total_regions as f64
-            } else {
-                0.0
-            };
-
-            // Strict admissible upper bound pruning for exact certification
             let effective_ub = entry.upper_bound;
 
             if topk.is_full() && effective_ub < tau {
@@ -600,7 +477,6 @@ impl GlobalExactProofSearch {
                     }
                 }
             } else {
-                // Leaf: B3 Progressive LUTz Filtering Cascade
                 let mut candidate_slots = Vec::with_capacity(node.member_len as usize);
                 for &slot in seg.tree.members(node) {
                     if evaluated_slots.contains(slot) {
@@ -616,76 +492,18 @@ impl GlobalExactProofSearch {
                     candidate_slots.push(slot);
                 }
 
-                if candidate_slots.is_empty() {
-                    continue;
-                }
-
-                if let Some(lutz_codes) = seg.lutz_codes {
-                    let mut scored_cands: Vec<(NodeIndex, f32)> = candidate_slots
-                        .into_iter()
-                        .map(|s| {
-                            let code = &lutz_codes[s as usize];
-                            let approx = query_lut.score_candidate_l0(code);
-                            (s, approx)
-                        })
-                        .collect();
-                    scored_cands.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
-
-                    for (slot, approx) in scored_cands {
-                        proof.leaf_vectors_considered += 1;
-                        let curr_tau = topk.kth_score() as f64;
-                        let code = &lutz_codes[slot as usize];
-
-                        // B3.1: LUTz L0
-                        let res0 = query_lut.blockwise_residual_l0(code) as f64;
-                        let ub0 = (approx as f64) + res0 + 1e-7;
-                        proof.lutz_l0_evaluations += 1;
-                        proof.l0_bytes_touched += code.codes_l0.len() + code.scales_l0.len();
-
-                        if topk.is_full() && ub0 < curr_tau {
-                            proof.lutz_l0_pruned += 1;
-                            evaluated_slots.insert(slot);
-                            continue;
-                        }
-
-                        // B3.2: LUTz L1
-                        if code.codes_l1.is_some() {
-                            let res1 = query_lut.blockwise_residual_l1(code) as f64;
-                            let ub1 = (approx as f64) + res1 + 1e-7;
-                            proof.lutz_l1_evaluations += 1;
-                            proof.l1_bytes_touched +=
-                                code.codes_l1.as_deref().map_or(0, |c| c.len() * 2);
-
-                            if topk.is_full() && ub1 < curr_tau {
-                                proof.lutz_l1_pruned += 1;
-                                evaluated_slots.insert(slot);
-                                continue;
-                            }
-                        }
-
-                        // B3.3: Exact SIMD
-                        let v = &seg.vectors[slot as usize];
-                        let score = (query_vector.dot_product_complex(v)).re;
-                        topk.offer(slot, score);
-                        proof.exact_evaluations += 1;
-                        proof.exact_bytes_touched += seg.tree.dimension * 8;
-                        evaluated_slots.insert(slot);
-                    }
-                } else {
-                    for slot in candidate_slots {
-                        proof.leaf_vectors_considered += 1;
-                        let v = &seg.vectors[slot as usize];
-                        let score = (query_vector.dot_product_complex(v)).re;
-                        topk.offer(slot, score);
-                        proof.exact_evaluations += 1;
-                        proof.exact_bytes_touched += seg.tree.dimension * 8;
-                        evaluated_slots.insert(slot);
-                    }
+                for slot in candidate_slots {
+                    proof.leaf_vectors_considered += 1;
+                    let v = &seg.vectors[slot as usize];
+                    let score = query_vector.dot_product_real(v);
+                    topk.offer(slot, score);
+                    proof.exact_evaluations += 1;
+                    proof.exact_bytes_touched += seg.tree.dimension * 8;
+                    evaluated_slots.insert(slot);
                 }
             }
         }
 
-        // Normal completion — proof is complete.
         proof.kth_score = topk.kth_score();
         proof.globally_exact = true;
         proof.elapsed_us = t_start.elapsed().as_micros() as u64;
@@ -730,7 +548,6 @@ impl GlobalPacProofSearch {
         }
 
         let query = ProofQuery::new(query_vector.complex_data());
-        let query_lut = LutzQueryTable::build(query_vector);
         let mut topk = TopKAccumulator::new(k);
         let mut evaluated_slots = RoaringBitmap::new();
 
@@ -765,7 +582,7 @@ impl GlobalPacProofSearch {
                         break;
                     }
                     evaluated_slots.insert(slot);
-                    let score = (query_vector.dot_product_complex(&seg.vectors[slot as usize])).re;
+                    let score = query_vector.dot_product_real(&seg.vectors[slot as usize]);
                     proof.rivero_seed_exact_evaluations += 1;
                     proof.exact_evaluations += 1;
                     proof.exact_bytes_touched += seg.tree.dimension * 8;
@@ -867,68 +684,14 @@ impl GlobalPacProofSearch {
                     candidate_slots.push(slot);
                 }
 
-                if candidate_slots.is_empty() {
-                    continue;
-                }
-
-                if let Some(lutz_codes) = seg.lutz_codes {
-                    let mut scored_cands: Vec<(NodeIndex, f32)> = candidate_slots
-                        .into_iter()
-                        .map(|s| {
-                            let code = &lutz_codes[s as usize];
-                            let approx = query_lut.score_candidate_l0(code);
-                            (s, approx)
-                        })
-                        .collect();
-                    scored_cands.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
-
-                    for (slot, approx) in scored_cands {
-                        proof.leaf_vectors_considered += 1;
-                        let curr_tau = topk.kth_score() as f64;
-                        let code = &lutz_codes[slot as usize];
-
-                        let res0 = query_lut.blockwise_residual_l0(code) as f64;
-                        let ub0 = (approx as f64) + res0 + 1e-7;
-                        proof.lutz_l0_evaluations += 1;
-                        proof.l0_bytes_touched += code.codes_l0.len() + code.scales_l0.len();
-
-                        if topk.is_full() && (ub0 * eps_factor) < curr_tau {
-                            proof.lutz_l0_pruned += 1;
-                            evaluated_slots.insert(slot);
-                            continue;
-                        }
-
-                        if code.codes_l1.is_some() {
-                            let res1 = query_lut.blockwise_residual_l1(code) as f64;
-                            let ub1 = (approx as f64) + res1 + 1e-7;
-                            proof.lutz_l1_evaluations += 1;
-                            proof.l1_bytes_touched +=
-                                code.codes_l1.as_deref().map_or(0, |c| c.len() * 2);
-
-                            if topk.is_full() && (ub1 * eps_factor) < curr_tau {
-                                proof.lutz_l1_pruned += 1;
-                                evaluated_slots.insert(slot);
-                                continue;
-                            }
-                        }
-
-                        let v = &seg.vectors[slot as usize];
-                        let score = (query_vector.dot_product_complex(v)).re;
-                        topk.offer(slot, score);
-                        proof.exact_evaluations += 1;
-                        proof.exact_bytes_touched += seg.tree.dimension * 8;
-                        evaluated_slots.insert(slot);
-                    }
-                } else {
-                    for slot in candidate_slots {
-                        proof.leaf_vectors_considered += 1;
-                        let v = &seg.vectors[slot as usize];
-                        let score = (query_vector.dot_product_complex(v)).re;
-                        topk.offer(slot, score);
-                        proof.exact_evaluations += 1;
-                        proof.exact_bytes_touched += seg.tree.dimension * 8;
-                        evaluated_slots.insert(slot);
-                    }
+                for slot in candidate_slots {
+                    proof.leaf_vectors_considered += 1;
+                    let v = &seg.vectors[slot as usize];
+                    let score = query_vector.dot_product_real(v);
+                    topk.offer(slot, score);
+                    proof.exact_evaluations += 1;
+                    proof.exact_bytes_touched += seg.tree.dimension * 8;
+                    evaluated_slots.insert(slot);
                 }
             }
         }

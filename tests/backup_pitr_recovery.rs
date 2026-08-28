@@ -73,7 +73,6 @@ fn test_full_and_incremental_backup_with_pitr() {
         None,
         None,
         None,
-        None,
     )
     .unwrap();
 
@@ -177,7 +176,6 @@ fn encrypted_full_backup_authenticates_before_restore() {
         2,
         std::slice::from_ref(&vector),
         &["encrypted-doc".to_string()],
-        None,
         None,
         None,
         None,

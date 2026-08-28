@@ -56,7 +56,6 @@ use hnsqr::consensus::read_index::{LinearizableReadMode, ReadIndexConfirmation, 
 use hnsqr::consensus::storage::{
     DurableRaftStorage, RaftStorage, decode_framed_record, encode_framed_record,
 };
-use hnsqr::proof::lutz::SemanticRerankPlan;
 use hnsqr::storage::segment::SegmentedEngine;
 use hnsqr::{DistributedCoordinator, VectorEmbedding};
 
@@ -884,7 +883,7 @@ async fn p0_20_process_chaos_full_history_all_hard_invariants() {
     // ── Step 15-21: Oracle — Certified Recall@K = 100.0000% ──────────────────
     let mut failed = 0usize;
     for (key, vec) in &acknowledged {
-        let results = rec_engine1.search(vec, 1, SemanticRerankPlan::ExactSimd);
+        let results = rec_engine1.search(vec, 1);
         if results.is_empty() || results[0].0.as_ref() != key {
             failed += 1;
             eprintln!(

@@ -26,7 +26,7 @@ use hnsqr::{NodeIndex, SimilarityScore, VectorEmbedding};
 
 #[inline]
 fn cosine_sim(q: &VectorEmbedding, doc: &VectorEmbedding) -> f32 {
-    (q.dot_product_complex(doc)).re
+    q.dot_product_real(doc)
 }
 
 fn brute_force_exact(
@@ -230,7 +230,7 @@ fn test_query_bound_oracle_soundness() {
             let ub = tree.upper_bound(&pq, node_idx as u32);
 
             for &slot in tree.members(node) {
-                let exact_score = (query.dot_product_complex(&corpus[slot as usize])).re as f64;
+                let exact_score = query.dot_product_real(&corpus[slot as usize]) as f64;
                 assert!(
                     exact_score <= ub + 1e-6,
                     "Upper bound soundess violation: exact={exact_score} > ub={ub} for slot {slot}"
@@ -270,7 +270,6 @@ fn test_proof_tree_exact_matches_exhaustive_exact() {
     let seg_view = SegmentProofView {
         tree: &tree,
         vectors: &corpus,
-        lutz_codes: None,
         tombstones: None,
     };
 
@@ -318,7 +317,6 @@ fn test_rivero_zero_seed_test() {
     let seg_view = SegmentProofView {
         tree: &tree,
         vectors: &corpus,
-        lutz_codes: None,
         tombstones: None,
     };
 
@@ -375,7 +373,6 @@ fn test_deliberately_bad_seed_test() {
     let seg_view = SegmentProofView {
         tree: &tree,
         vectors: &corpus,
-        lutz_codes: None,
         tombstones: None,
     };
 
@@ -432,7 +429,6 @@ fn test_tombstone_oracle_exactness() {
     let seg_view = SegmentProofView {
         tree: &tree,
         vectors: &corpus,
-        lutz_codes: None,
         tombstones: Some(&tombstones),
     };
 
@@ -496,7 +492,7 @@ fn test_multi_segment_and_mutable_coordination() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 10. ISOTROPIC MANIFOLD CLIFF ELIMINATION & FLAT LUTZ SIEVE EXACTNESS
+// 10. ISOTROPIC MANIFOLD CLIFF ELIMINATION & EXACTNESS
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[test]
@@ -561,15 +557,9 @@ fn test_isotropic_manifold_cliff_elimination_and_exactness() {
     )
     .into_normalized();
 
-    let lutz_codes: Vec<hnsqr::proof::LutzCode> = isotropic_corpus
-        .iter()
-        .map(|v| hnsqr::proof::LutzCode::encode(v, true))
-        .collect();
-
     let seg_view = SegmentProofView {
         tree: &iso_tree,
         vectors: &isotropic_corpus,
-        lutz_codes: Some(&lutz_codes),
         tombstones: None,
     };
 

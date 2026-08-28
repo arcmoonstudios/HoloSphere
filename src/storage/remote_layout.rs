@@ -95,7 +95,6 @@ pub struct RemoteAmplificationMetrics {
     pub total_range_requests: u64,
     pub total_fetched_bytes: u64,
     pub total_useful_bytes: u64,
-    pub lutz_eliminations_prior_to_fetch: u64,
 }
 
 impl RemoteAmplificationMetrics {

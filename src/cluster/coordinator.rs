@@ -14,7 +14,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use crate::cluster::state_machine::{DataMutation, ShardStateMachine};
 use crate::consensus::raft::RaftCluster;
 use crate::consensus::read_index::ReadConsistency;
-use crate::proof::lutz::SemanticRerankPlan;
 use crate::service::ReadSnapshot;
 use crate::storage::segment::SegmentedEngine;
 use crate::{HNSQRError, HNSQRResult, NodeId, SimilarityScore, VectorEmbedding};
@@ -429,7 +428,6 @@ impl DistributedCoordinator {
         snapshot: &crate::service::PinnedReadSnapshot,
         query: &VectorEmbedding,
         k: usize,
-        rerank_plan: SemanticRerankPlan,
     ) -> Vec<(Arc<str>, SimilarityScore)> {
         if k == 0 {
             return Vec::new();
@@ -449,14 +447,13 @@ impl DistributedCoordinator {
                 {
                     shard
                         .engine
-                        .search_pinned(immutables, active, query, k, rerank_plan)
+                        .search_pinned(immutables, active, query, k)
                 } else {
                     shard.engine.search_pinned(
                         &snapshot.immutable_segments,
                         &snapshot.active_segment,
                         query,
                         k,
-                        rerank_plan,
                     )
                 }
             })
@@ -472,7 +469,6 @@ impl DistributedCoordinator {
         &self,
         query: &VectorEmbedding,
         k: usize,
-        rerank_plan: SemanticRerankPlan,
     ) -> Vec<(Arc<str>, SimilarityScore)> {
         if k == 0 {
             return Vec::new();
@@ -485,7 +481,7 @@ impl DistributedCoordinator {
 
         let mut global_candidates = Vec::with_capacity(shards.len() * k);
         for shard in shards {
-            let shard_topk = shard.engine.search(query, k, rerank_plan);
+            let shard_topk = shard.engine.search(query, k);
             global_candidates.extend(shard_topk);
         }
 

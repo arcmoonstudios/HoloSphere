@@ -121,11 +121,6 @@ name = "infrastructure_overhead_benchmark"
 harness = false
 
 [[bench]]
-name = "lutz_certification_benchmark"
-harness = false
-test = false
-
-[[bench]]
 name = "metric_semantics"
 harness = false
 test = false

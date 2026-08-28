@@ -4,7 +4,7 @@
 //!▫~•◦-------------------------------------------------------------------‣
 //!
 //! Provides a 64-way striped concurrent hash map eliminating coarse write lock
-//! serialization on hot index lookups (`id_to_index`, `lutz_codes`).
+//! serialization on hot index lookups (`id_to_index`, `metadata`).
 /*▫~•◦------------------------------------------------------------------------------------‣
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣

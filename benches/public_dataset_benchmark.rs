@@ -117,9 +117,9 @@ fn compute_brute_force_ground_truth(
     let mut scored: Vec<(usize, f32)> = corpus
         .iter()
         .enumerate()
-        .map(|(idx, v)| (idx, v.dot_product_complex(query).re))
+        .map(|(idx, v)| (idx, v.dot_product_real(query)))
         .collect();
-    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    scored.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     scored.truncate(k);
     scored
 }

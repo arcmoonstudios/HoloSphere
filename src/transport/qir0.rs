@@ -357,7 +357,6 @@ impl<S: HNSQRService + 'static> HNSQRServer<S> {
                                 &ctx,
                                 &query,
                                 k,
-                                crate::proof::lutz::SemanticRerankPlan::Auto,
                             ) {
                                 Ok(response) => {
                                     let header_pos = write_buf.len();
@@ -448,7 +447,6 @@ impl<S: HNSQRService + 'static> HNSQRServer<S> {
                                     &ctx,
                                     q,
                                     k,
-                                    crate::proof::lutz::SemanticRerankPlan::Auto,
                                 ) {
                                     Ok(res) => batch_results.push(res),
                                     Err(e) => {

@@ -31,7 +31,6 @@ use hnsqr::cluster::state_machine::ShardStateMachine;
 use hnsqr::consensus::raft::{RaftCluster, RaftNode};
 use hnsqr::consensus::read_index::LinearizableReadMode;
 use hnsqr::consensus::storage::{DurableRaftStorage, RaftStorage};
-use hnsqr::proof::lutz::SemanticRerankPlan;
 use hnsqr::service::{ClusterService, MutationService, RequestContext, UpsertRequest};
 use hnsqr::storage::segment::SegmentedEngine;
 
@@ -343,7 +342,7 @@ async fn test_phase5_2_canonical_multi_process_chaos_and_linearizability() {
 
     // Exact recall test on recovered state machine
     for (k, expected_vec) in &sequential_oracle {
-        let results = rec_engine1.search(expected_vec, 1, SemanticRerankPlan::ExactSimd);
+        let results = rec_engine1.search(expected_vec, 1);
         if !results.is_empty() {
             assert_eq!(
                 results[0].0.as_ref(),

@@ -20,7 +20,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use hnsqr::proof::{
-    LutzCode, ProofBenchmarkArtifact, SemanticProofTree, proof_benchmark_artifact_filename,
+    ProofBenchmarkArtifact, SemanticProofTree, proof_benchmark_artifact_filename,
 };
 use hnsqr::rivero::{RiveroBulkBuilder, RiveroProfile, VectorGeometry};
 use hnsqr::vector::folding::ComplexWeaver;
@@ -197,11 +197,7 @@ fn main() {
         }
         let slots = (0..vectors as u32).collect::<Vec<_>>();
         let tree = SemanticProofTree::build(&corpus, &slots, loaded_dim.div_ceil(2));
-        let lutz_codes = corpus
-            .iter()
-            .map(|vector| LutzCode::encode(vector, true))
-            .collect();
-        ProofBenchmarkArtifact::new(loaded_dim, tree, lutz_codes)
+        ProofBenchmarkArtifact::new(loaded_dim, tree)
             .expect("proof benchmark artifact invariant")
             .save(&destination)
             .expect("proof benchmark artifact write failed");

@@ -2,7 +2,6 @@ mod common;
 
 use std::time::Instant;
 
-use hnsqr::proof::lutz::SemanticRerankPlan;
 use hnsqr::storage::segment::SegmentedEngine;
 use hnsqr::{NodeIndex, SimilarityScore};
 
@@ -56,7 +55,7 @@ fn evaluate_ann_benchmarks(real_dim: usize, complex_dim: usize, n: usize, num_qu
 
     for (q_idx, query) in folded_queries.iter().enumerate() {
         let t0 = Instant::now();
-        let topk = engine.search(query, k, SemanticRerankPlan::ExactSimd);
+        let topk = engine.search(query, k);
         latencies.push(t0.elapsed().as_secs_f64() * 1_000_000.0);
 
         let gt = &ground_truth[q_idx];

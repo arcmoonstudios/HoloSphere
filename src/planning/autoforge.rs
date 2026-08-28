@@ -130,7 +130,6 @@ pub struct DerivedPhysicalConfig {
     pub rivero_profile: String,
     pub proof_tree_fanout: usize,
     pub proof_tree_leaf_capacity: usize,
-    pub lutz_code_bits: usize,
     pub worker_threads: usize,
     pub tier0_cache_mb: usize,
     pub tier1_cache_mb: usize,
@@ -155,7 +154,6 @@ impl AutoForge {
 
         let proof_tree_fanout = if profile.simd_gflops > 200.0 { 16 } else { 8 };
         let proof_tree_leaf_capacity = 64;
-        let lutz_code_bits = if is_certified { 8 } else { 4 };
         let worker_threads = num_cpus::get().max(4);
 
         let total_mem_mb = intent.memory_budget_gb * 1024;
@@ -175,7 +173,6 @@ impl AutoForge {
             rivero_profile,
             proof_tree_fanout,
             proof_tree_leaf_capacity,
-            lutz_code_bits,
             worker_threads,
             tier0_cache_mb,
             tier1_cache_mb,
@@ -193,8 +190,8 @@ impl AutoForge {
     ) -> Vec<String> {
         vec![
             format!(
-                "• Contract '{}': Rivero Profile '{}' with {}-bit LUTz bounds",
-                intent.contract, derived.rivero_profile, derived.lutz_code_bits
+                "• Contract '{}': Rivero Profile '{}'",
+                intent.contract, derived.rivero_profile
             ),
             format!(
                 "• Target p99 {}ms: ProofTree fanout {} with leaf cap {} for fast exact pruning",

@@ -1247,7 +1247,6 @@ mod tests {
                 .search(
                     &VectorEmbedding::from_reals(&[0.1; 8]).into_normalized(),
                     1,
-                    crate::proof::lutz::SemanticRerankPlan::ExactSimd
                 )
                 .len(),
             1
@@ -1314,7 +1313,6 @@ mod tests {
         let results = engine.search(
             &VectorEmbedding::from_reals(&[0.5; 8]).into_normalized(),
             1,
-            crate::proof::lutz::SemanticRerankPlan::ExactSimd,
         );
         assert!(
             results.is_empty(),
@@ -1440,7 +1438,6 @@ mod tests {
         let v_res = v_snap.search(
             &VectorEmbedding::from_reals(&[0.9; 8]).into_normalized(),
             10,
-            crate::proof::lutz::SemanticRerankPlan::ExactSimd,
         );
         assert!(
             !v_res.iter().any(|(k, _)| k.as_ref() == "v_2"),
@@ -1536,7 +1533,6 @@ mod tests {
                 .search(
                     &valid_vec,
                     1,
-                    crate::proof::lutz::SemanticRerankPlan::ExactSimd
                 )
                 .is_empty()
         );

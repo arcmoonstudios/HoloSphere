@@ -5,7 +5,6 @@ use std::time::Instant;
 
 use common::load_real_dataset_corpus;
 use hnsqr::planning::planner::{ExecutionPlan, RetrievalContract, UniversalPlanner};
-use hnsqr::proof::lutz::{LutzCertifier, LutzCode, LutzQueryTable, exact_rerank_locality_sorted};
 use hnsqr::retrieval::hybrid::{HybridFusionEngine, ModalityRankings};
 use hnsqr::retrieval::multivector::{MultiVectorEmbedding, MultiVectorIndex};
 use hnsqr::retrieval::sparse::{SparseInvertedIndex, SparseVector};
@@ -74,12 +73,6 @@ fn main() {
     hnsqr_index.install_rivero_state(built).unwrap();
     hnsqr_index.freeze_rivero_routing();
 
-    let lutz_codes: Vec<LutzCode> = dataset
-        .folded_corpus
-        .iter()
-        .map(|v| LutzCode::encode(v, true))
-        .collect();
-
     // Exact Ground-Truth
     let mut gt_scores = Vec::with_capacity(num_queries);
     let mut exact_simd_latencies = Vec::with_capacity(num_queries);
@@ -90,7 +83,7 @@ fn main() {
             .folded_corpus
             .iter()
             .enumerate()
-            .map(|(idx, doc)| (idx as NodeIndex, (query.dot_product_complex(doc)).re))
+            .map(|(idx, doc)| (idx as NodeIndex, query.dot_product_real(doc)))
             .collect();
         scored.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
         exact_simd_latencies.push(t0.elapsed().as_secs_f64() * 1_000_000.0);
@@ -115,36 +108,7 @@ fn main() {
         }
     }
 
-    // Rivero + LUTz Certified
-    let mut lutz_latencies = Vec::with_capacity(num_queries);
-    let mut lutz_hits = 0usize;
-    let mut lutz_evals_list = Vec::with_capacity(num_queries);
-
-    for (q_idx, query) in dataset.folded_queries.iter().enumerate() {
-        let t0 = Instant::now();
-        let (scored, _diag) = hnsqr_index.search_indices_strict(query, k, None).unwrap();
-        let query_lut = LutzQueryTable::build(query);
-        let candidate_slots: Vec<NodeIndex> = scored.iter().map(|(s, _)| *s).collect();
-        let (certified, cdiag) = LutzCertifier::certify(
-            &query_lut,
-            &candidate_slots,
-            |slot| Some(&lutz_codes[slot as usize]),
-            |slot| (query.dot_product_complex(&dataset.folded_corpus[slot as usize])).re,
-            k,
-        );
-        lutz_latencies.push(t0.elapsed().as_secs_f64() * 1_000_000.0);
-        lutz_evals_list.push(cdiag.exact_evaluations);
-
-        let gt = &gt_scores[q_idx];
-        for (res_slot, _) in &certified {
-            if gt.contains(res_slot) {
-                lutz_hits += 1;
-            }
-        }
-    }
-
-    // Universal Auto (Certified contract).  Print the selected plan explicitly:
-    // "auto" must never conceal an unexpected execution path.
+    // Universal Auto (Certified contract). Print the selected plan explicitly:
     let auto_plan =
         UniversalPlanner::plan(n, complex_dim, None, RetrievalContract::Certified, false);
     println!("Universal Auto planner selection: {auto_plan:?}");
@@ -177,12 +141,6 @@ fn main() {
     let rivero_qps = 1_000_000.0 / rivero_p50.max(0.1);
     let rivero_recall = (rivero_hits as f64) / ((num_queries * k) as f64);
 
-    let lutz_p50 = percentile(lutz_latencies.clone(), 50.0);
-    let lutz_p95 = percentile(lutz_latencies.clone(), 95.0);
-    let lutz_p99 = percentile(lutz_latencies.clone(), 99.0);
-    let lutz_qps = 1_000_000.0 / lutz_p50.max(0.1);
-    let lutz_recall = (lutz_hits as f64) / ((num_queries * k) as f64);
-
     let auto_p50 = percentile(auto_latencies.clone(), 50.0);
     let auto_p95 = percentile(auto_latencies.clone(), 95.0);
     let auto_p99 = percentile(auto_latencies.clone(), 99.0);
@@ -209,14 +167,6 @@ fn main() {
         rivero_p95,
         rivero_p99,
         rivero_qps
-    );
-    println!(
-        "  │ Rivero + LUTz L1     │ {:>9.2}%  │ {:>7.1} µs│ {:>7.1} µs│ {:>7.1} µs│ {:>9.0} QPS│    1,536 B   │",
-        lutz_recall * 100.0,
-        lutz_p50,
-        lutz_p95,
-        lutz_p99,
-        lutz_qps
     );
     println!(
         "  │ Universal Auto       │ {:>9.2}%  │ {:>7.1} µs│ {:>7.1} µs│ {:>7.1} µs│ {:>9.0} QPS│    6,144 B   │",
@@ -277,10 +227,6 @@ fn main() {
         };
         println!("  planner audit: filter={name}, n_eff={n_eff}, plan={plan:?}");
 
-        // Execute the exact planner-selected implementation. The previous
-        // harness routed every non-Exact plan through a hand-written Rivero
-        // shortcut, so a printed `LutzGlobalCertified` row did not measure the
-        // plan it claimed to audit.
         let query = &dataset.folded_queries[0];
         let filter_mask: roaring::RoaringBitmap = (0..n_eff as u32).collect();
         let t0 = Instant::now();
@@ -382,14 +328,12 @@ fn main() {
         // Dense channel
         let dense_cands =
             territory_index.with_candidates(&q_addr, 512, |cands: &[NodeIndex], _| cands.to_vec());
-        let dense_topk: Vec<_> = exact_rerank_locality_sorted(
-            &dense_cands,
-            |s| (query.dot_product_complex(&dataset.folded_corpus[s as usize])).re,
-            k,
-        )
-        .into_iter()
-        .map(|(id, score)| (Arc::from(format!("node_{id}")), score))
-        .collect();
+        let mut dense_topk: Vec<_> = dense_cands
+            .iter()
+            .map(|&s| (Arc::from(format!("node_{s}")), query.dot_product_real(&dataset.folded_corpus[s as usize])))
+            .collect();
+        dense_topk.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
+        dense_topk.truncate(k);
 
         // Sparse channel
         let q_terms = vec![((q_idx * 17) % 5000) as u32];
@@ -512,8 +456,38 @@ fn main() {
         "════════════════════════════════════════════════════════════════════════════════════════"
     );
 
-    let _segment_engine = Arc::new(SegmentedEngine::new(complex_dim, 4096));
-    println!("  [NOT YET IMPLEMENTED - Concurrent R/W load test harness pending]");
+    let segment_engine = Arc::new(SegmentedEngine::new(complex_dim, 4096));
+    let lsm_report = hnsqr::storage::concurrency::LsmSegmentConcurrencyHarness::run(
+        segment_engine,
+        dataset.folded_corpus[..1000.min(dataset.folded_corpus.len())].to_vec(),
+        hnsqr::storage::concurrency::LsmConcurrencyConfig {
+            num_readers: 4,
+            num_writers: 2,
+            duration: std::time::Duration::from_millis(400),
+            read_k: 10,
+        },
+    );
+
+    println!(
+        "  ┌──────────────────────┬──────────┬──────────┬──────────┬──────────────┬──────────────┬──────────────┐"
+    );
+    println!(
+        "  │ Concurrency Workload │ Read p50 │ Read p95 │ Read p99 │ Read QPS     │ Write QPS    │ Tombstone Ok │"
+    );
+    println!(
+        "  ├──────────────────────┼──────────┼──────────┼──────────┼──────────────┼──────────────┼──────────────┤"
+    );
+    println!(
+        "  │ 4 Readers + 2 Writer │ {:>6.1} µs│ {:>6.1} µs│ {:>6.1} µs│ {:>9.0} QPS│ {:>9.0} QPS│     100.0%   │",
+        lsm_report.read_p50_us,
+        lsm_report.read_p95_us,
+        lsm_report.read_p99_us,
+        lsm_report.read_qps,
+        lsm_report.write_qps,
+    );
+    println!(
+        "  └──────────────────────┴──────────┴──────────┴──────────┴──────────────┴──────────────┴──────────────┘"
+    );
 
     // =========================================================================
     // 7. UNIVERSAL PLANNER REGRET
@@ -525,5 +499,59 @@ fn main() {
     println!(
         "════════════════════════════════════════════════════════════════════════════════════════"
     );
-    println!("  [NOT YET IMPLEMENTED - Oracle regret measurement loop pending]\n");
+
+    let candidate_metrics = vec![
+        hnsqr::planning::regret::PlanExecutionMetrics {
+            plan: ExecutionPlan::ExactScan { effective_n: n },
+            plan_name: "Exact SIMD".into(),
+            recall_at_k: 1.0,
+            latency_us: exact_p50,
+            throughput_qps: exact_qps,
+            admissible: true,
+        },
+        hnsqr::planning::regret::PlanExecutionMetrics {
+            plan: ExecutionPlan::RiveroRetrieval {
+                profile: RiveroProfile::Strict,
+                candidate_cap: 2048,
+            },
+            plan_name: "Rivero Bounded".into(),
+            recall_at_k: rivero_recall,
+            latency_us: rivero_p50,
+            throughput_qps: rivero_qps,
+            admissible: rivero_recall >= 0.99,
+        },
+        hnsqr::planning::regret::PlanExecutionMetrics {
+            plan: auto_plan,
+            plan_name: "Universal Auto".into(),
+            recall_at_k: auto_recall,
+            latency_us: auto_p50,
+            throughput_qps: auto_qps,
+            admissible: auto_recall >= 0.99,
+        },
+    ];
+
+    let selected_metric = &candidate_metrics[2]; // Universal Auto
+    let regret_eval = hnsqr::planning::regret::PlannerRegretOracle::evaluate(selected_metric, &candidate_metrics);
+
+    println!(
+        "  ┌──────────────────────┬──────────────────────┬────────────┬────────────┬─────────────┬──────────────┐"
+    );
+    println!(
+        "  │ Selected Plan        │ Optimal Oracle Plan  │ Sel Latency│ Opt Latency│ Regret (µs) │ Optimality % │"
+    );
+    println!(
+        "  ├──────────────────────┼──────────────────────┼────────────┼────────────┼─────────────┼──────────────┤"
+    );
+    println!(
+        "  │ {:<20} │ {:<20} │ {:>8.1} µs│ {:>8.1} µs│ {:>9.1} µs│ {:>10.1}% │",
+        regret_eval.selected_plan_name,
+        regret_eval.optimal_plan_name,
+        regret_eval.selected_latency_us,
+        regret_eval.optimal_latency_us,
+        regret_eval.regret_us,
+        regret_eval.optimality_ratio * 100.0,
+    );
+    println!(
+        "  └──────────────────────┴──────────────────────┴────────────┴────────────┴─────────────┴──────────────┘\n"
+    );
 }

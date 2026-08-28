@@ -1318,6 +1318,35 @@ impl VectorEmbedding {
         dot_product_complex_simd(&self.data, &other.data)
     }
 
+    /// Computes the real component of the inner product $\text{Re}(\langle\psi|\phi\rangle) = \sum_j (\psi_j^{\text{re}} \phi_j^{\text{re}} + \psi_j^{\text{im}} \phi_j^{\text{im}})$ directly with SIMD acceleration.
+    ///
+    /// Bypasses the 50% ALU compute overhead of evaluating the unused imaginary cross component.
+    #[inline(always)]
+    pub fn dot_product_real(&self, other: &Self) -> f32 {
+        dot_product_real_complex_simd(&self.data, &other.data)
+    }
+
+    /// Computes standard real cosine similarity $\frac{\text{Re}\langle\psi|\phi\rangle}{\|\psi\| \|\phi\|} \in [-1.0, 1.0]$ with direct SIMD acceleration.
+    #[inline(always)]
+    pub fn cosine_similarity_real(&self, other: &Self) -> SimilarityScore {
+        let dot = self.dot_product_real(other);
+        let denom = (self.norm_squared() * other.norm_squared()).max(1e-12).sqrt();
+        (dot / denom).clamp(-1.0, 1.0)
+    }
+
+    /// Returns a zero-copy flat real slice view (`&[f32]`) over the underlying complex vector data.
+    /// Length of the returned slice is `2 * self.dimension()`.
+    #[inline(always)]
+    pub fn as_real_slice(&self) -> &[f32] {
+        crate::vector::folding::ComplexSliceCast::as_real_slice(&self.data)
+    }
+
+    /// Returns a zero-copy mutable flat real slice view (`&mut [f32]`) over the underlying complex vector data.
+    #[inline(always)]
+    pub fn as_real_slice_mut(&mut self) -> &mut [f32] {
+        crate::vector::folding::ComplexSliceCast::as_real_slice_mut(&mut self.data)
+    }
+
     /// Computes the Complex Projective Overlap (CPO) between two complex vectors:
     ///
     /// $$P(z, w) = \frac{|\langle z, w\rangle|^2}{\|z\|^2 \|w\|^2} \in [0, 1]$$
@@ -3742,7 +3771,6 @@ impl HNSQRIndex {
         let seg_view = SegmentProofView {
             tree: &tree,
             vectors: &normalized_vectors,
-            lutz_codes: None,
             tombstones: None,
         };
 
@@ -3764,8 +3792,7 @@ impl HNSQRIndex {
 
         if proof.globally_exact && proof.leaf_vectors_considered > 0 {
             let warmer = crate::storage::predictive_warming::PredictiveWarmer::default();
-            let threat_slots: Vec<NodeIndex> = results.iter().map(|(s, _)| *s).collect();
-            warmer.record_proof_access(proof.proof_regions_popped, &threat_slots);
+            warmer.record_proof_access(proof.proof_regions_popped);
         }
 
         if proof.deadline_exceeded {
@@ -3884,7 +3911,6 @@ impl HNSQRIndex {
                 let seg_view = crate::proof::SegmentProofView {
                     tree: &tree,
                     vectors: &normalized_vectors,
-                    lutz_codes: None,
                     tombstones: None,
                 };
                 let (results, _) = crate::proof::GlobalPacProofSearch::search(
@@ -5423,8 +5449,6 @@ impl HNSQRIndex {
         Ok(self
             .rivero_index
             .with_candidates_config(address, rivero_config, |candidates, route| {
-                let mut scored =
-                    Vec::with_capacity(candidates.len() + witness_seed_limit * witness_degree * 2);
                 let mut diagnostics = RiveroSearchDiagnostics {
                     cells_probed: route.cells_probed,
                     resident_reads: route.resident_reads,
@@ -5448,6 +5472,9 @@ impl HNSQRIndex {
                     let mut visited = pool.borrow_mut();
                     let epoch = visited.next_epoch(self.arena.len());
 
+                    let mut collector = BoundedTopKCollector::new(k);
+                    let mut candidate_scored: Vec<ScoredWitness> = Vec::with_capacity(candidates.len());
+
                     let eval_limit = candidates.len();
                     for (cand_idx, &index) in candidates[..eval_limit].iter().enumerate() {
                         if cand_idx + 4 < eval_limit {
@@ -5470,40 +5497,32 @@ impl HNSQRIndex {
                         let vector = self.arena.get_vector_slice(index);
                         let norm_sq = self.arena.get_norm_squared(index);
                         diagnostics.exact_score_evaluations += 1;
-                        scored.push((
+                        let score = self.similarity_score_slices_with_metric(
+                            query_data,
+                            vector,
+                            query_norm_sq,
+                            norm_sq,
+                            dist_fn,
+                        );
+                        candidate_scored.push(ScoredWitness {
                             index,
-                            self.similarity_score_slices_with_metric(
-                                query_data,
-                                vector,
-                                query_norm_sq,
-                                norm_sq,
-                                dist_fn,
-                            ),
-                        ));
+                            similarity: score,
+                        });
+                        collector.push(index, score);
                     }
 
-                    scored.sort_unstable_by(|lhs, rhs| {
-                        rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
-                    });
-                    let mut seeds: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_SEEDS]> =
-                        SmallVec::new();
-                    seeds.extend(
-                        scored
-                            .iter()
-                            .take(witness_seed_limit)
-                            .map(|candidate| candidate.0),
-                    );
+                    let seeds = rivero_witness::select_top(&mut candidate_scored, witness_seed_limit);
                     diagnostics.witness_seeds = seeds.len();
 
                     let mut first_hop_scored: SmallVec<
-                        [(NodeIndex, SimilarityScore);
+                        [ScoredWitness;
                             RIVERO_WITNESS_MAX_DEGREE * RIVERO_WITNESS_MAX_SEEDS],
                     > = SmallVec::new();
                     let mut connections: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_DEGREE]> =
                         SmallVec::new();
                     for seed in seeds {
                         self.copy_rivero_witness_connections(
-                            seed,
+                            seed.index,
                             strict_rivero,
                             witness_degree,
                             &mut connections,
@@ -5534,28 +5553,23 @@ impl HNSQRIndex {
                                 norm_sq,
                                 dist_fn,
                             );
-                            let candidate = (index, score);
-                            scored.push(candidate);
-                            first_hop_scored.push(candidate);
+                            first_hop_scored.push(ScoredWitness {
+                                index,
+                                similarity: score,
+                            });
+                            collector.push(index, score);
                         }
                     }
 
-                    first_hop_scored.sort_unstable_by(|lhs, rhs| {
-                        rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
-                    });
-                    let mut second_seeds: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_SEEDS]> =
-                        SmallVec::new();
-                    second_seeds.extend(
-                        first_hop_scored
-                            .iter()
-                            .take(witness_second_seed_limit)
-                            .map(|candidate| candidate.0),
+                    let second_seeds = rivero_witness::select_top(
+                        &mut first_hop_scored,
+                        witness_second_seed_limit,
                     );
                     diagnostics.witness_second_hop_seeds = second_seeds.len();
 
                     for seed in second_seeds {
                         self.copy_rivero_witness_connections(
-                            seed,
+                            seed.index,
                             strict_rivero,
                             witness_degree,
                             &mut connections,
@@ -5579,16 +5593,14 @@ impl HNSQRIndex {
                             let vector = self.arena.get_vector_slice(index);
                             let norm_sq = self.arena.get_norm_squared(index);
                             diagnostics.exact_score_evaluations += 1;
-                            scored.push((
-                                index,
-                                self.similarity_score_slices_with_metric(
-                                    query_data,
-                                    vector,
-                                    query_norm_sq,
-                                    norm_sq,
-                                    dist_fn,
-                                ),
-                            ));
+                            let score = self.similarity_score_slices_with_metric(
+                                query_data,
+                                vector,
+                                query_norm_sq,
+                                norm_sq,
+                                dist_fn,
+                            );
+                            collector.push(index, score);
                         }
                     }
 
@@ -5598,15 +5610,7 @@ impl HNSQRIndex {
                     debug_assert!(
                         diagnostics.witness_candidates_added <= diagnostics.witness_edges_scanned
                     );
-                    if scored.len() > k {
-                        scored.select_nth_unstable_by(k - 1, |lhs, rhs| {
-                            rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
-                        });
-                        scored.truncate(k);
-                    }
-                    scored.sort_unstable_by(|lhs, rhs| {
-                        rhs.1.total_cmp(&lhs.1).then_with(|| lhs.0.cmp(&rhs.0))
-                    });
+                    let scored = collector.into_sorted_vec();
                     diagnostics.results_returned = scored.len();
                     diagnostics.unique_candidates = diagnostics.exact_score_evaluations
                         + diagnostics.non_live_rejections

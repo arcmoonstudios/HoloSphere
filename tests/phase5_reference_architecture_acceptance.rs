@@ -107,7 +107,7 @@ async fn test_phase5_reference_architecture_full_acceptance() {
     assert!(cache.hit_rate() >= 0.0);
 
     let warmer = PredictiveWarmer::new();
-    warmer.record_proof_access(0, &[1, 2, 3]);
+    warmer.record_proof_access(0);
     let warm_order = warmer.get_warm_priority_leaves(5);
     assert_eq!(warm_order, vec![0]);
 

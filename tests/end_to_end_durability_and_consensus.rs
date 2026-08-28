@@ -15,7 +15,6 @@
 
 use hnsqr::cluster::DistributedCoordinator;
 use hnsqr::consensus::raft::{RaftCommand, RaftRole};
-use hnsqr::proof::lutz::SemanticRerankPlan;
 use hnsqr::storage::segment::SegmentedEngine;
 use hnsqr::storage::wal::{DurabilityPolicy, WalManager};
 use hnsqr::{HNSQRConfig, HNSQRIndex, VectorEmbedding};
@@ -112,7 +111,7 @@ fn test_segmented_engine_wal_persistence_and_replay() {
             .collect();
         let query = VectorEmbedding::from_complex(query_coords).into_normalized();
 
-        let topk = new_engine.search(&query, 1, SemanticRerankPlan::ExactSimd);
+        let topk = new_engine.search(&query, 1);
         assert_eq!(topk[0].0.as_ref(), "seg_3");
     }
 
@@ -158,6 +157,6 @@ fn test_distributed_coordinator_raft_replicated_ingest() {
         .collect();
     let query = VectorEmbedding::from_complex(query_coords).into_normalized();
 
-    let search_res = coord.search(&query, 1, SemanticRerankPlan::ExactSimd);
+    let search_res = coord.search(&query, 1);
     assert_eq!(search_res[0].0.as_ref(), "cluster_doc_7");
 }

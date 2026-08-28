@@ -265,7 +265,6 @@ fn test_phase_4_machine_readable_acceptance_oracle() {
             None,
             None,
             None,
-            None,
         )
         .unwrap();
         BackupManager::create_full_backup(&snap_dir, &backup_dir, "dr_full_1").unwrap();
@@ -313,7 +312,7 @@ fn test_phase_4_machine_readable_acceptance_oracle() {
         let mut gt: Vec<(NodeIndex, f32)> = vectors
             .iter()
             .enumerate()
-            .map(|(i, v)| (i as NodeIndex, v.dot_product_complex(query).re))
+            .map(|(i, v)| (i as NodeIndex, v.dot_product_real(query)))
             .collect();
         gt.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
         gt.truncate(k);
@@ -322,7 +321,6 @@ fn test_phase_4_machine_readable_acceptance_oracle() {
             vectors: &vectors,
             tombstones: None,
             tree: &tree,
-            lutz_codes: None,
         };
         let (candidates, proof) = GlobalExactProofSearch::search(query, k, &[view], &[], &[], None);
 

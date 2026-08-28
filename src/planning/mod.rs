@@ -9,6 +9,7 @@
 pub mod affect;
 pub mod autoforge;
 pub mod planner;
+pub mod regret;
 
 pub use affect::{AffectiveRegime, AffectiveStateTensor8D};
 pub use autoforge::{
@@ -17,4 +18,7 @@ pub use autoforge::{
 pub use planner::{
     CalibratedRouteDecider, ExactScanCrossoverModel, ExecutionPlan, ExecutionProof, QueryModality,
     RetrievalContract, UniversalPlanner,
+};
+pub use regret::{
+    PlanExecutionMetrics, PlanRegretEvaluation, PlannerRegretOracle, WorkloadRegretReport,
 };

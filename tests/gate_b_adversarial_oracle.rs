@@ -20,7 +20,7 @@ use hnsqr::{
 
 #[inline]
 fn cosine_sim(q: &VectorEmbedding, doc: &VectorEmbedding) -> f32 {
-    (q.dot_product_complex(doc)).re
+    q.dot_product_real(doc)
 }
 
 fn brute_force_exact(
@@ -84,7 +84,6 @@ fn test_gate_b_identical_vectors_and_tie_breaking() {
     let seg_view = SegmentProofView {
         tree: &tree,
         vectors: &corpus,
-        lutz_codes: None,
         tombstones: None,
     };
 
@@ -135,7 +134,6 @@ fn test_gate_b_near_identical_ulp_separated_vectors() {
     let seg_view = SegmentProofView {
         tree: &tree,
         vectors: &corpus,
-        lutz_codes: None,
         tombstones: None,
     };
 
@@ -181,7 +179,6 @@ fn test_gate_b_antipodal_and_orthogonal_vectors() {
     let seg_view = SegmentProofView {
         tree: &tree,
         vectors: &corpus,
-        lutz_codes: None,
         tombstones: None,
     };
 
@@ -230,7 +227,6 @@ fn test_gate_b_high_dimensional_exactness_sweep() {
         let seg_view = SegmentProofView {
             tree: &tree,
             vectors: &corpus,
-            lutz_codes: None,
             tombstones: None,
         };
 
@@ -283,7 +279,6 @@ fn test_gate_b_adversarial_zero_and_missing_seed() {
     let seg_view = SegmentProofView {
         tree: &tree,
         vectors: &corpus,
-        lutz_codes: None,
         tombstones: None,
     };
 
@@ -340,7 +335,6 @@ fn test_gate_b_filter_mask_and_tombstone_oracle() {
     let seg_view = SegmentProofView {
         tree: &tree,
         vectors: &corpus,
-        lutz_codes: None,
         tombstones: Some(&tombstones),
     };
 
@@ -443,7 +437,6 @@ fn test_gate_b_certified_deadline_abort_sets_globally_exact_false() {
     let seg_a = SegmentProofView {
         tree: &tree,
         vectors: &corpus,
-        lutz_codes: None,
         tombstones: None,
     };
     let (res_full, proof_full) =
@@ -474,7 +467,6 @@ fn test_gate_b_certified_deadline_abort_sets_globally_exact_false() {
     let seg_b = SegmentProofView {
         tree: &tree,
         vectors: &corpus,
-        lutz_codes: None,
         tombstones: None,
     };
     let (res_aborted, proof_aborted) = GlobalExactProofSearch::search_with_deadline(

@@ -4,7 +4,7 @@
 //!▫~•◦-------------------------------------------------------------------‣
 //!
 //! Provides clean, production-grade cloud object storage disaggregation:
-//! separates hot local index state (manifest, Rivero, ProofTree, LUTz, postings)
+//! separates hot local index state (manifest, Rivero, ProofTree, postings)
 //! from cold remote dense vector payloads across Local, S3, GCS, and Azure providers.
 /*▫~•◦------------------------------------------------------------------------------------‣
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶

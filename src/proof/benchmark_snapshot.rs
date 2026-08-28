@@ -1,7 +1,7 @@
 //! Immutable, dataset-backed proof artifacts for benchmark-only setup.
 //!
-//! Proof-tree construction and LUTz encoding are indexing work.  They are kept
-//! out of benchmark processes so query latency represents only query execution.
+//! Proof-tree construction is indexing work. It is kept out of benchmark processes
+//! so query latency represents only query execution.
 
 use std::path::Path;
 
@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{HNSQRError, HNSQRResult};
 
-use super::{LutzCode, SemanticProofTree};
+use super::SemanticProofTree;
 
 pub const PROOF_BENCHMARK_ARTIFACT_VERSION: u32 = 1;
 
@@ -19,28 +19,19 @@ pub struct ProofBenchmarkArtifact {
     pub source_real_dimension: usize,
     pub vector_count: usize,
     pub tree: SemanticProofTree,
-    pub lutz_codes: Vec<LutzCode>,
 }
 
 impl ProofBenchmarkArtifact {
     pub fn new(
         source_real_dimension: usize,
         tree: SemanticProofTree,
-        lutz_codes: Vec<LutzCode>,
     ) -> HNSQRResult<Self> {
         let vector_count = tree.total_vectors();
-        if vector_count != lutz_codes.len() {
-            return Err(HNSQRError::InvalidConfig(format!(
-                "proof artifact tree contains {vector_count} vectors but has {} LUTz codes",
-                lutz_codes.len()
-            )));
-        }
         Ok(Self {
             version: PROOF_BENCHMARK_ARTIFACT_VERSION,
             source_real_dimension,
             vector_count,
             tree,
-            lutz_codes,
         })
     }
 
@@ -77,7 +68,6 @@ impl ProofBenchmarkArtifact {
             || artifact.source_real_dimension != source_real_dimension
             || artifact.vector_count != vector_count
             || artifact.tree.total_vectors() != vector_count
-            || artifact.lutz_codes.len() != vector_count
         {
             return Err(HNSQRError::InvalidConfig(format!(
                 "proof benchmark artifact '{}' does not match the requested real dimension ({source_real_dimension}) and vector count ({vector_count})",
@@ -107,7 +97,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("proof.bin");
         let artifact =
-            ProofBenchmarkArtifact::new(128, SemanticProofTree::empty(64), Vec::new()).unwrap();
+            ProofBenchmarkArtifact::new(128, SemanticProofTree::empty(64)).unwrap();
         artifact.save(&path).unwrap();
 
         assert!(ProofBenchmarkArtifact::load(&path, 128, 0).is_ok());

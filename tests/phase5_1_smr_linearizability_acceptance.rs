@@ -26,7 +26,6 @@ use hnsqr::consensus::pending::MutationId;
 use hnsqr::consensus::raft::{RaftCluster, RaftRole};
 use hnsqr::consensus::read_index::{LinearizableReadMode, ReadConsistency};
 use hnsqr::consensus::storage::{DurableRaftStorage, RaftStorage};
-use hnsqr::proof::lutz::SemanticRerankPlan;
 use hnsqr::service::{ClusterService, DeleteRequest, RequestContext, SearchService, UpsertRequest};
 use hnsqr::storage::segment::SegmentedEngine;
 use hnsqr::{DistributedCoordinator, VectorEmbedding};
@@ -217,7 +216,7 @@ fn test_linearizable_read_index_contract() {
     // Search query with strict top-k exactness
     let query_vec = generate_test_vector(dim, 10);
     let results = service
-        .search(&ctx, &query_vec, 5, SemanticRerankPlan::ExactSimd)
+        .search(&ctx, &query_vec, 5)
         .expect("Search must succeed");
 
     assert!(!results.is_empty());
@@ -249,7 +248,7 @@ fn test_distributed_mutation_service_deletes() {
 
     // Verify presence
     let res1 = service
-        .search(&ctx, &vec, 1, SemanticRerankPlan::ExactSimd)
+        .search(&ctx, &vec, 1)
         .expect("Search must find inserted vector");
     assert_eq!(res1[0].0.as_ref(), "delete_target");
 
@@ -265,7 +264,7 @@ fn test_distributed_mutation_service_deletes() {
 
     // Verify deletion reflected
     let res2 = service
-        .search(&ctx, &vec, 1, SemanticRerankPlan::ExactSimd)
+        .search(&ctx, &vec, 1)
         .expect("Search must execute");
     assert!(res2.is_empty() || res2[0].0.as_ref() != "delete_target");
 }
@@ -423,14 +422,14 @@ fn test_brutal_multi_node_fault_partition_kill_heal_and_oracle_recovery() {
     );
 
     // 11. Run Certified exhaustive oracle verification
-    let search_x = fresh_engine_a.search(&vec_x, 1, SemanticRerankPlan::ExactSimd);
+    let search_x = fresh_engine_a.search(&vec_x, 1);
     assert_eq!(
         search_x[0].0.as_ref(),
         "vector_X",
         "Oracle must find vector_X with 100% exactness"
     );
 
-    let search_z = fresh_engine_a.search(&vec_z, 1, SemanticRerankPlan::ExactSimd);
+    let search_z = fresh_engine_a.search(&vec_z, 1);
     assert_eq!(
         search_z[0].0.as_ref(),
         "vector_Z",

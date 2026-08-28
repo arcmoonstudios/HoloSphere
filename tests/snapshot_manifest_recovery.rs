@@ -5,7 +5,7 @@
 //!
 //! Validates:
 //!   - Atomic Copy-on-Write snapshot publication
-//!   - Complete multi-section integrity (IDs, vectors, metadata, proof tree, LUTz)
+//!   - Complete multi-section integrity (IDs, vectors, metadata, proof tree, Rivero)
 //!   - Corrupt-section detection & CRC32C failure safety
 //!   - Point-in-time snapshot + WAL replay restoration
 /*▫~•◦------------------------------------------------------------------------------------‣
@@ -76,7 +76,6 @@ fn test_unified_snapshot_cow_and_load_integrity() {
         None,
         Some(&proof_tree),
         None,
-        None,
     )
     .unwrap();
 
@@ -125,7 +124,6 @@ fn test_corrupt_section_checksum_failure_safety() {
         dim,
         &vectors,
         &external_ids,
-        None,
         None,
         None,
         None,

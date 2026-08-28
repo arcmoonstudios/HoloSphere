@@ -80,7 +80,7 @@ This directory contains real-world and standardized vector datasets, structured 
   - `openai_1536/openai_base.fvecs`: Base vector corpus (1,000 vectors @ 1536D).
   - `openai_1536/openai_query.fvecs`: Query vectors (100 vectors @ 1536D).
   - `openai_1536_large/openai_1m_base.fvecs`: Million-scale corpus segment (~236.5 MB).
-* **Purpose**: Modern LLM embedding benchmarks, lossless coordinate transforming via [`ComplexWeaver`](../src/vector/folding.rs), 8-bit Polar PQ-C memory bandwidth reduction, and Lutz $E_8$ hierarchical proof tree verification.
+* **Purpose**: Modern LLM embedding benchmarks, lossless coordinate transforming via [`ComplexWeaver`](../src/vector/folding.rs), 8-bit Polar PQ-C memory bandwidth reduction, and hierarchical proof tree verification.
 
 ---
 
@@ -118,4 +118,4 @@ This directory contains real-world and standardized vector datasets, structured 
 | `clip_512` | 512 | 256 | 2,048 B | Cosine, Projective Overlap |
 | `cohere_768` | 768 | 384 | 3,072 B | Cosine, Folded Hermitian |
 | `openai_1536` | 1536 | 768 | 6,144 B | Cosine, Folded Hermitian, Projective Overlap |
-| `arxiv_4096` | 4096 | 2048 | 16,384 B | Filtered Cosine, Precompiled Roaring Mask, LUTz $E_8$ |
+| `arxiv_4096` | 4096 | 2048 | 16,384 B | Filtered Cosine, Precompiled Roaring Mask, Exact SIMD |

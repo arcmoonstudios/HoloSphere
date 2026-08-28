@@ -4,7 +4,7 @@
 //!▫~•◦-------------------------------------------------------------------‣
 //!
 //! Replaces dangerous eager prefault with cgroup-v2 memory limit awareness,
-//! prefaulting hot proof structures first (manifest, ProofTree, LUTz codes, Rivero)
+//! prefaulting hot proof structures first (manifest, ProofTree, Rivero)
 //! and warming dense-vector pages progressively with rate limiting.
 /*▫~•◦------------------------------------------------------------------------------------‣
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶

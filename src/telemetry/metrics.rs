@@ -21,8 +21,6 @@ pub struct EngineMetrics {
     pub query_latency_micros_total: Arc<AtomicU64>,
     pub exact_simd_evaluations: Arc<AtomicU64>,
     pub proof_regions_pruned: Arc<AtomicU64>,
-    pub lutz_l0_pruned: Arc<AtomicU64>,
-    pub lutz_l1_pruned: Arc<AtomicU64>,
     pub wal_appends_total: Arc<AtomicU64>,
     pub wal_bytes_written: Arc<AtomicU64>,
     pub wal_fsync_micros_total: Arc<AtomicU64>,
@@ -82,13 +80,6 @@ impl PrometheusExporter {
         out.push_str(&format!(
             "hnsqr_proof_regions_pruned {}\n",
             metrics.proof_regions_pruned.load(Ordering::Relaxed)
-        ));
-
-        out.push_str("# HELP hnsqr_lutz_l0_pruned Candidates pruned by LUTz L0 bound.\n");
-        out.push_str("# TYPE hnsqr_lutz_l0_pruned counter\n");
-        out.push_str(&format!(
-            "hnsqr_lutz_l0_pruned {}\n",
-            metrics.lutz_l0_pruned.load(Ordering::Relaxed)
         ));
 
         out.push_str("# HELP hnsqr_wal_appends_total Total mutations appended to WAL.\n");

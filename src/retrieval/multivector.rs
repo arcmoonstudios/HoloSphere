@@ -47,7 +47,7 @@ impl MultiVectorEmbedding {
         for q_tok in &self.tokens {
             let mut max_tok_sim = f32::NEG_INFINITY;
             for d_tok in &document.tokens {
-                let dot = (q_tok.dot_product_complex(d_tok)).re;
+                let dot = q_tok.dot_product_real(d_tok);
                 if dot > max_tok_sim {
                     max_tok_sim = dot;
                 }

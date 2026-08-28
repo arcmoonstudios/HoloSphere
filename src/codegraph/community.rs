@@ -109,10 +109,13 @@ impl CommunityDetector {
                     if target_comm == curr_comm {
                         continue;
                     }
-                    let sigma_tot_target = comm_tot_degree.get(&target_comm).copied().unwrap_or(0) as f64;
+                    let sigma_tot_target =
+                        comm_tot_degree.get(&target_comm).copied().unwrap_or(0) as f64;
                     let delta_q = (k_i_in_target as f64) - (k_i * sigma_tot_target) / total_m2;
 
-                    if delta_q > max_delta_q || ( (delta_q - max_delta_q).abs() < 1e-9 && target_comm < best_comm ) {
+                    if delta_q > max_delta_q
+                        || ((delta_q - max_delta_q).abs() < 1e-9 && target_comm < best_comm)
+                    {
                         max_delta_q = delta_q;
                         best_comm = target_comm;
                     }
@@ -139,7 +142,8 @@ impl CommunityDetector {
         }
 
         // Sort communities by size descending, then by smallest node ID for total determinism
-        let mut sorted_comms: Vec<(usize, Vec<&CodeNodeId>)> = raw_comm_members.into_iter().collect();
+        let mut sorted_comms: Vec<(usize, Vec<&CodeNodeId>)> =
+            raw_comm_members.into_iter().collect();
         for (_, members) in &mut sorted_comms {
             members.sort();
         }
@@ -274,7 +278,9 @@ impl CommunityDetector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::codegraph::schema::{CodeEdge, CodeEdgeId, CodeNode, CodeRelation, Language, RelationOrigin, SourceSpan};
+    use crate::codegraph::schema::{
+        CodeEdge, CodeEdgeId, CodeNode, CodeRelation, Language, RelationOrigin, SourceSpan,
+    };
 
     #[test]
     fn test_community_detection_and_exact_edge_counts() {
@@ -287,27 +293,35 @@ mod tests {
         let nodes = ["a1", "a2", "a3", "b1", "b2", "b3"];
         for name in &nodes {
             let id = CodeNodeId(name.to_string());
-            state.nodes.insert(id.clone(), CodeNode {
-                id: id.clone(),
-                name: name.to_string(),
-                qualified_name: name.to_string(),
-                kind: CodeNodeKind::Function,
-                language: Language::Rust,
-                source_file: PathBuf::from(format!("src/{name}.rs")),
-                source_span: SourceSpan::default(),
-                symbol_hash: [0; 32],
-                file_hash: [0; 32],
-                docstring: None,
-                signature: None,
-                attributes: BTreeMap::new(),
-                evidence_class: crate::transport::model_gateway::EvidenceClass::Observation,
-                verification_state: crate::transport::model_gateway::VerificationState::Verified,
-            });
+            state.nodes.insert(
+                id.clone(),
+                CodeNode {
+                    id: id.clone(),
+                    name: name.to_string(),
+                    qualified_name: name.to_string(),
+                    kind: CodeNodeKind::Function,
+                    language: Language::Rust,
+                    source_file: PathBuf::from(format!("src/{name}.rs")),
+                    source_span: SourceSpan::default(),
+                    symbol_hash: [0; 32],
+                    file_hash: [0; 32],
+                    docstring: None,
+                    signature: None,
+                    attributes: BTreeMap::new(),
+                    evidence_class: crate::transport::model_gateway::EvidenceClass::Observation,
+                    verification_state:
+                        crate::transport::model_gateway::VerificationState::Verified,
+                },
+            );
         }
 
         let edges = [
-            ("a1", "a2"), ("a2", "a3"), ("a3", "a1"),
-            ("b1", "b2"), ("b2", "b3"), ("b3", "b1"),
+            ("a1", "a2"),
+            ("a2", "a3"),
+            ("a3", "a1"),
+            ("b1", "b2"),
+            ("b2", "b3"),
+            ("b3", "b1"),
             ("a1", "b1"), // cross-cluster bridge
         ];
 
@@ -316,19 +330,30 @@ mod tests {
             let tgt_id = CodeNodeId(tgt.to_string());
             let edge_id = CodeEdgeId(format!("{src}->{tgt}"));
 
-            state.edges.insert(edge_id.clone(), CodeEdge {
-                id: edge_id.clone(),
-                source: src_id.clone(),
-                target: tgt_id.clone(),
-                relation: CodeRelation::Calls,
-                origin: RelationOrigin::Extracted,
-                confidence: 1.0,
-                evidence: SourceSpan::default(),
-                attributes: BTreeMap::new(),
-            });
+            state.edges.insert(
+                edge_id.clone(),
+                CodeEdge {
+                    id: edge_id.clone(),
+                    source: src_id.clone(),
+                    target: tgt_id.clone(),
+                    relation: CodeRelation::Calls,
+                    origin: RelationOrigin::Extracted,
+                    confidence: 1.0,
+                    evidence: SourceSpan::default(),
+                    attributes: BTreeMap::new(),
+                },
+            );
 
-            state.outgoing_edges.entry(src_id.clone()).or_default().push(edge_id.clone());
-            state.incoming_edges.entry(tgt_id).or_default().push(edge_id);
+            state
+                .outgoing_edges
+                .entry(src_id.clone())
+                .or_default()
+                .push(edge_id.clone());
+            state
+                .incoming_edges
+                .entry(tgt_id)
+                .or_default()
+                .push(edge_id);
         }
 
         let (summaries, node_map) = CommunityDetector::detect_community_map(&state);
@@ -341,8 +366,14 @@ mod tests {
         // Every node must be mapped to its respective community
         assert_eq!(node_map.len(), 6);
 
-        let comm_a = node_map.get(&CodeNodeId("a1".to_string())).copied().unwrap();
-        let comm_b = node_map.get(&CodeNodeId("b1".to_string())).copied().unwrap();
+        let comm_a = node_map
+            .get(&CodeNodeId("a1".to_string()))
+            .copied()
+            .unwrap();
+        let comm_b = node_map
+            .get(&CodeNodeId("b1".to_string()))
+            .copied()
+            .unwrap();
         assert_ne!(comm_a, comm_b);
 
         // Verify internal and cross edge counts are exact

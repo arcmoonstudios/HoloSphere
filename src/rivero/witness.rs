@@ -63,8 +63,6 @@ pub(crate) struct ReciprocalInsert {
     pub evicted: Option<ScoredWitness>,
 }
 
-
-
 #[inline]
 pub(crate) const fn bounded_degree(requested: usize) -> usize {
     if requested > RIVERO_WITNESS_MAX_DEGREE {

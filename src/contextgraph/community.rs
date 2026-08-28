@@ -105,10 +105,13 @@ impl ScopeClustering {
                     if target_comm == curr_comm {
                         continue;
                     }
-                    let sigma_tot_target = comm_tot_degree.get(&target_comm).copied().unwrap_or(0) as f64;
+                    let sigma_tot_target =
+                        comm_tot_degree.get(&target_comm).copied().unwrap_or(0) as f64;
                     let delta_q = (k_i_in_target as f64) - (k_i * sigma_tot_target) / total_m2;
 
-                    if delta_q > max_delta_q || ((delta_q - max_delta_q).abs() < 1e-9 && target_comm < best_comm) {
+                    if delta_q > max_delta_q
+                        || ((delta_q - max_delta_q).abs() < 1e-9 && target_comm < best_comm)
+                    {
                         max_delta_q = delta_q;
                         best_comm = target_comm;
                     }
@@ -133,7 +136,8 @@ impl ScopeClustering {
             raw_scope_members.entry(sid).or_default().push(id);
         }
 
-        let mut sorted_scopes: Vec<(usize, Vec<&EntityId>)> = raw_scope_members.into_iter().collect();
+        let mut sorted_scopes: Vec<(usize, Vec<&EntityId>)> =
+            raw_scope_members.into_iter().collect();
         for (_, members) in &mut sorted_scopes {
             members.sort();
         }

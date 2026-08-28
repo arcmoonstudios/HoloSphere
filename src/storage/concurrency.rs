@@ -249,8 +249,12 @@ mod tests {
         let engine = Arc::new(SegmentedEngine::new(dim, 20));
         let vectors: Vec<VectorEmbedding> = (0..50)
             .map(|i| {
-                VectorEmbedding::from_reals(&(0..dim * 2).map(|d| (i + d) as f32).collect::<Vec<_>>())
-                    .into_normalized()
+                VectorEmbedding::from_complex(
+                    (0..dim)
+                        .map(|d| num_complex::Complex32::new((i + d) as f32, 0.0))
+                        .collect(),
+                )
+                .into_normalized()
             })
             .collect();
 

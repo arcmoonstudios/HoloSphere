@@ -357,7 +357,7 @@ pub use retrieval::performance_trial::{
     evaluate_admission_gates,
 };
 pub use retrieval::sparse::{InvertedPostingList, SparseInvertedIndex, SparseVector};
-pub use retrieval::top_k::BoundedTopKCollector;
+pub use retrieval::top_k::{BoundedTopKCollector, TopKScore};
 pub use rivero::{
     AdaptivePolicy, AdaptiveRouteState, BuiltRiveroState, BulkBuildTelemetry, LaneAssignment,
     RIVERO_BUILD_CANDIDATE_CAP, RIVERO_CELL_CAPACITY, RIVERO_DEFAULT_FOUNDATIONS,

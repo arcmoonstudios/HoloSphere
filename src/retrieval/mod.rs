@@ -26,4 +26,4 @@ pub use performance_trial::{
 pub use sparse::{
     InvertedPostingList, PostingChunk, PostingEntry, SparseInvertedIndex, SparseVector,
 };
-pub use top_k::BoundedTopKCollector;
+pub use top_k::{BoundedTopKCollector, TopKScore};

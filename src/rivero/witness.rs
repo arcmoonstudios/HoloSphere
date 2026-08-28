@@ -115,8 +115,7 @@ pub fn select_top(
     }
 
     scored.sort_unstable_by(witness_order);
-    // DERIVED: Allocates capacity upfront for the bounded degree ceiling to avoid inline vector growth.
-    let mut selected = SmallVec::with_capacity(degree);
+    let mut selected = SmallVec::new();
     for candidate in scored.iter().copied() {
         if selected
             .iter()

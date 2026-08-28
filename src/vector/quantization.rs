@@ -138,19 +138,18 @@ impl PolarQuantizedVector {
         }
 
         let range_r = max_r - min_r;
-        let scale_r = 255.0 / range_r;
-        let inv_2pi_255 = 255.0 / (2.0 * PI);
+        let inv_range_r = 1.0 / range_r;
+        let inv_2pi = 1.0 / (2.0 * PI);
 
         // Pass 2: quantize directly — single allocation for output bytes.
-        // DERIVED: Uses z.norm_sqr().sqrt() and pre-scales factors to avoid redundant multiplications per dimension.
         let mut bytes = Vec::with_capacity(dim * 2);
         for z in slice {
             let r = z.norm_sqr().sqrt();
             // fast_atan2_approx replaces libm atan2f (~25–40 cycles → ~6 cycles).
             // Max error < 0.003 rad; 8-bit bin width ≈ 0.0245 rad — error is sub-LSB.
             let theta = fast_atan2_approx(z.im, z.re); // in [-PI, PI]
-            let q_r = (((r - min_r) * scale_r).clamp(0.0, 255.0)).round() as u8;
-            let q_theta = (((theta + PI) * inv_2pi_255).clamp(0.0, 255.0)).round() as u8;
+            let q_r = (((r - min_r) * inv_range_r).clamp(0.0, 1.0) * 255.0).round() as u8;
+            let q_theta = (((theta + PI) * inv_2pi).clamp(0.0, 1.0) * 255.0).round() as u8;
             bytes.push(q_r);
             bytes.push(q_theta);
         }
@@ -189,20 +188,19 @@ impl PolarQuantizedVector {
         }
 
         let range_r = max_r - min_r;
-        let scale_r = 255.0 / range_r;
-        let inv_2pi_255 = 255.0 / (2.0 * PI);
+        let inv_range_r = 1.0 / range_r;
+        let inv_2pi = 1.0 / (2.0 * PI);
         let out_len = dim * 2;
         let target = &mut out_bytes[..out_len];
 
-        // DERIVED: Uses z.norm_sqr().sqrt() and pre-scales factors to avoid redundant multiplications per dimension.
         for i in 0..dim {
             let z = slice[i];
             let r = z.norm_sqr().sqrt();
             // fast_atan2_approx replaces libm atan2f (~25–40 cycles → ~6 cycles).
             let theta = fast_atan2_approx(z.im, z.re);
 
-            let q_r = (((r - min_r) * scale_r).clamp(0.0, 255.0)).round() as u8;
-            let q_theta = (((theta + PI) * inv_2pi_255).clamp(0.0, 255.0)).round() as u8;
+            let q_r = (((r - min_r) * inv_range_r).clamp(0.0, 1.0) * 255.0).round() as u8;
+            let q_theta = (((theta + PI) * inv_2pi).clamp(0.0, 1.0) * 255.0).round() as u8;
 
             target[i * 2] = q_r;
             target[i * 2 + 1] = q_theta;

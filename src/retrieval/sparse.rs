@@ -180,18 +180,12 @@ impl SparseInvertedIndex {
         let lists = self.posting_lists.read();
         let mut doc_scores: HashMap<NodeIndex, f32> = HashMap::with_capacity(1024);
 
-        // Accumulate query term matches across posting lists
-        // DERIVED: Uses get_mut + insert to avoid Entry enum allocation/lookup overhead on existing slots.
+        // Accumulate query term matches across posting lists.
         for (&q_term, &q_weight) in query.indices.iter().zip(query.values.iter()) {
             if let Some(posting_list) = lists.get(&q_term) {
                 for chunk in &posting_list.chunks {
                     for entry in &chunk.entries {
-                        let score_delta = q_weight * entry.weight;
-                        if let Some(s) = doc_scores.get_mut(&entry.slot) {
-                            *s += score_delta;
-                        } else {
-                            doc_scores.insert(entry.slot, score_delta);
-                        }
+                        *doc_scores.entry(entry.slot).or_insert(0.0) += q_weight * entry.weight;
                     }
                 }
             }
@@ -242,11 +236,7 @@ impl SparseInvertedIndex {
                         let dl = doc_lens.get(entry.slot as usize).copied().unwrap_or(0) as f32;
                         let score_delta =
                             (tf * idf_k1_plus_1) / (tf + k1_one_minus_b + dl * k1_b_over_avg_dl);
-                        if let Some(s) = scores.get_mut(&entry.slot) {
-                            *s += score_delta;
-                        } else {
-                            scores.insert(entry.slot, score_delta);
-                        }
+                        *scores.entry(entry.slot).or_insert(0.0) += score_delta;
                     }
                 }
             }

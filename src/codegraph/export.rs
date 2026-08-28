@@ -57,13 +57,7 @@ impl CodeGraphExporter {
     /// Builds export payload.
     #[must_use]
     pub fn build_payload(state: &CodeGraphStoreState) -> CodeGraphExportPayload {
-        let communities = CommunityDetector::detect_communities(state);
-        let mut node_community_map = HashMap::new();
-        for comm in communities {
-            for sym_name in &comm.top_symbols {
-                node_community_map.insert(sym_name.clone(), comm.community_id);
-            }
-        }
+        let (_communities, node_community_map) = CommunityDetector::detect_community_map(state);
 
         let mut export_nodes = Vec::new();
         for (id, node) in &state.nodes {
@@ -72,7 +66,7 @@ impl CodeGraphExporter {
             }
             let deg = state.outgoing_edges.get(id).map_or(0, |v| v.len())
                 + state.incoming_edges.get(id).map_or(0, |v| v.len());
-            let comm = node_community_map.get(&node.name).copied().unwrap_or(0);
+            let comm = node_community_map.get(id).copied().unwrap_or(0);
 
             export_nodes.push(ExportNode {
                 id: id.to_string(),

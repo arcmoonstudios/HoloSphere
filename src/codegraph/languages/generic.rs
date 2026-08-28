@@ -86,12 +86,13 @@ impl LanguageExtractor for TreeSitterExtractor {
                 context.relative_path.display()
             ))
         })?;
+        // Resilient extraction: tree-sitter isolates syntax error nodes while leaving valid subtrees intact.
         if tree.root_node().has_error() {
-            return Err(HNSQRError::InvalidRequest(format!(
-                "Syntax error while parsing {} as {}",
+            tracing::trace!(
+                "Syntax error node present in {} ({}); proceeding with resilient symbol extraction",
                 context.relative_path.display(),
                 self.language
-            )));
+            );
         }
 
         let mut result = ExtractionResult::default();

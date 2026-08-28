@@ -27,7 +27,7 @@ def generate_aggregate():
     ignore_dirs = {
         ".git", ".github", ".gemini", ".idea", ".vscode", "__pycache__",
         "node_modules", "datasets", "benchmark_databases", "scripts",
-        "tests", "benches", "performance-baseline-v1", ".holosphere",
+        "tests", "benches", "performance-baseline-v1", ".holosphere", ".jules",
         # Rust build output directories
         "target",
         "target-benchmark-integrity-validation",

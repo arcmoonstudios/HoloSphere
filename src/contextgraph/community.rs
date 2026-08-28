@@ -1,15 +1,15 @@
 /* holosphere/src/contextgraph/community.rs */
 //!▫~•◦-------------------------------‣
-//! # Universal ContextGraph Scopes & Community Clustering
+//! # Universal ContextGraph Scopes & Modularity Clustering
 //!▫~•◦-------------------------------------------------------------------‣
 //!
-//! Partitions multi-domain knowledge graphs into coherent scopes (directories, packages,
-//! services, detected topological communities) with heuristic label derivation.
+//! Partitions multi-domain knowledge graphs into coherent architectural scopes and communities
+//! using deterministic Label Propagation clustering with neighbor density weighting.
 /*▫~•◦------------------------------------------------------------------------------------‣
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -28,62 +28,98 @@ pub struct ScopeSummary {
 pub struct ScopeClustering;
 
 impl ScopeClustering {
-    /// Detects topological scopes/communities over the graph.
+    /// Detects topological scopes/communities over the graph using deterministic Label Propagation.
     #[must_use]
     pub fn detect_scopes(state: &ContextGraphStoreState) -> Vec<ScopeSummary> {
         if state.entities.is_empty() {
             return Vec::new();
         }
 
-        let mut adj: HashMap<&EntityId, HashSet<&EntityId>> = HashMap::new();
+        let mut adj: HashMap<&EntityId, Vec<&EntityId>> = HashMap::new();
         for rel in state.relations.values() {
             for i in 0..rel.participants.len() {
                 for j in (i + 1)..rel.participants.len() {
                     let a = &rel.participants[i].entity_id;
                     let b = &rel.participants[j].entity_id;
-                    adj.entry(a).or_default().insert(b);
-                    adj.entry(b).or_default().insert(a);
+                    adj.entry(a).or_default().push(b);
+                    adj.entry(b).or_default().push(a);
                 }
             }
         }
-
-        let mut node_to_scope: HashMap<&EntityId, usize> = HashMap::new();
-        let mut next_scope_id = 0;
 
         let mut sorted_ids: Vec<&EntityId> = state.entities.keys().collect();
         sorted_ids.sort();
 
-        for id in sorted_ids {
-            if node_to_scope.contains_key(id) {
-                continue;
-            }
-            let scope_id = next_scope_id;
-            next_scope_id += 1;
+        // Step 1: Initial unique partition
+        let mut node_to_scope: HashMap<&EntityId, usize> = HashMap::new();
+        for (idx, &id) in sorted_ids.iter().enumerate() {
+            node_to_scope.insert(id, idx);
+        }
 
-            let mut queue = VecDeque::new();
-            queue.push_back(id);
-            node_to_scope.insert(id, scope_id);
+        // Step 2: Deterministic Label Propagation (up to 15 iterations)
+        let max_iterations = 15;
+        for _ in 0..max_iterations {
+            let mut changed = false;
 
-            while let Some(curr) = queue.pop_front() {
-                if let Some(neighbors) = adj.get(curr) {
-                    for &nbr in neighbors {
-                        if !node_to_scope.contains_key(nbr) {
-                            node_to_scope.insert(nbr, scope_id);
-                            queue.push_back(nbr);
-                        }
+            for &id in &sorted_ids {
+                let current_label = match node_to_scope.get(id) {
+                    Some(&lbl) => lbl,
+                    None => continue,
+                };
+
+                let neighbors = match adj.get(id) {
+                    Some(nbrs) if !nbrs.is_empty() => nbrs,
+                    _ => continue,
+                };
+
+                let mut label_weights: HashMap<usize, usize> = HashMap::new();
+                label_weights.insert(current_label, 1);
+
+                for &nbr in neighbors {
+                    if let Some(&nbr_label) = node_to_scope.get(nbr) {
+                        *label_weights.entry(nbr_label).or_default() += 2;
                     }
                 }
+
+                let mut best_label = current_label;
+                let mut best_weight = 0;
+
+                for (&lbl, &weight) in &label_weights {
+                    if weight > best_weight || (weight == best_weight && lbl < best_label) {
+                        best_weight = weight;
+                        best_label = lbl;
+                    }
+                }
+
+                if best_label != current_label {
+                    node_to_scope.insert(id, best_label);
+                    changed = true;
+                }
+            }
+
+            if !changed {
+                break;
             }
         }
 
-        let mut scope_members: BTreeMap<usize, Vec<&EntityId>> = BTreeMap::new();
-        for (id, sid) in node_to_scope {
-            scope_members.entry(sid).or_default().push(id);
+        // Step 3: Group by converged scope
+        let mut raw_scope_members: BTreeMap<usize, Vec<&EntityId>> = BTreeMap::new();
+        for (&id, &sid) in &node_to_scope {
+            raw_scope_members.entry(sid).or_default().push(id);
         }
 
-        let mut summaries = Vec::new();
-        for (sid, mut members) in scope_members {
+        let mut sorted_scopes: Vec<(usize, Vec<&EntityId>)> = raw_scope_members.into_iter().collect();
+        for (_, members) in &mut sorted_scopes {
             members.sort();
+        }
+        sorted_scopes.sort_by(|a, b| {
+            b.1.len()
+                .cmp(&a.1.len())
+                .then_with(|| a.1.first().cmp(&b.1.first()))
+        });
+
+        let mut summaries = Vec::with_capacity(sorted_scopes.len());
+        for (new_scope_id, (_old_id, members)) in sorted_scopes.into_iter().enumerate() {
             let entity_count = members.len();
 
             let mut top_entities = Vec::new();
@@ -96,17 +132,16 @@ impl ScopeClustering {
             let label = top_entities
                 .first()
                 .cloned()
-                .unwrap_or_else(|| format!("Scope {sid}"));
+                .unwrap_or_else(|| format!("Scope {new_scope_id}"));
 
             summaries.push(ScopeSummary {
-                scope_id: sid,
+                scope_id: new_scope_id,
                 label: format!("Scope: {label}"),
                 entity_count,
                 top_entities,
             });
         }
 
-        summaries.sort_by(|a, b| b.entity_count.cmp(&a.entity_count));
         summaries
     }
 }

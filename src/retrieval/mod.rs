@@ -11,6 +11,7 @@ pub mod linguistic;
 pub mod multivector;
 pub mod performance_trial;
 pub mod sparse;
+pub mod top_k;
 
 pub use hybrid::{HybridFusionEngine, HybridFusionMethod, ModalityRankings, RRF_DEFAULT_K};
 pub use linguistic::{
@@ -25,3 +26,4 @@ pub use performance_trial::{
 pub use sparse::{
     InvertedPostingList, PostingChunk, PostingEntry, SparseInvertedIndex, SparseVector,
 };
+pub use top_k::BoundedTopKCollector;

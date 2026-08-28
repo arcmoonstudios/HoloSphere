@@ -162,6 +162,96 @@ impl ExactScanCrossoverModel {
     }
 }
 
+/// Calibrated query routing and cost-optimization decider primitive.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct CalibratedRouteDecider;
+
+impl CalibratedRouteDecider {
+    /// Evaluates multidimensional retrieval costs and constraints to select the optimal [`ExecutionPlan`].
+    #[must_use]
+    pub fn decide(
+        total_vectors: usize,
+        complex_dim: usize,
+        filter_cardinality: Option<usize>,
+        contract: RetrievalContract,
+        _is_mmap_cold: bool,
+        affect: &AffectiveStateTensor8D,
+    ) -> ExecutionPlan {
+        if matches!(contract, RetrievalContract::MultiVectorMaxSim { .. }) {
+            return ExecutionPlan::MultiVectorMaxSim;
+        }
+
+        let effective_n = filter_cardinality.unwrap_or(total_vectors);
+        let crossover = UniversalPlanner::compute_crossover(complex_dim);
+
+        // 1. If contract is strictly Exact or effective corpus is below crossover threshold -> ExactScan
+        if matches!(contract, RetrievalContract::Exact) || effective_n < crossover {
+            return ExecutionPlan::ExactScan { effective_n };
+        }
+
+        // Apply XyCo 8D Dual-Regime Gating
+        let effective_contract = match affect.regime() {
+            // Regime A: Blast-radius guarded (R < 0.2). Force Certified contract unconditionally.
+            AffectiveRegime::OneWayDoorCritical => RetrievalContract::Certified,
+            // Regime B: Speculative exploration (R > 0.8 & N > 0.8). If contract is HighRecall, license PAC relaxation
+            AffectiveRegime::SpeculativeCuriosity => match contract {
+                RetrievalContract::HighRecall(_) => RetrievalContract::PacRelaxed {
+                    epsilon: 0.05,
+                    delta: 0.01,
+                },
+                c => c,
+            },
+            AffectiveRegime::Equilibrium => contract,
+        };
+
+        // 2. Certified proof-tree routing is a research candidate, not an
+        // admitted production path. Its benchmarks currently remain slower
+        // than the authoritative exact SIMD baseline, so preserve the
+        // Certified contract by selecting the exact implementation.
+        if matches!(effective_contract, RetrievalContract::Certified) {
+            return ExecutionPlan::ExactScan { effective_n };
+        }
+
+        if let RetrievalContract::PacRelaxed { epsilon, delta } = effective_contract {
+            let base_cap = crate::rivero::ScaleAdaptiveFunnel::compute_budget(
+                effective_n,
+                complex_dim,
+                RiveroProfile::Balanced,
+            )
+            .query_candidate_cap;
+            return ExecutionPlan::ProofTreePacRelaxed {
+                initial_seed_cap: ((base_cap as f32) * (1.0 - epsilon)).round() as usize,
+                epsilon,
+                delta,
+            };
+        }
+
+        // 3. Select Rivero Profile based on contract and scale
+        let profile = match effective_contract {
+            RetrievalContract::Exact => RiveroProfile::Strict,
+            RetrievalContract::Certified => RiveroProfile::Fast,
+            RetrievalContract::PacRelaxed { .. } => RiveroProfile::Fast,
+            RetrievalContract::MultiVectorMaxSim { .. } => RiveroProfile::Fast,
+            RetrievalContract::HighRecall(r) if r >= 0.999 => RiveroProfile::Strict,
+            RetrievalContract::HighRecall(r) if r >= 0.99 => RiveroProfile::Balanced,
+            RetrievalContract::HighRecall(_) => RiveroProfile::Fast,
+            RetrievalContract::Budget(dur) if dur.as_micros() < 500 => RiveroProfile::Fast,
+            RetrievalContract::Budget(_) => RiveroProfile::Fast,
+        };
+
+        let budget_params = crate::rivero::ScaleAdaptiveFunnel::compute_budget(
+            effective_n,
+            complex_dim,
+            profile,
+        );
+
+        ExecutionPlan::RiveroRetrieval {
+            profile,
+            candidate_cap: budget_params.query_candidate_cap,
+        }
+    }
+}
+
 /// Universal Cost-Based Query Planner.
 pub struct UniversalPlanner;
 
@@ -182,7 +272,7 @@ impl UniversalPlanner {
         contract: RetrievalContract,
         is_mmap_cold: bool,
     ) -> ExecutionPlan {
-        Self::plan_with_affect(
+        CalibratedRouteDecider::decide(
             total_vectors,
             complex_dim,
             filter_cardinality,
@@ -202,82 +292,14 @@ impl UniversalPlanner {
         is_mmap_cold: bool,
         affect: &AffectiveStateTensor8D,
     ) -> ExecutionPlan {
-        if matches!(contract, RetrievalContract::MultiVectorMaxSim { .. }) {
-            return ExecutionPlan::MultiVectorMaxSim;
-        }
-
-        let effective_n = filter_cardinality.unwrap_or(total_vectors);
-        let crossover = Self::compute_crossover(complex_dim);
-
-        // 1. If contract is strictly Exact or effective corpus is below crossover threshold -> ExactScan
-        if matches!(contract, RetrievalContract::Exact) || effective_n < crossover {
-            return ExecutionPlan::ExactScan { effective_n };
-        }
-
-        // Fallback to ExactScan if manifold is isotropic (spatial pruning impossible on small flat geometries)
-        if !is_mmap_cold && effective_n < 50_000 && matches!(contract, RetrievalContract::Exact) {
-            return ExecutionPlan::ExactScan { effective_n };
-        }
-
-        // Apply XyCo 8D Dual-Regime Gating
-        let effective_contract = match affect.regime() {
-            // Regime A: Blast-radius guarded (R < 0.2). Force Certified contract unconditionally.
-            AffectiveRegime::OneWayDoorCritical => RetrievalContract::Certified,
-            // Regime B: Speculative exploration (R > 0.8 & N > 0.8). If contract is HighRecall, license PAC relaxation
-            AffectiveRegime::SpeculativeCuriosity => match contract {
-                RetrievalContract::HighRecall(_) => RetrievalContract::PacRelaxed {
-                    epsilon: 0.05,
-                    delta: 0.01,
-                },
-                c => c,
-            },
-            AffectiveRegime::Equilibrium => contract,
-        };
-
-        // Dimensional scaling factor for metric concentration in high dimensions (e.g. 1536D, 4096D)
-        let dim_multiplier = if complex_dim >= 768 {
-            2.5f32 // 1536D+ real
-        } else if complex_dim >= 384 {
-            1.5f32 // 768D real
-        } else {
-            1.0f32
-        };
-
-        // 2. Certified proof-tree routing is a research candidate, not an
-        // admitted production path. Its benchmarks currently remain slower
-        // than the authoritative exact SIMD baseline, so preserve the
-        // Certified contract by selecting the exact implementation.
-        if matches!(effective_contract, RetrievalContract::Certified) {
-            return ExecutionPlan::ExactScan { effective_n };
-        }
-
-        if let RetrievalContract::PacRelaxed { epsilon, delta } = effective_contract {
-            return ExecutionPlan::ProofTreePacRelaxed {
-                initial_seed_cap: ((2048.0 * dim_multiplier) * (1.0 - epsilon)).round() as usize,
-                epsilon,
-                delta,
-            };
-        }
-
-        // 3. Select Rivero Profile based on contract
-        let (profile, base_cap) = match effective_contract {
-            RetrievalContract::Exact => (RiveroProfile::Strict, 1024),
-            RetrievalContract::Certified => (RiveroProfile::Fast, 512),
-            RetrievalContract::PacRelaxed { .. } => (RiveroProfile::Fast, 512),
-            RetrievalContract::MultiVectorMaxSim { .. } => (RiveroProfile::Fast, 512),
-            RetrievalContract::HighRecall(r) if r >= 0.999 => (RiveroProfile::Strict, 1024),
-            RetrievalContract::HighRecall(r) if r >= 0.99 => (RiveroProfile::Balanced, 768),
-            RetrievalContract::HighRecall(_) => (RiveroProfile::Fast, 512),
-            RetrievalContract::Budget(dur) if dur.as_micros() < 500 => (RiveroProfile::Fast, 256),
-            RetrievalContract::Budget(_) => (RiveroProfile::Fast, 512),
-        };
-
-        let candidate_cap = ((base_cap as f32) * dim_multiplier).round() as usize;
-
-        ExecutionPlan::RiveroRetrieval {
-            profile,
-            candidate_cap,
-        }
+        CalibratedRouteDecider::decide(
+            total_vectors,
+            complex_dim,
+            filter_cardinality,
+            contract,
+            is_mmap_cold,
+            affect,
+        )
     }
 }
 

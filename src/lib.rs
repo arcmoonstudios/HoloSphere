@@ -329,7 +329,8 @@ pub use planning::autoforge::{
     AutoForge, DerivedPhysicalConfig, OperatorIntent, OperatorIntentConfig, PlannerProfile,
 };
 pub use planning::planner::{
-    ExecutionPlan, ExecutionProof, QueryModality, RetrievalContract, UniversalPlanner,
+    CalibratedRouteDecider, ExecutionPlan, ExecutionProof, QueryModality, RetrievalContract,
+    UniversalPlanner,
 };
 pub use proof::{
     DenseExactProof, GlobalExactProofSearch, ProofCentroidCode, ProofNode, ProofQuery,
@@ -356,6 +357,7 @@ pub use retrieval::performance_trial::{
     evaluate_admission_gates,
 };
 pub use retrieval::sparse::{InvertedPostingList, SparseInvertedIndex, SparseVector};
+pub use retrieval::top_k::BoundedTopKCollector;
 pub use rivero::{
     AdaptivePolicy, AdaptiveRouteState, BuiltRiveroState, BulkBuildTelemetry, LaneAssignment,
     RIVERO_BUILD_CANDIDATE_CAP, RIVERO_CELL_CAPACITY, RIVERO_DEFAULT_FOUNDATIONS,
@@ -4195,10 +4197,7 @@ impl HNSQRIndex {
         let dist_fn = self.config.read().distance_function;
         let n = self.arena.len();
 
-        // Exact search scores every eligible live slot.  Pre-size for that
-        // upper bound rather than repeatedly growing from a tiny `k * 4`
-        // allocation on large corpora.
-        let mut scored: Vec<(NodeIndex, SimilarityScore)> = Vec::with_capacity(n);
+        let mut collector = BoundedTopKCollector::new(k);
         for i in 0..n as NodeIndex {
             if !self.arena.is_live(i) {
                 continue;
@@ -4215,17 +4214,10 @@ impl HNSQRIndex {
                 norm_sq,
                 dist_fn,
             );
-            scored.push((i, score));
+            collector.push(i, score);
         }
 
-        if scored.len() > k {
-            scored.select_nth_unstable_by(k - 1, |a, b| {
-                b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0))
-            });
-            scored.truncate(k);
-        }
-        scored.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-
+        let scored = collector.into_sorted_vec();
         self.record_search_latency(start_time);
         Ok(scored)
     }

@@ -28,9 +28,13 @@ use serde::{Deserialize, Serialize};
 use crate::{NodeIndex, SimilarityScore};
 
 pub mod bulk;
+pub mod funnel;
 pub mod witness;
 
 pub use bulk::{BuiltRiveroState, BulkBuildTelemetry, RiveroBuildDescriptor, RiveroBulkBuilder};
+pub use funnel::{
+    RIVERO_MAX_CANDIDATE_CEILING, RiveroBudgetParameters, ScaleAdaptiveFunnel,
+};
 pub use witness::{
     RIVERO_WITNESS_DEFAULT_DEGREE, RIVERO_WITNESS_DEFAULT_SECOND_SEEDS,
     RIVERO_WITNESS_DEFAULT_SEEDS, RIVERO_WITNESS_INLINE_DEGREE, RIVERO_WITNESS_MAX_DEGREE,
@@ -233,6 +237,12 @@ impl RiveroProfile {
             },
             Self::Strict => RiveroConfig::strict_default(),
         }
+    }
+
+    /// Returns a scale-adaptive [`RiveroConfig`] for this profile tuned to corpus scale and dimension.
+    #[must_use]
+    pub fn config_for_corpus(self, corpus_n: usize, complex_dim: usize) -> RiveroConfig {
+        ScaleAdaptiveFunnel::config_for_corpus(corpus_n, complex_dim, self)
     }
 
     /// Next progressive escalation profile.
@@ -471,6 +481,12 @@ impl RiveroConfig {
     #[must_use]
     pub const fn fast_balanced() -> Self {
         RiveroProfile::Balanced.config()
+    }
+
+    /// Scale-adaptive configuration tuned for corpus scale, complex dimensionality, and target profile.
+    #[must_use]
+    pub fn adaptive_for_corpus(corpus_n: usize, complex_dim: usize, profile: RiveroProfile) -> Self {
+        ScaleAdaptiveFunnel::config_for_corpus(corpus_n, complex_dim, profile)
     }
 
     /// Custom configuration with sanitized bounds.
@@ -1273,6 +1289,7 @@ impl CellSlots {
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub fn merge_from(
         &mut self,
         key: u64,

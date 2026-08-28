@@ -48,6 +48,13 @@ use crate::{
 
 const STRIPE_COUNT: usize = 64;
 
+#[derive(Clone, Copy, Debug)]
+struct UnmergedEntry {
+    key: u64,
+    fine_code: u32,
+    slot: NodeIndex,
+}
+
 /// Phase-by-phase telemetry and performance breakdown for bulk construction.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct BulkBuildTelemetry {
@@ -268,14 +275,15 @@ impl RiveroBulkBuilder {
         let num_threads = rayon::current_num_threads();
         let chunk_size = (n / num_threads).max(1);
 
-        // Map chunks to local 64-stripe tables with bounded cell retention
-        let chunk_stripes: Vec<Vec<HashMap<u64, CellSlots>>> = addresses
+        // Map chunks to flat per-stripe entry buffers eliminating multi-HashMap allocation contention
+        let chunk_stripes: Vec<Vec<Vec<UnmergedEntry>>> = addresses
             .par_chunks(chunk_size)
             .enumerate()
             .map(|(chunk_idx, chunk)| {
                 let start_slot = chunk_idx * chunk_size;
-                let mut local_stripes: Vec<HashMap<u64, CellSlots>> = (0..STRIPE_COUNT)
-                    .map(|_| HashMap::with_capacity(1024))
+                let estimated_per_stripe = (chunk.len() * foundations_count * 2 / STRIPE_COUNT).max(16);
+                let mut local_stripes: Vec<Vec<UnmergedEntry>> = (0..STRIPE_COUNT)
+                    .map(|_| Vec::with_capacity(estimated_per_stripe))
                     .collect();
 
                 for (offset, addr) in chunk.iter().enumerate() {
@@ -294,8 +302,11 @@ impl RiveroBulkBuilder {
                             let fine_code =
                                 (query_code & 0x00ff_ffff) | (u32::from(affinity) << 24);
 
-                            let cell = local_stripes[stripe].entry(key).or_default();
-                            cell.insert_with_limits(key, fine_code, slot, capacity, elites);
+                            local_stripes[stripe].push(UnmergedEntry {
+                                key,
+                                fine_code,
+                                slot,
+                            });
                         }
 
                         let (signature, _, _) = simhash_signature(coords, foundation);
@@ -303,8 +314,11 @@ impl RiveroBulkBuilder {
                         let stripe = stripe_for(key);
                         let fine_code = (query_code & 0x00ff_ffff) | (u32::from(u8::MAX) << 24);
 
-                        let cell = local_stripes[stripe].entry(key).or_default();
-                        cell.insert_with_limits(key, fine_code, slot, capacity, elites);
+                        local_stripes[stripe].push(UnmergedEntry {
+                            key,
+                            fine_code,
+                            slot,
+                        });
                     }
                 }
 
@@ -323,9 +337,9 @@ impl RiveroBulkBuilder {
             .map(|stripe_idx| {
                 let mut merged_stripe: HashMap<u64, CellSlots> = HashMap::with_capacity(2048);
                 for worker_stripes in &chunk_stripes {
-                    for (&key, cell) in &worker_stripes[stripe_idx] {
-                        let target = merged_stripe.entry(key).or_default();
-                        target.merge_from(key, cell, capacity, elites);
+                    for entry in &worker_stripes[stripe_idx] {
+                        let cell = merged_stripe.entry(entry.key).or_default();
+                        cell.insert_with_limits(entry.key, entry.fine_code, entry.slot, capacity, elites);
                     }
                 }
 
@@ -634,7 +648,7 @@ impl RiveroBulkBuilder {
                 undirected_proposals.push((a, b, proposal.similarity));
             }
         }
-        undirected_proposals.sort_unstable_by(|lhs, rhs| {
+        undirected_proposals.par_sort_unstable_by(|lhs, rhs| {
             rhs.2
                 .total_cmp(&lhs.2)
                 .then_with(|| lhs.0.cmp(&rhs.0))

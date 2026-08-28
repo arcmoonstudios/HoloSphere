@@ -787,8 +787,19 @@ impl LutzCertifier {
 
             let exact = exact_scorer(top_threat.slot);
             exact_evals += 1;
-            exact_scored.push((top_threat.slot, exact));
-            exact_scored.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+
+            // Maintain sorted order in O(log K) via binary search partition
+            let insert_idx = exact_scored.partition_point(|entry| {
+                match entry.1.total_cmp(&exact) {
+                    std::cmp::Ordering::Greater => true,
+                    std::cmp::Ordering::Equal => entry.0 < top_threat.slot,
+                    std::cmp::Ordering::Less => false,
+                }
+            });
+            exact_scored.insert(insert_idx, (top_threat.slot, exact));
+            if exact_scored.len() > k + 32 {
+                exact_scored.truncate(k + 16);
+            }
         }
 
         if heap.is_empty() {

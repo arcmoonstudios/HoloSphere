@@ -4,7 +4,7 @@
 [![Rust: 2024](https://img.shields.io/badge/Rust-2024%20Edition-orange.svg)](https://www.rust-lang.org/)
 [![Verification](https://img.shields.io/badge/Verification-cargo%20test-brightgreen.svg)](#verification--testing)
 [![Clippy](https://img.shields.io/badge/Clippy-D%20warnings-clean-brightgreen.svg)](#verification--testing)
-[![PGO: Optimized](https://img.shields.io/badge/PGO-LLVM%20Profile%20Guided-purple.svg)](docs/PROFILE_GUIDED_OPTIMIZATION.md)
+[![PGO: Profile workload first](https://img.shields.io/badge/PGO-profile%20workload%20first-purple.svg)]
 
 > **HoloSphere is a Rust multi-model state engine with exact vector retrieval, a canonical
 > provenance-bearing knowledge hypergraph, empirical experience tracking, governed discovery,
@@ -801,7 +801,9 @@ HoloSphere is optimized for hardware branch predictors and I-cache locality usin
 ./scripts/build_pgo.sh
 ```
 
-See [docs/PROFILE_GUIDED_OPTIMIZATION.md](docs/PROFILE_GUIDED_OPTIMIZATION.md) for full PGO + LLVM BOLT workflow instructions.
+For profile-guided optimization, capture a representative workload and record its
+environment alongside the resulting artifact; do not treat a profile from a synthetic
+or unrelated workload as production evidence.
 
 ---
 

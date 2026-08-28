@@ -95,17 +95,54 @@ impl InvalidationGraph {
 
     /// Clears records for invalidated locators.
     pub fn invalidate_locators(&mut self, locators: &[String]) {
+        let mut invalidated = HashSet::new();
         for loc in locators {
             if let Some(entities) = self.locator_to_entities.remove(loc) {
-                for id in &entities {
-                    self.entity_to_locator.remove(id);
-                    self.entity_dependencies.remove(id);
-                    self.entity_to_dependent_relations.remove(id);
-                    for referrers in self.entity_dependencies.values_mut() {
-                        referrers.remove(id);
-                    }
-                }
+                invalidated.extend(entities);
             }
         }
+
+        // PROJECTED: one pass over dependency sets replaces one full pass per removed entity
+        // (O(m * R) -> O(m + R)); confirm with `cargo bench` on a large invalidation workload.
+        for id in &invalidated {
+            self.entity_to_locator.remove(id);
+            self.entity_dependencies.remove(id);
+            self.entity_to_dependent_relations.remove(id);
+        }
+        for referrers in self.entity_dependencies.values_mut() {
+            referrers.retain(|id| !invalidated.contains(id));
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::InvalidationGraph;
+    use crate::contextgraph::schema::EntityId;
+
+    #[test]
+    fn invalidation_removes_every_outgoing_reference_in_one_batch() {
+        let removed_a = EntityId("removed-a".into());
+        let removed_b = EntityId("removed-b".into());
+        let survivor = EntityId("survivor".into());
+        let mut graph = InvalidationGraph::new();
+        graph.register_entity_source(&removed_a, "changed");
+        graph.register_entity_source(&removed_b, "changed");
+        graph.register_entity_source(&survivor, "unchanged");
+        graph.register_dependency(&survivor, &removed_a);
+        graph.register_dependency(&survivor, &removed_b);
+        graph.register_dependency(&removed_a, &survivor);
+
+        graph.invalidate_locators(&["changed".into()]);
+
+        assert!(!graph.entity_to_locator.contains_key(&removed_a));
+        assert!(!graph.entity_to_locator.contains_key(&removed_b));
+        assert!(
+            graph
+                .entity_dependencies
+                .values()
+                .all(|refs| refs.is_empty())
+        );
+        assert!(graph.entity_to_locator.contains_key(&survivor));
     }
 }

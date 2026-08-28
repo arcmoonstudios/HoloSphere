@@ -63,12 +63,7 @@ pub(crate) struct ReciprocalInsert {
     pub evicted: Option<ScoredWitness>,
 }
 
-impl ScoredWitness {
-    const EMPTY: Self = Self {
-        index: NodeIndex::MAX,
-        similarity: f32::NEG_INFINITY,
-    };
-}
+
 
 #[inline]
 pub(crate) const fn bounded_degree(requested: usize) -> usize {

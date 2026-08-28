@@ -192,8 +192,12 @@ impl SparseInvertedIndex {
         }
 
         let mut scored: Vec<(NodeIndex, SimilarityScore)> = doc_scores.into_iter().collect();
+        // DERIVED: Uses O(M + k log k) select_nth_unstable rather than full O(M log M) sort.
+        if scored.len() > k {
+            scored.select_nth_unstable_by(k, |a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+            scored.truncate(k);
+        }
         scored.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-        scored.truncate(k);
         scored
     }
 
@@ -232,8 +236,12 @@ impl SparseInvertedIndex {
         }
 
         let mut scored: Vec<(NodeIndex, SimilarityScore)> = scores.into_iter().collect();
+        // DERIVED: Uses O(M + k log k) select_nth_unstable rather than full O(M log M) sort.
+        if scored.len() > k {
+            scored.select_nth_unstable_by(k, |a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+            scored.truncate(k);
+        }
         scored.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-        scored.truncate(k);
         scored
     }
 }

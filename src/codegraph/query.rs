@@ -48,6 +48,8 @@ pub struct CodeQueryEngine;
 
 impl CodeQueryEngine {
     /// Explains a symbol with definition, spans, connections, rationale, and tests.
+    ///
+    /// DERIVED: Preallocates edge arrays with exact capacity and uses sort_unstable on symbol traces.
     #[must_use]
     pub fn explain(state: &CodeGraphStoreState, symbol: &str) -> Option<CodeExplainResult> {
         let node = Self::resolve_symbol_node(state, symbol)?;
@@ -57,9 +59,9 @@ impl CodeQueryEngine {
             .incoming_edges
             .get(node_id)
             .map(|ids| {
-                ids.iter()
-                    .filter_map(|id| state.edges.get(id).cloned())
-                    .collect()
+                let mut edges = Vec::with_capacity(ids.len());
+                edges.extend(ids.iter().filter_map(|id| state.edges.get(id).cloned()));
+                edges
             })
             .unwrap_or_default();
 
@@ -67,13 +69,13 @@ impl CodeQueryEngine {
             .outgoing_edges
             .get(node_id)
             .map(|ids| {
-                ids.iter()
-                    .filter_map(|id| state.edges.get(id).cloned())
-                    .collect()
+                let mut edges = Vec::with_capacity(ids.len());
+                edges.extend(ids.iter().filter_map(|id| state.edges.get(id).cloned()));
+                edges
             })
             .unwrap_or_default();
 
-        let mut callers = Vec::new();
+        let mut callers = Vec::with_capacity(incoming_edges.len());
         let mut covering_tests = Vec::new();
         let mut attached_rationale = Vec::new();
 
@@ -94,7 +96,7 @@ impl CodeQueryEngine {
             }
         }
 
-        let mut callees = Vec::new();
+        let mut callees = Vec::with_capacity(outgoing_edges.len());
         for edge in &outgoing_edges {
             if let Some(tgt) = state.nodes.get(&edge.target) {
                 if edge.relation == CodeRelation::Calls {
@@ -103,10 +105,10 @@ impl CodeQueryEngine {
             }
         }
 
-        callers.sort();
-        callees.sort();
-        covering_tests.sort();
-        attached_rationale.sort();
+        callers.sort_unstable();
+        callees.sort_unstable();
+        covering_tests.sort_unstable();
+        attached_rationale.sort_unstable();
 
         Some(CodeExplainResult {
             node,

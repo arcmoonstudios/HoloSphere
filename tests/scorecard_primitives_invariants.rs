@@ -13,12 +13,12 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use hnsqr::VectorEmbedding;
 use hnsqr::planning::planner::ExecutionPlan;
 use hnsqr::planning::regret::{PlanExecutionMetrics, PlannerRegretOracle};
 use hnsqr::rivero::RiveroProfile;
 use hnsqr::storage::concurrency::{LsmConcurrencyConfig, LsmSegmentConcurrencyHarness};
 use hnsqr::storage::segment::SegmentedEngine;
-use hnsqr::VectorEmbedding;
 
 // ════════════════════════════════════════════════════════════════════════════════
 // 1. LSM SEGMENT CONCURRENCY INVARIANTS
@@ -50,8 +50,14 @@ fn test_lsm_concurrency_invariants_and_zero_tombstone_leakage() {
     let report = LsmSegmentConcurrencyHarness::run(engine, vectors, config);
 
     // Invariant 1: Multi-threaded progress
-    assert!(report.total_writes > 0, "Concurrent writers must produce writes");
-    assert!(report.total_reads > 0, "Concurrent readers must produce reads");
+    assert!(
+        report.total_writes > 0,
+        "Concurrent writers must produce writes"
+    );
+    assert!(
+        report.total_reads > 0,
+        "Concurrent readers must produce reads"
+    );
     assert!(report.write_qps > 0.0);
     assert!(report.read_qps > 0.0);
 

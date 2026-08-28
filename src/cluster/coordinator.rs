@@ -445,9 +445,7 @@ impl DistributedCoordinator {
                 if let Some((immutables, active)) =
                     snapshot.all_shard_snapshots.get(&shard.shard_id)
                 {
-                    shard
-                        .engine
-                        .search_pinned(immutables, active, query, k)
+                    shard.engine.search_pinned(immutables, active, query, k)
                 } else {
                     shard.engine.search_pinned(
                         &snapshot.immutable_segments,
@@ -465,11 +463,7 @@ impl DistributedCoordinator {
     }
 
     /// Scatter-gather query across all shards with global Top-K merging.
-    pub fn search(
-        &self,
-        query: &VectorEmbedding,
-        k: usize,
-    ) -> Vec<(Arc<str>, SimilarityScore)> {
+    pub fn search(&self, query: &VectorEmbedding, k: usize) -> Vec<(Arc<str>, SimilarityScore)> {
         if k == 0 {
             return Vec::new();
         }

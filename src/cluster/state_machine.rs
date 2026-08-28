@@ -1244,10 +1244,7 @@ mod tests {
         let snap_vec = phys_snap.vector_snapshot.as_ref().unwrap();
         assert_eq!(
             snap_vec
-                .search(
-                    &VectorEmbedding::from_reals(&[0.1; 8]).into_normalized(),
-                    1,
-                )
+                .search(&VectorEmbedding::from_reals(&[0.1; 8]).into_normalized(), 1,)
                 .len(),
             1
         );
@@ -1310,10 +1307,7 @@ mod tests {
             0,
             "Vector engine must have 0 vectors"
         );
-        let results = engine.search(
-            &VectorEmbedding::from_reals(&[0.5; 8]).into_normalized(),
-            1,
-        );
+        let results = engine.search(&VectorEmbedding::from_reals(&[0.5; 8]).into_normalized(), 1);
         assert!(
             results.is_empty(),
             "Uncommitted vector must not exist in engine"
@@ -1528,14 +1522,7 @@ mod tests {
         assert_eq!(receipt.applied_index, 200);
 
         // Verify valid vector was inserted
-        assert!(
-            !engine
-                .search(
-                    &valid_vec,
-                    1,
-                )
-                .is_empty()
-        );
+        assert!(!engine.search(&valid_vec, 1,).is_empty());
         // Verify valid hypercube voxel was updated
         let snap = sm.pin_physical_snapshot();
         let cube_snap = snap.hypercube_snapshot.unwrap();

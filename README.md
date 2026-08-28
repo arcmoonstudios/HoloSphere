@@ -524,7 +524,7 @@ Client ACK ◄── CommitReceipt ◄── ShardStateMachine Apply ◄── Q
 ## Wire Protocols, Web Console & API Docs
 
 * **QIR0 Binary TCP Protocol (`:9090`)**: High-throughput async protocol supporting `OpCode::Ping`, `Insert`, `Search`, `BatchSearch`, `Stats`, and `OpCode::GraphQuery`.
-* **Model Context Protocol (`POST :8080/mcp` & STDIO)**: MCP `2025-06-18` Streamable HTTP / stdio server for Antigravity, Claude Desktop, Cursor, OpenAI, Gemini, and compatible agents. It exposes evidence primitives (`search`, `web_search`, `traverse`, `resolve`, `remember`, `record_outcome`), case primitives (`status`, `run_case`, `task_begin`, `task_context`, `task_complete`), topology discovery (`explore`), and ContextGraph primitives (`ingest`, `path`, `diff`). Every schema is closed; dotted aliases such as `web.search` and `task.begin` remain supported for compatibility.
+* **Model Context Protocol (`POST :8080/mcp` & STDIO)**: MCP `2025-06-18` Streamable HTTP / stdio server for Antigravity, Claude Desktop, Cursor, OpenAI, Gemini, and compatible agents. It exposes evidence primitives (`search`, `web_search`, `traverse`, `resolve`, `remember`, `record_outcome`), case primitives (`status`, `run_case`, `task_begin`, `task_context`, `task_complete`), topology discovery (`explore`), and ContextGraph primitives (`ingest`, `path`, `diff`). Every schema is closed and tool names use underscores.
 * **Redis RESP Protocol (`:6379`)**: Native RESP2/RESP3 server with `PING`, `SET`, `GET`, `INCR`, `DEL`, `PUBLISH`, `SUBSCRIBE`, `XADD`, and `XREAD`.
 * **Arrow-shaped batch socket (`:50051`)**: Project-local `ARROW1`-framed schema and batch payload; full gRPC Arrow Flight SQL compatibility is not yet claimed.
 * **HTTP REST Gateway (`:8080`)**: Axum-based JSON REST API for vector collections plus `/v1/knowledge/search`, `/traverse`, `/resolve`, `/remember`, `/outcomes`, `/status`, and `/cases/run`. Collection search accepts exactly one of a raw `query`/`vector` or `query_text`; text-only operations use the configured embedding provider and collections pin its model identity. Human-readable metadata accepts natural JSON string, integer, float, and Boolean scalars. Model responses carry a pinned LSN, proof status, and an explicit untrusted-content marker.
@@ -660,7 +660,7 @@ new collection rather than mixing vectors.
 
 ### Free, Self-Hosted Live Web Search
 
-HoloSphere includes a native, read-only `web.search` MCP tool. The included
+HoloSphere includes a native, read-only `web_search` MCP tool. The included
 [`deploy/searxng/docker-compose.yml`](deploy/searxng/docker-compose.yml) starts a free
 self-hosted [SearXNG](https://docs.searxng.org/) metasearch service and binds it only to
 `127.0.0.1:8888`; it needs no search API key:
@@ -679,7 +679,7 @@ timeout_ms = 15000
 max_results = 8
 ```
 
-Any MCP client can then call `web.search` with `query`, optional `language`, optional
+Any MCP client can then call `web_search` with `query`, optional `language`, optional
 `time_range` (`day`, `month`, or `year`), and bounded `k`. Each result carries its title,
 URL, snippet, participating engines, retrieval timestamp, content hash, and stable
 `evidence_id`. Results are explicitly untrusted evidence and are never treated as instructions.
@@ -690,7 +690,7 @@ fetching, avoiding an SSRF-capable proxy. SearXNG itself sends the upstream quer
 there is no paid API dependency; normal internet, hardware, and upstream search-engine rate
 limits still apply.
 
-Use `search` for durable tenant-scoped HoloSphere knowledge and `web.search` for facts that
+Use `search` for durable tenant-scoped HoloSphere knowledge and `web_search` for facts that
 need current public-web evidence. Registration preserves source evidence; it does not upgrade a
 claim to verified knowledge. Only a measurement, test artifact, or explicit approval may justify
 promotion through `record_outcome` or `task_complete`.
@@ -739,7 +739,7 @@ task_complete(case_id, measured evidence)
   → on success, promote a Resolution and link it with `fixed_by`
 ```
 
-`task_begin` (or alias `task.begin`) and `task_complete` (or alias `task.complete`) require read-write authorization and non-empty
+`task_begin` and `task_complete` require read-write authorization and non-empty
 provenance. `task_context` is read-only. All writes use caller-supplied idempotency keys;
 retrieved content remains explicitly untrusted evidence and never becomes executable
 instruction. This makes the memory loop provider-neutral: any agent or model using the

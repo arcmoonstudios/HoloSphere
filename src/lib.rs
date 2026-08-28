@@ -1330,7 +1330,9 @@ impl VectorEmbedding {
     #[inline(always)]
     pub fn cosine_similarity_real(&self, other: &Self) -> SimilarityScore {
         let dot = self.dot_product_real(other);
-        let denom = (self.norm_squared() * other.norm_squared()).max(1e-12).sqrt();
+        let denom = (self.norm_squared() * other.norm_squared())
+            .max(1e-12)
+            .sqrt();
         (dot / denom).clamp(-1.0, 1.0)
     }
 
@@ -5473,7 +5475,8 @@ impl HNSQRIndex {
                     let epoch = visited.next_epoch(self.arena.len());
 
                     let mut collector = BoundedTopKCollector::new(k);
-                    let mut candidate_scored: Vec<ScoredWitness> = Vec::with_capacity(candidates.len());
+                    let mut candidate_scored: Vec<ScoredWitness> =
+                        Vec::with_capacity(candidates.len());
 
                     let eval_limit = candidates.len();
                     for (cand_idx, &index) in candidates[..eval_limit].iter().enumerate() {
@@ -5511,12 +5514,12 @@ impl HNSQRIndex {
                         collector.push(index, score);
                     }
 
-                    let seeds = rivero_witness::select_top(&mut candidate_scored, witness_seed_limit);
+                    let seeds =
+                        rivero_witness::select_top(&mut candidate_scored, witness_seed_limit);
                     diagnostics.witness_seeds = seeds.len();
 
                     let mut first_hop_scored: SmallVec<
-                        [ScoredWitness;
-                            RIVERO_WITNESS_MAX_DEGREE * RIVERO_WITNESS_MAX_SEEDS],
+                        [ScoredWitness; RIVERO_WITNESS_MAX_DEGREE * RIVERO_WITNESS_MAX_SEEDS],
                     > = SmallVec::new();
                     let mut connections: SmallVec<[NodeIndex; RIVERO_WITNESS_MAX_DEGREE]> =
                         SmallVec::new();

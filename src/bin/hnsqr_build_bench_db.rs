@@ -19,9 +19,7 @@ use std::fs::{self, File};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use hnsqr::proof::{
-    ProofBenchmarkArtifact, SemanticProofTree, proof_benchmark_artifact_filename,
-};
+use hnsqr::proof::{ProofBenchmarkArtifact, SemanticProofTree, proof_benchmark_artifact_filename};
 use hnsqr::rivero::{RiveroBulkBuilder, RiveroProfile, VectorGeometry};
 use hnsqr::vector::folding::ComplexWeaver;
 use hnsqr::{DistanceFunction, HNSQRConfig, HNSQRIndex, VectorEmbedding};

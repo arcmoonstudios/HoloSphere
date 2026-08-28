@@ -263,9 +263,7 @@ fn test_distributed_mutation_service_deletes() {
         .expect("Delete must succeed");
 
     // Verify deletion reflected
-    let res2 = service
-        .search(&ctx, &vec, 1)
-        .expect("Search must execute");
+    let res2 = service.search(&ctx, &vec, 1).expect("Search must execute");
     assert!(res2.is_empty() || res2[0].0.as_ref() != "delete_target");
 }
 

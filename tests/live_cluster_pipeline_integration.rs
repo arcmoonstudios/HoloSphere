@@ -81,9 +81,7 @@ async fn test_live_cluster_end_to_end_mutation_pipeline_and_recovery() {
         .collect();
     let query = VectorEmbedding::from_complex(query_coords).into_normalized();
 
-    let results = service
-        .search(&ctx_admin, &query, 3)
-        .unwrap();
+    let results = service.search(&ctx_admin, &query, 3).unwrap();
     assert_eq!(results[0].0.as_ref(), "live_doc_42");
     assert!(
         (results[0].1 - 1.0).abs() < 1e-4,

@@ -73,10 +73,16 @@ fn run_experiment(exp: &ExperimentConfig) -> Option<BenchmarkResult> {
     let proof_path = common::bench_cache_dir()
         .join(proof_benchmark_artifact_filename(source_real_dim, actual_n));
     let proof_artifact = if proof_path.is_file() {
-        ProofBenchmarkArtifact::load(&proof_path, source_real_dim, actual_n)
-            .unwrap_or_else(|e| panic!("failed to load proof artifact {}: {e}", proof_path.display()))
+        ProofBenchmarkArtifact::load(&proof_path, source_real_dim, actual_n).unwrap_or_else(|e| {
+            panic!(
+                "failed to load proof artifact {}: {e}",
+                proof_path.display()
+            )
+        })
     } else {
-        println!("⚙️ Generating in-memory proof hierarchy for D_real={source_real_dim}, N={actual_n}...");
+        println!(
+            "⚙️ Generating in-memory proof hierarchy for D_real={source_real_dim}, N={actual_n}..."
+        );
         let slots: Vec<u32> = (0..actual_n as u32).collect();
         let tree = hnsqr::proof::SemanticProofTree::build(&corpus, &slots, complex_dim);
         let artifact = ProofBenchmarkArtifact::new(source_real_dim, tree)
@@ -260,18 +266,16 @@ fn main() {
         }
     }
 
-    println!("\n═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════");
+    println!(
+        "\n═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════"
+    );
     println!("                             🏆 GATE B HIERARCHICAL PROOF FINAL SCORECARD");
-    println!("═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════");
+    println!(
+        "═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════"
+    );
     println!(
         "{:<8} | {:<8} | {:<10} | {:<12} | {:<12} | {:<12} | {:<10} | Status",
-        "D_real",
-        "N",
-        "Recall@10",
-        "Region Prune",
-        "Exact SIMD",
-        "Latency",
-        "Speedup"
+        "D_real", "N", "Recall@10", "Region Prune", "Exact SIMD", "Latency", "Speedup"
     );
     println!(
         "---------------------------------------------------------------------------------------------------------------"

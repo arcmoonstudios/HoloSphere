@@ -28,9 +28,7 @@ impl<T: Send + Sync + Copy, const STRIPES: usize> PartitionedRadixBucketer<T, ST
     #[must_use]
     pub fn new(num_workers: usize, estimated_per_stripe: usize) -> Self {
         let workers = (0..num_workers)
-            .map(|_| {
-                std::array::from_fn(|_| Vec::with_capacity(estimated_per_stripe))
-            })
+            .map(|_| std::array::from_fn(|_| Vec::with_capacity(estimated_per_stripe)))
             .collect();
         Self { workers }
     }

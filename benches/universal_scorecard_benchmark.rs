@@ -330,7 +330,12 @@ fn main() {
             territory_index.with_candidates(&q_addr, 512, |cands: &[NodeIndex], _| cands.to_vec());
         let mut dense_topk: Vec<_> = dense_cands
             .iter()
-            .map(|&s| (Arc::from(format!("node_{s}")), query.dot_product_real(&dataset.folded_corpus[s as usize])))
+            .map(|&s| {
+                (
+                    Arc::from(format!("node_{s}")),
+                    query.dot_product_real(&dataset.folded_corpus[s as usize]),
+                )
+            })
             .collect();
         dense_topk.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
         dense_topk.truncate(k);
@@ -531,7 +536,8 @@ fn main() {
     ];
 
     let selected_metric = &candidate_metrics[2]; // Universal Auto
-    let regret_eval = hnsqr::planning::regret::PlannerRegretOracle::evaluate(selected_metric, &candidate_metrics);
+    let regret_eval =
+        hnsqr::planning::regret::PlannerRegretOracle::evaluate(selected_metric, &candidate_metrics);
 
     println!(
         "  ┌──────────────────────┬──────────────────────┬────────────┬────────────┬─────────────┬──────────────┐"

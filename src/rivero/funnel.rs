@@ -73,21 +73,25 @@ impl ScaleAdaptiveFunnel {
 
         let total_mult = scale_factor * dim_factor;
 
-        let query_candidate_cap = ((base_cap as f64) * total_mult)
-            .round() as usize;
+        let query_candidate_cap = ((base_cap as f64) * total_mult).round() as usize;
         let query_candidate_cap = query_candidate_cap.clamp(base_cap, RIVERO_MAX_CANDIDATE_CEILING);
 
-        let cell_budget = ((base_budget as f64) * (1.0 + 0.2 * (total_mult - 1.0)))
-            .round() as usize;
-        let cell_budget = cell_budget.clamp(base_budget, base_config.cell_capacity.min(RIVERO_CELL_CAPACITY));
+        let cell_budget =
+            ((base_budget as f64) * (1.0 + 0.2 * (total_mult - 1.0))).round() as usize;
+        let cell_budget = cell_budget.clamp(
+            base_budget,
+            base_config.cell_capacity.min(RIVERO_CELL_CAPACITY),
+        );
 
         let witness_seeds = ((profile.witness_seeds() as f64) * (1.0 + 0.3 * (scale_factor - 1.0)))
             .round() as usize;
         let witness_seeds = witness_seeds.clamp(profile.witness_seeds(), RIVERO_WITNESS_MAX_SEEDS);
 
-        let witness_second_seeds = ((profile.witness_second_seeds() as f64) * (1.0 + 0.2 * (scale_factor - 1.0)))
+        let witness_second_seeds = ((profile.witness_second_seeds() as f64)
+            * (1.0 + 0.2 * (scale_factor - 1.0)))
             .round() as usize;
-        let witness_second_seeds = witness_second_seeds.clamp(profile.witness_second_seeds(), RIVERO_WITNESS_MAX_SEEDS);
+        let witness_second_seeds =
+            witness_second_seeds.clamp(profile.witness_second_seeds(), RIVERO_WITNESS_MAX_SEEDS);
 
         RiveroBudgetParameters {
             foundations: base_config.foundations.min(RIVERO_MAX_FOUNDATIONS),
@@ -123,7 +127,11 @@ mod tests {
     #[test]
     fn test_scale_monotonicity_invariant() {
         let sizes = [500, 2_000, 10_000, 50_000, 100_000, 500_000, 1_000_000];
-        for profile in [RiveroProfile::Fast, RiveroProfile::Balanced, RiveroProfile::Strict] {
+        for profile in [
+            RiveroProfile::Fast,
+            RiveroProfile::Balanced,
+            RiveroProfile::Strict,
+        ] {
             let mut prev_cap = 0usize;
             let mut prev_budget = 0usize;
             for &n in &sizes {
@@ -147,7 +155,11 @@ mod tests {
     #[test]
     fn test_work_ceiling_invariant() {
         let huge_n = 100_000_000;
-        for profile in [RiveroProfile::Fast, RiveroProfile::Balanced, RiveroProfile::Strict] {
+        for profile in [
+            RiveroProfile::Fast,
+            RiveroProfile::Balanced,
+            RiveroProfile::Strict,
+        ] {
             let params = ScaleAdaptiveFunnel::compute_budget(huge_n, 2048, profile);
             assert!(
                 params.query_candidate_cap <= RIVERO_MAX_CANDIDATE_CEILING,
@@ -174,7 +186,10 @@ mod tests {
     fn test_baseline_preservation_under_10k() {
         let params_5k = ScaleAdaptiveFunnel::compute_budget(5000, 64, RiveroProfile::Strict);
         let base_strict = RiveroProfile::Strict.config();
-        assert_eq!(params_5k.query_candidate_cap, base_strict.query_candidate_cap);
+        assert_eq!(
+            params_5k.query_candidate_cap,
+            base_strict.query_candidate_cap
+        );
         assert_eq!(params_5k.cell_budget, base_strict.cell_budget);
     }
 }

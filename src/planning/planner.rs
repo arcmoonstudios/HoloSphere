@@ -239,11 +239,8 @@ impl CalibratedRouteDecider {
             RetrievalContract::Budget(_) => RiveroProfile::Fast,
         };
 
-        let budget_params = crate::rivero::ScaleAdaptiveFunnel::compute_budget(
-            effective_n,
-            complex_dim,
-            profile,
-        );
+        let budget_params =
+            crate::rivero::ScaleAdaptiveFunnel::compute_budget(effective_n, complex_dim, profile);
 
         ExecutionPlan::RiveroRetrieval {
             profile,

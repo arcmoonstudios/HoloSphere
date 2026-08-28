@@ -152,8 +152,7 @@ pub trait SearchService: Send + Sync {
         query: &VectorEmbedding,
         k: usize,
     ) -> HNSQRResult<SearchResponse> {
-        self.search(ctx, query, k)
-            .map(SearchResponse::uncertified)
+        self.search(ctx, query, k).map(SearchResponse::uncertified)
     }
 
     fn graph_query(
@@ -614,9 +613,7 @@ impl SearchService for ClusterService {
         let pinned = self
             .coordinator
             .obtain_cluster_pinned_snapshot(ReadConsistency::Linearizable)?;
-        let res = self
-            .coordinator
-            .search_pinned(&pinned, query, k);
+        let res = self.coordinator.search_pinned(&pinned, query, k);
         if let Some(slo) = &self.slo_manager {
             slo.record_query_event(true);
         }

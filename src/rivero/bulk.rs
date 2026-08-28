@@ -281,7 +281,8 @@ impl RiveroBulkBuilder {
             .enumerate()
             .map(|(chunk_idx, chunk)| {
                 let start_slot = chunk_idx * chunk_size;
-                let estimated_per_stripe = (chunk.len() * foundations_count * 2 / STRIPE_COUNT).max(16);
+                let estimated_per_stripe =
+                    (chunk.len() * foundations_count * 2 / STRIPE_COUNT).max(16);
                 let mut local_stripes: Vec<Vec<UnmergedEntry>> = (0..STRIPE_COUNT)
                     .map(|_| Vec::with_capacity(estimated_per_stripe))
                     .collect();
@@ -339,7 +340,13 @@ impl RiveroBulkBuilder {
                 for worker_stripes in &chunk_stripes {
                     for entry in &worker_stripes[stripe_idx] {
                         let cell = merged_stripe.entry(entry.key).or_default();
-                        cell.insert_with_limits(entry.key, entry.fine_code, entry.slot, capacity, elites);
+                        cell.insert_with_limits(
+                            entry.key,
+                            entry.fine_code,
+                            entry.slot,
+                            capacity,
+                            elites,
+                        );
                     }
                 }
 

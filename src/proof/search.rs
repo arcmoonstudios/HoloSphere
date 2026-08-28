@@ -82,9 +82,8 @@ impl DenseExactProof {
     /// $$N_{\text{eligible}} \equiv N_{\text{region-pruned}} + N_{\text{exact}} + N_{\text{filtered}}$$
     #[inline]
     pub fn is_accounting_exact(&self) -> bool {
-        let total = self.vectors_pruned_by_region
-            + self.exact_evaluations
-            + self.filtered_or_tombstoned;
+        let total =
+            self.vectors_pruned_by_region + self.exact_evaluations + self.filtered_or_tombstoned;
         total == self.corpus_size
     }
 }

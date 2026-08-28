@@ -22,10 +22,7 @@ pub struct ProofBenchmarkArtifact {
 }
 
 impl ProofBenchmarkArtifact {
-    pub fn new(
-        source_real_dimension: usize,
-        tree: SemanticProofTree,
-    ) -> HNSQRResult<Self> {
+    pub fn new(source_real_dimension: usize, tree: SemanticProofTree) -> HNSQRResult<Self> {
         let vector_count = tree.total_vectors();
         Ok(Self {
             version: PROOF_BENCHMARK_ARTIFACT_VERSION,
@@ -96,8 +93,7 @@ mod tests {
     fn round_trip_rejects_a_mismatched_workload() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("proof.bin");
-        let artifact =
-            ProofBenchmarkArtifact::new(128, SemanticProofTree::empty(64)).unwrap();
+        let artifact = ProofBenchmarkArtifact::new(128, SemanticProofTree::empty(64)).unwrap();
         artifact.save(&path).unwrap();
 
         assert!(ProofBenchmarkArtifact::load(&path, 128, 0).is_ok());

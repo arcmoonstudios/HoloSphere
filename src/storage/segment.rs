@@ -148,11 +148,7 @@ impl MutableSegment {
     }
 
     /// Searches within this mutable segment.
-    pub fn search(
-        &self,
-        query: &VectorEmbedding,
-        k: usize,
-    ) -> Vec<(Arc<str>, SimilarityScore)> {
+    pub fn search(&self, query: &VectorEmbedding, k: usize) -> Vec<(Arc<str>, SimilarityScore)> {
         if k == 0 {
             return Vec::new();
         }
@@ -318,11 +314,7 @@ impl ImmutableSegment {
     }
 
     /// Searches within this immutable segment.
-    pub fn search(
-        &self,
-        query: &VectorEmbedding,
-        k: usize,
-    ) -> Vec<(Arc<str>, SimilarityScore)> {
+    pub fn search(&self, query: &VectorEmbedding, k: usize) -> Vec<(Arc<str>, SimilarityScore)> {
         if k == 0 || self.vectors.is_empty() {
             return Vec::new();
         }
@@ -651,11 +643,7 @@ impl SegmentedEngine {
     }
 
     /// Global search across all active and immutable segments with Top-K score merging.
-    pub fn search(
-        &self,
-        query: &VectorEmbedding,
-        k: usize,
-    ) -> Vec<(Arc<str>, SimilarityScore)> {
+    pub fn search(&self, query: &VectorEmbedding, k: usize) -> Vec<(Arc<str>, SimilarityScore)> {
         if k == 0 {
             return Vec::new();
         }
@@ -883,11 +871,7 @@ pub struct ImmutableVectorSnapshot {
 }
 
 impl ImmutableVectorSnapshot {
-    pub fn search(
-        &self,
-        query: &VectorEmbedding,
-        k: usize,
-    ) -> Vec<(Arc<str>, SimilarityScore)> {
+    pub fn search(&self, query: &VectorEmbedding, k: usize) -> Vec<(Arc<str>, SimilarityScore)> {
         if k == 0 {
             return Vec::new();
         }

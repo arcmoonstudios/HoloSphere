@@ -15,14 +15,14 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::VectorEmbedding;
 use crate::planning::planner::RetrievalContract;
 use crate::storage::segment::SegmentedEngine;
-use crate::VectorEmbedding;
 
 /// Configuration parameters for the LSM Segment Concurrency Harness.
 #[derive(Clone, Copy, Debug)]
@@ -97,7 +97,12 @@ impl LsmSegmentConcurrencyHarness {
             let v = if !test_vectors.is_empty() {
                 test_vectors[i % test_vectors.len()].clone()
             } else {
-                VectorEmbedding::from_complex((0..dim).map(|_| num_complex::Complex32::new(1.0, 0.0)).collect()).into_normalized()
+                VectorEmbedding::from_complex(
+                    (0..dim)
+                        .map(|_| num_complex::Complex32::new(1.0, 0.0))
+                        .collect(),
+                )
+                .into_normalized()
             };
             let _ = engine.insert(format!("base_{i}"), v);
         }
@@ -121,7 +126,12 @@ impl LsmSegmentConcurrencyHarness {
                     let v = if !vecs.is_empty() {
                         vecs[(w_idx * 1000 + op_counter) % vecs.len()].clone()
                     } else {
-                        VectorEmbedding::from_complex((0..dim).map(|_| num_complex::Complex32::new(0.5, 0.0)).collect()).into_normalized()
+                        VectorEmbedding::from_complex(
+                            (0..dim)
+                                .map(|_| num_complex::Complex32::new(0.5, 0.0))
+                                .collect(),
+                        )
+                        .into_normalized()
                     };
 
                     if engine_cloned.insert(item_id.clone(), v).is_ok() {
@@ -165,11 +175,8 @@ impl LsmSegmentConcurrencyHarness {
                     };
 
                     let t0 = Instant::now();
-                    let results = engine_cloned.search_with_contract(
-                        q,
-                        k,
-                        RetrievalContract::Exact,
-                    );
+                    let results =
+                        engine_cloned.search_with_contract(q, k, RetrievalContract::Exact);
                     let lat_us = t0.elapsed().as_secs_f64() * 1_000_000.0;
                     local_latencies.push(lat_us);
                     tr.fetch_add(1, Ordering::Relaxed);
@@ -269,7 +276,10 @@ mod tests {
             },
         );
 
-        assert!(report.total_writes > 0, "Writes should succeed concurrently");
+        assert!(
+            report.total_writes > 0,
+            "Writes should succeed concurrently"
+        );
         assert!(report.total_reads > 0, "Reads should succeed concurrently");
         assert_eq!(
             report.tombstone_violations, 0,

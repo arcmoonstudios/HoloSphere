@@ -113,8 +113,8 @@ impl PlannerRegretOracle {
         let p95_idx = ((regrets.len() as f64 - 1.0) * 0.95).round() as usize;
         let p95_regret = regrets[p95_idx.min(regrets.len() - 1)];
 
-        let mean_opt = evaluations.iter().map(|e| e.optimality_ratio).sum::<f64>()
-            / evaluations.len() as f64;
+        let mean_opt =
+            evaluations.iter().map(|e| e.optimality_ratio).sum::<f64>() / evaluations.len() as f64;
         let matches = evaluations
             .iter()
             .filter(|e| e.selected_plan_name == e.optimal_plan_name)

@@ -33,9 +33,7 @@ pub mod radix;
 pub mod witness;
 
 pub use bulk::{BuiltRiveroState, BulkBuildTelemetry, RiveroBuildDescriptor, RiveroBulkBuilder};
-pub use funnel::{
-    RIVERO_MAX_CANDIDATE_CEILING, RiveroBudgetParameters, ScaleAdaptiveFunnel,
-};
+pub use funnel::{RIVERO_MAX_CANDIDATE_CEILING, RiveroBudgetParameters, ScaleAdaptiveFunnel};
 pub use radix::PartitionedRadixBucketer;
 pub use witness::{
     RIVERO_WITNESS_DEFAULT_DEGREE, RIVERO_WITNESS_DEFAULT_SECOND_SEEDS,
@@ -487,7 +485,11 @@ impl RiveroConfig {
 
     /// Scale-adaptive configuration tuned for corpus scale, complex dimensionality, and target profile.
     #[must_use]
-    pub fn adaptive_for_corpus(corpus_n: usize, complex_dim: usize, profile: RiveroProfile) -> Self {
+    pub fn adaptive_for_corpus(
+        corpus_n: usize,
+        complex_dim: usize,
+        profile: RiveroProfile,
+    ) -> Self {
         ScaleAdaptiveFunnel::config_for_corpus(corpus_n, complex_dim, profile)
     }
 

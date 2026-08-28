@@ -12,11 +12,11 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::f32::consts::PI;
 use num_complex::Complex32;
+use std::f32::consts::PI;
 
-use hnsqr::vector::{CircularAngularMetric, ComplexSliceCast, RotaryPhaseTransformer};
 use hnsqr::VectorEmbedding;
+use hnsqr::vector::{CircularAngularMetric, ComplexSliceCast, RotaryPhaseTransformer};
 
 // ════════════════════════════════════════════════════════════════════════════════
 // 1. REAL SIMD INNER PRODUCT & COSINE INVARIANTS
@@ -130,10 +130,8 @@ fn test_complex_slice_cast_bidirectional_roundtrip() {
 
 #[test]
 fn test_vector_embedding_slice_view_methods() {
-    let mut v = VectorEmbedding::from_complex(vec![
-        Complex32::new(1.5, -2.5),
-        Complex32::new(3.5, -4.5),
-    ]);
+    let mut v =
+        VectorEmbedding::from_complex(vec![Complex32::new(1.5, -2.5), Complex32::new(3.5, -4.5)]);
 
     assert_eq!(v.as_real_slice(), &[1.5, -2.5, 3.5, -4.5]);
 

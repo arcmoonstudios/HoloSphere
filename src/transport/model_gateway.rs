@@ -511,6 +511,9 @@ fn default_ingest_source_type() -> String {
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct IngestResult {
     pub namespace: String,
+    /// Stable ContextGraph identifiers created by this ingestion.  Callers can feed
+    /// these directly to `path` without reconstructing implementation hashes.
+    pub entity_ids: Vec<String>,
     pub entities_count: usize,
     pub relations_count: usize,
     pub canonical_fingerprint: String,
@@ -2712,6 +2715,11 @@ impl ModelToolService {
         let compiler = crate::contextgraph::ContextCompiler::default();
         let output = compiler.compile(&namespace, &sources)?;
         let entities_count = output.entities.len();
+        let entity_ids = output
+            .entities
+            .iter()
+            .map(|entity| entity.id.0.clone())
+            .collect();
         let relations_count = output.relations.len();
         let duration_ms = output.duration_ms;
         let canonical_fingerprint = format!("{:x?}", output.canonical_fingerprint);
@@ -2727,6 +2735,7 @@ impl ModelToolService {
             content_is_untrusted: true,
             results: IngestResult {
                 namespace: namespace.0,
+                entity_ids,
                 entities_count,
                 relations_count,
                 canonical_fingerprint,
@@ -2745,8 +2754,27 @@ impl ModelToolService {
     ) -> HNSQRResult<EvidenceEnvelope<Option<crate::contextgraph::ContextSlice>>> {
         let snapshot_lsn = self.snapshot_lsn(request.snapshot_lsn)?;
         let state = self.contextgraph.snapshot();
-        let from_id = crate::contextgraph::schema::EntityId(request.from);
-        let to_id = crate::contextgraph::schema::EntityId(request.to);
+        // Accept either the stable `ent_…` identifier or an unambiguous entity
+        // label, as advertised by the MCP contract.  Ambiguous labels are rejected
+        // rather than silently choosing an arbitrary node.
+        let resolve_entity = |value: String| -> HNSQRResult<crate::contextgraph::schema::EntityId> {
+            let candidate = crate::contextgraph::schema::EntityId(value.clone());
+            if state.entities.contains_key(&candidate) {
+                return Ok(candidate);
+            }
+            let matches = self.contextgraph.lookup_by_label(&value);
+            match matches.as_slice() {
+                [entity] => Ok(entity.id.clone()),
+                [] => Err(HNSQRError::InvalidRequest(format!(
+                    "ContextGraph entity '{value}' was not found; use an entity ID returned by ingest or an exact label"
+                ))),
+                _ => Err(HNSQRError::InvalidRequest(format!(
+                    "ContextGraph label '{value}' is ambiguous; use an entity ID returned by ingest"
+                ))),
+            }
+        };
+        let from_id = resolve_entity(request.from)?;
+        let to_id = resolve_entity(request.to)?;
         let budget = crate::contextgraph::ContextBudget {
             max_results: 50,
             max_chars: 12000,

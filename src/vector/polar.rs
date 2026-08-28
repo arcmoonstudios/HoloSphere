@@ -17,8 +17,8 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-use std::f32::consts::PI;
 use num_complex::Complex32;
+use std::f32::consts::PI;
 
 /// Reusable circular periodic metric and polar projection primitive.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -58,11 +58,7 @@ impl CircularAngularMetric {
     #[inline(always)]
     pub fn angular_distance(theta_a: f32, theta_b: f32) -> f32 {
         let diff = (theta_a - theta_b).abs() % Self::TWO_PI;
-        if diff > PI {
-            Self::TWO_PI - diff
-        } else {
-            diff
-        }
+        if diff > PI { Self::TWO_PI - diff } else { diff }
     }
 
     /// Computes the mean pairwise circular distance across two slices of phase angles.
@@ -117,7 +113,13 @@ mod tests {
 
     #[test]
     fn test_polar_cartesian_round_trip() {
-        let test_points = [(1.0, 0.0), (0.0, 2.0), (-3.0, 4.0), (-5.0, -12.0), (7.0, -24.0)];
+        let test_points = [
+            (1.0, 0.0),
+            (0.0, 2.0),
+            (-3.0, 4.0),
+            (-5.0, -12.0),
+            (7.0, -24.0),
+        ];
         for (x, y) in test_points {
             let (r, theta) = CircularAngularMetric::cartesian_to_polar(x, y);
             assert!(r >= 0.0);
@@ -134,7 +136,10 @@ mod tests {
         let theta_pos = PI - 0.05;
         let theta_neg = -PI + 0.05;
         let dist = CircularAngularMetric::angular_distance(theta_pos, theta_neg);
-        assert!((dist - 0.10).abs() < 1e-5, "Wrap-around distance should be 0.10, got {dist}");
+        assert!(
+            (dist - 0.10).abs() < 1e-5,
+            "Wrap-around distance should be 0.10, got {dist}"
+        );
 
         // Identity
         assert_eq!(CircularAngularMetric::angular_distance(1.23, 1.23), 0.0);
@@ -161,6 +166,9 @@ mod tests {
         // Uniformly distributed 4 orthogonal angles (variance ~ 1.0)
         let orthogonal = [0.0, PI / 2.0, PI, -PI / 2.0];
         let var_ortho = CircularAngularMetric::circular_variance(&orthogonal);
-        assert!((var_ortho - 1.0).abs() < 1e-4, "Variance should be 1.0 for orthogonal set");
+        assert!(
+            (var_ortho - 1.0).abs() < 1e-4,
+            "Variance should be 1.0 for orthogonal set"
+        );
     }
 }

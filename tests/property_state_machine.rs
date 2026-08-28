@@ -74,10 +74,7 @@ fn test_replicated_state_machine_sequential_model_equivalence() {
             let engine = &shards[0].engine;
 
             if let Some(expected_vec) = sequential_oracle.get(&key) {
-                let search_res = engine.search(
-                    expected_vec,
-                    1,
-                );
+                let search_res = engine.search(expected_vec, 1);
                 // The exact key must appear as the nearest neighbour.
                 let found = search_res.iter().any(|r| r.0.as_ref() == key);
                 assert!(

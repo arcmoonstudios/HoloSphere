@@ -353,11 +353,7 @@ impl<S: HNSQRService + 'static> HNSQRServer<S> {
                                 ..Default::default()
                             };
 
-                            match service.search_with_proof(
-                                &ctx,
-                                &query,
-                                k,
-                            ) {
+                            match service.search_with_proof(&ctx, &query, k) {
                                 Ok(response) => {
                                     let header_pos = write_buf.len();
                                     // Bit 0: certified exact. Bit 1: proof upper bound follows
@@ -443,11 +439,7 @@ impl<S: HNSQRService + 'static> HNSQRServer<S> {
 
                             let mut batch_results = Vec::with_capacity(queries.len());
                             for q in &queries {
-                                match service.search(
-                                    &ctx,
-                                    q,
-                                    k,
-                                ) {
+                                match service.search(&ctx, q, k) {
                                     Ok(res) => batch_results.push(res),
                                     Err(e) => {
                                         Self::write_error(

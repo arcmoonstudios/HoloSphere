@@ -226,6 +226,9 @@ impl PolarQuantizedVector {
 }
 
 /// Fast Asymmetric Inner Product between uncompressed query and raw quantized bytes.
+///
+/// // PROJECTED: ~15-25% throughput gain on CPQ-8 distance calculations by precomputing
+/// // scalar step scaling `(max_r - min_r) / 255.0` outside the hot loop and using 4-way `chunks_exact`.
 #[inline(always)]
 pub fn asymmetric_dot_product_raw(
     query: &[Complex32],
@@ -233,49 +236,59 @@ pub fn asymmetric_dot_product_raw(
     min_r: f32,
     max_r: f32,
 ) -> Complex32 {
-    let dim = query.len();
-    let range_r = max_r - min_r;
-    let inv_255 = 1.0 / 255.0;
+    let step_r = (max_r - min_r) * (1.0 / 255.0);
 
     let mut sum_re0 = 0.0f32;
     let mut sum_im0 = 0.0f32;
     let mut sum_re1 = 0.0f32;
     let mut sum_im1 = 0.0f32;
+    let mut sum_re2 = 0.0f32;
+    let mut sum_im2 = 0.0f32;
+    let mut sum_re3 = 0.0f32;
+    let mut sum_im3 = 0.0f32;
 
-    let chunks = dim / 2;
-    for c in 0..chunks {
-        let i0 = c * 2;
-        let i1 = i0 + 1;
+    let q_chunks = query.chunks_exact(4);
+    let b_chunks = quantized_bytes.chunks_exact(8);
+    let remainder_q = q_chunks.remainder();
+    let remainder_b = b_chunks.remainder();
 
-        let q_r0 = quantized_bytes[i0 * 2];
-        let q_theta0 = quantized_bytes[i0 * 2 + 1];
-        let r0 = min_r + (q_r0 as f32 * inv_255) * range_r;
-        let z_re0 = r0 * cos_phase(q_theta0);
-        let z_im0 = r0 * sin_phase(q_theta0);
-        let q0 = query[i0];
+    for (q_quad, b_oct) in q_chunks.zip(b_chunks) {
+        let r0 = min_r + (b_oct[0] as f32) * step_r;
+        let z_re0 = r0 * cos_phase(b_oct[1]);
+        let z_im0 = r0 * sin_phase(b_oct[1]);
+        let q0 = q_quad[0];
         sum_re0 += q0.re * z_re0 + q0.im * z_im0;
         sum_im0 += q0.re * z_im0 - q0.im * z_re0;
 
-        let q_r1 = quantized_bytes[i1 * 2];
-        let q_theta1 = quantized_bytes[i1 * 2 + 1];
-        let r1 = min_r + (q_r1 as f32 * inv_255) * range_r;
-        let z_re1 = r1 * cos_phase(q_theta1);
-        let z_im1 = r1 * sin_phase(q_theta1);
-        let q1 = query[i1];
+        let r1 = min_r + (b_oct[2] as f32) * step_r;
+        let z_re1 = r1 * cos_phase(b_oct[3]);
+        let z_im1 = r1 * sin_phase(b_oct[3]);
+        let q1 = q_quad[1];
         sum_re1 += q1.re * z_re1 + q1.im * z_im1;
         sum_im1 += q1.re * z_im1 - q1.im * z_re1;
+
+        let r2 = min_r + (b_oct[4] as f32) * step_r;
+        let z_re2 = r2 * cos_phase(b_oct[5]);
+        let z_im2 = r2 * sin_phase(b_oct[5]);
+        let q2 = q_quad[2];
+        sum_re2 += q2.re * z_re2 + q2.im * z_im2;
+        sum_im2 += q2.re * z_im2 - q2.im * z_re2;
+
+        let r3 = min_r + (b_oct[6] as f32) * step_r;
+        let z_re3 = r3 * cos_phase(b_oct[7]);
+        let z_im3 = r3 * sin_phase(b_oct[7]);
+        let q3 = q_quad[3];
+        sum_re3 += q3.re * z_re3 + q3.im * z_im3;
+        sum_im3 += q3.re * z_im3 - q3.im * z_re3;
     }
 
-    let mut sum_re = sum_re0 + sum_re1;
-    let mut sum_im = sum_im0 + sum_im1;
+    let mut sum_re = (sum_re0 + sum_re1) + (sum_re2 + sum_re3);
+    let mut sum_im = (sum_im0 + sum_im1) + (sum_im2 + sum_im3);
 
-    for i in (chunks * 2)..dim {
-        let q_r = quantized_bytes[i * 2];
-        let q_theta = quantized_bytes[i * 2 + 1];
-        let r = min_r + (q_r as f32 * inv_255) * range_r;
-        let z_re = r * cos_phase(q_theta);
-        let z_im = r * sin_phase(q_theta);
-        let q_val = query[i];
+    for (q_val, b_pair) in remainder_q.iter().zip(remainder_b.chunks_exact(2)) {
+        let r = min_r + (b_pair[0] as f32) * step_r;
+        let z_re = r * cos_phase(b_pair[1]);
+        let z_im = r * sin_phase(b_pair[1]);
         sum_re += q_val.re * z_re + q_val.im * z_im;
         sum_im += q_val.re * z_im - q_val.im * z_re;
     }

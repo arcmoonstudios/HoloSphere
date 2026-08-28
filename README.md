@@ -3,7 +3,7 @@
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 [![Rust: 2024](https://img.shields.io/badge/Rust-2024%20Edition-orange.svg)](https://www.rust-lang.org/)
 [![Verification](https://img.shields.io/badge/Verification-cargo%20test-brightgreen.svg)](#verification--testing)
-[![Clippy](https://img.shields.io/badge/Clippy%20-D%20warnings-clean-brightgreen.svg)]()
+[![Clippy](https://img.shields.io/badge/Clippy-D%20warnings-clean-brightgreen.svg)](#verification--testing)
 [![PGO: Optimized](https://img.shields.io/badge/PGO-LLVM%20Profile%20Guided-purple.svg)](docs/PROFILE_GUIDED_OPTIMIZATION.md)
 
 > **HoloSphere is a Rust multi-model state engine with exact vector retrieval, a canonical

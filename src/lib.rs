@@ -793,23 +793,51 @@ unsafe fn dot_product_real_complex_avx2(a: &[Complex32], b: &[Complex32]) -> f32
     let mut offset = 0;
 
     for _ in 0..chunks32 {
-        acc0 = _mm256_fmadd_ps(_mm256_loadu_ps(a_ptr.add(offset)), _mm256_loadu_ps(b_ptr.add(offset)), acc0);
-        acc1 = _mm256_fmadd_ps(_mm256_loadu_ps(a_ptr.add(offset + 8)), _mm256_loadu_ps(b_ptr.add(offset + 8)), acc1);
-        acc2 = _mm256_fmadd_ps(_mm256_loadu_ps(a_ptr.add(offset + 16)), _mm256_loadu_ps(b_ptr.add(offset + 16)), acc2);
-        acc3 = _mm256_fmadd_ps(_mm256_loadu_ps(a_ptr.add(offset + 24)), _mm256_loadu_ps(b_ptr.add(offset + 24)), acc3);
+        acc0 = _mm256_fmadd_ps(
+            _mm256_loadu_ps(a_ptr.add(offset)),
+            _mm256_loadu_ps(b_ptr.add(offset)),
+            acc0,
+        );
+        acc1 = _mm256_fmadd_ps(
+            _mm256_loadu_ps(a_ptr.add(offset + 8)),
+            _mm256_loadu_ps(b_ptr.add(offset + 8)),
+            acc1,
+        );
+        acc2 = _mm256_fmadd_ps(
+            _mm256_loadu_ps(a_ptr.add(offset + 16)),
+            _mm256_loadu_ps(b_ptr.add(offset + 16)),
+            acc2,
+        );
+        acc3 = _mm256_fmadd_ps(
+            _mm256_loadu_ps(a_ptr.add(offset + 24)),
+            _mm256_loadu_ps(b_ptr.add(offset + 24)),
+            acc3,
+        );
         offset += 32;
     }
 
     let chunks16 = (float_len - offset) / 16;
     for _ in 0..chunks16 {
-        acc0 = _mm256_fmadd_ps(_mm256_loadu_ps(a_ptr.add(offset)), _mm256_loadu_ps(b_ptr.add(offset)), acc0);
-        acc1 = _mm256_fmadd_ps(_mm256_loadu_ps(a_ptr.add(offset + 8)), _mm256_loadu_ps(b_ptr.add(offset + 8)), acc1);
+        acc0 = _mm256_fmadd_ps(
+            _mm256_loadu_ps(a_ptr.add(offset)),
+            _mm256_loadu_ps(b_ptr.add(offset)),
+            acc0,
+        );
+        acc1 = _mm256_fmadd_ps(
+            _mm256_loadu_ps(a_ptr.add(offset + 8)),
+            _mm256_loadu_ps(b_ptr.add(offset + 8)),
+            acc1,
+        );
         offset += 16;
     }
 
     let chunks8 = (float_len - offset) / 8;
     for _ in 0..chunks8 {
-        acc0 = _mm256_fmadd_ps(_mm256_loadu_ps(a_ptr.add(offset)), _mm256_loadu_ps(b_ptr.add(offset)), acc0);
+        acc0 = _mm256_fmadd_ps(
+            _mm256_loadu_ps(a_ptr.add(offset)),
+            _mm256_loadu_ps(b_ptr.add(offset)),
+            acc0,
+        );
         offset += 8;
     }
 
@@ -855,23 +883,51 @@ unsafe fn dot_product_real_complex_neon(a: &[Complex32], b: &[Complex32]) -> f32
     let mut offset = 0;
 
     for _ in 0..chunks16 {
-        acc0 = vfmaq_f32(acc0, vld1q_f32(a_ptr.add(offset)), vld1q_f32(b_ptr.add(offset)));
-        acc1 = vfmaq_f32(acc1, vld1q_f32(a_ptr.add(offset + 4)), vld1q_f32(b_ptr.add(offset + 4)));
-        acc2 = vfmaq_f32(acc2, vld1q_f32(a_ptr.add(offset + 8)), vld1q_f32(b_ptr.add(offset + 8)));
-        acc3 = vfmaq_f32(acc3, vld1q_f32(a_ptr.add(offset + 12)), vld1q_f32(b_ptr.add(offset + 12)));
+        acc0 = vfmaq_f32(
+            acc0,
+            vld1q_f32(a_ptr.add(offset)),
+            vld1q_f32(b_ptr.add(offset)),
+        );
+        acc1 = vfmaq_f32(
+            acc1,
+            vld1q_f32(a_ptr.add(offset + 4)),
+            vld1q_f32(b_ptr.add(offset + 4)),
+        );
+        acc2 = vfmaq_f32(
+            acc2,
+            vld1q_f32(a_ptr.add(offset + 8)),
+            vld1q_f32(b_ptr.add(offset + 8)),
+        );
+        acc3 = vfmaq_f32(
+            acc3,
+            vld1q_f32(a_ptr.add(offset + 12)),
+            vld1q_f32(b_ptr.add(offset + 12)),
+        );
         offset += 16;
     }
 
     let chunks8 = (float_len - offset) / 8;
     for _ in 0..chunks8 {
-        acc0 = vfmaq_f32(acc0, vld1q_f32(a_ptr.add(offset)), vld1q_f32(b_ptr.add(offset)));
-        acc1 = vfmaq_f32(acc1, vld1q_f32(a_ptr.add(offset + 4)), vld1q_f32(b_ptr.add(offset + 4)));
+        acc0 = vfmaq_f32(
+            acc0,
+            vld1q_f32(a_ptr.add(offset)),
+            vld1q_f32(b_ptr.add(offset)),
+        );
+        acc1 = vfmaq_f32(
+            acc1,
+            vld1q_f32(a_ptr.add(offset + 4)),
+            vld1q_f32(b_ptr.add(offset + 4)),
+        );
         offset += 8;
     }
 
     let chunks4 = (float_len - offset) / 4;
     for _ in 0..chunks4 {
-        acc0 = vfmaq_f32(acc0, vld1q_f32(a_ptr.add(offset)), vld1q_f32(b_ptr.add(offset)));
+        acc0 = vfmaq_f32(
+            acc0,
+            vld1q_f32(a_ptr.add(offset)),
+            vld1q_f32(b_ptr.add(offset)),
+        );
         offset += 4;
     }
 

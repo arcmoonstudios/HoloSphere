@@ -22,11 +22,11 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
-use serde::{Deserialize, Serialize};
 
 // ============================================================================
 // P1 — Execution Portfolio Planner
@@ -184,8 +184,14 @@ pub struct StageProfile {
 /// Result of evaluating admission for a pipeline stage.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum AdmissionDecision {
-    Admitted { score: f32, reason: String },
-    Rejected { dominating_stage: Option<String>, reason: String },
+    Admitted {
+        score: f32,
+        reason: String,
+    },
+    Rejected {
+        dominating_stage: Option<String>,
+        reason: String,
+    },
 }
 
 /// Objective-aware admission gate implementation.
@@ -212,7 +218,10 @@ pub fn admit_stage(
         if alt_strictly_better_or_equal && alt_strictly_better {
             return AdmissionDecision::Rejected {
                 dominating_stage: Some(alt.stage_name.clone()),
-                reason: format!("Stage '{}' is Pareto-dominated by '{}'", stage.stage_name, alt.stage_name),
+                reason: format!(
+                    "Stage '{}' is Pareto-dominated by '{}'",
+                    stage.stage_name, alt.stage_name
+                ),
             };
         }
     }
@@ -225,7 +234,10 @@ pub fn admit_stage(
 
     AdmissionDecision::Admitted {
         score: utility,
-        reason: format!("Stage '{}' admitted with utility score {:.4}", stage.stage_name, utility),
+        reason: format!(
+            "Stage '{}' admitted with utility score {:.4}",
+            stage.stage_name, utility
+        ),
     }
 }
 
@@ -387,8 +399,14 @@ pub struct MeasurementSet {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum RegressionDecision {
     Pass,
-    RegressionDetected { metric: String, delta_pct: f64, threshold_pct: f64 },
-    IncompatibleIdentity { reason: String },
+    RegressionDetected {
+        metric: String,
+        delta_pct: f64,
+        threshold_pct: f64,
+    },
+    IncompatibleIdentity {
+        reason: String,
+    },
 }
 
 pub fn evaluate_baseline_gate(
@@ -400,7 +418,9 @@ pub fn evaluate_baseline_gate(
 ) -> RegressionDecision {
     if candidate_id != baseline_id {
         return RegressionDecision::IncompatibleIdentity {
-            reason: "Benchmark identities do not match (hardware, workload, or config hash divergence)".to_string(),
+            reason:
+                "Benchmark identities do not match (hardware, workload, or config hash divergence)"
+                    .to_string(),
         };
     }
 
@@ -553,7 +573,10 @@ pub struct BudgetReport {
 }
 
 pub fn evaluate_budget(observations: &[Measurement], budgets: &[Budget]) -> BudgetReport {
-    let budget_map: BTreeMap<&str, f64> = budgets.iter().map(|b| (b.metric.as_str(), b.maximum)).collect();
+    let budget_map: BTreeMap<&str, f64> = budgets
+        .iter()
+        .map(|b| (b.metric.as_str(), b.maximum))
+        .collect();
     let mut violations = Vec::new();
 
     for obs in observations {
@@ -734,7 +757,9 @@ impl VerificationMatrix {
         if self.axes.is_empty() {
             return false;
         }
-        self.axes.values().all(|s| matches!(s, AxisStatus::Passed { .. }))
+        self.axes
+            .values()
+            .all(|s| matches!(s, AxisStatus::Passed { .. }))
     }
 }
 
@@ -762,8 +787,14 @@ pub type ArtifactCatalog = BTreeMap<String, AvailableArtifact>;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ArtifactGateResult {
     Pass,
-    Blocked { missing: Vec<String>, reason: String },
-    Fail { corrupted: Vec<String>, reason: String },
+    Blocked {
+        missing: Vec<String>,
+        reason: String,
+    },
+    Fail {
+        corrupted: Vec<String>,
+        reason: String,
+    },
 }
 
 pub fn validate_required_artifacts(
@@ -783,7 +814,9 @@ pub fn validate_required_artifacts(
                     corrupted.push(format!("{}: digest mismatch", req.logical_name));
                 } else if art.schema_version != req.schema_version {
                     corrupted.push(format!("{}: schema version mismatch", req.logical_name));
-                } else if req.workload_binding.is_some() && art.workload_binding != req.workload_binding {
+                } else if req.workload_binding.is_some()
+                    && art.workload_binding != req.workload_binding
+                {
                     corrupted.push(format!("{}: workload binding mismatch", req.logical_name));
                 }
             }
@@ -1101,7 +1134,10 @@ mod tests {
         };
 
         let decision = evaluate_baseline_gate(&id, &id, &regressed, &baseline, &policy);
-        assert!(matches!(decision, RegressionDecision::RegressionDetected { .. }));
+        assert!(matches!(
+            decision,
+            RegressionDecision::RegressionDetected { .. }
+        ));
     }
 
     #[test]
@@ -1128,13 +1164,9 @@ mod tests {
             identity_requirement: IdentityRequirement::NumericTolerance,
         };
 
-        let report = check_equivalence(
-            &Reference,
-            &CandidateApprox,
-            &inputs,
-            &policy,
-            |a, b| (a - b).abs(),
-        );
+        let report = check_equivalence(&Reference, &CandidateApprox, &inputs, &policy, |a, b| {
+            (a - b).abs()
+        });
 
         assert!(report.is_conformant);
         assert!(report.max_numerical_divergence < 1e-3);
@@ -1143,20 +1175,33 @@ mod tests {
     #[test]
     fn test_p7_budget_gate() {
         let budgets = vec![
-            Budget { metric: "audit_hash_us".to_string(), maximum: 5.0 },
-            Budget { metric: "rbac_eval_us".to_string(), maximum: 2.0 },
+            Budget {
+                metric: "audit_hash_us".to_string(),
+                maximum: 5.0,
+            },
+            Budget {
+                metric: "rbac_eval_us".to_string(),
+                maximum: 2.0,
+            },
         ];
 
         let passing_obs = vec![
-            Measurement { metric: "audit_hash_us".to_string(), value: 3.1 },
-            Measurement { metric: "rbac_eval_us".to_string(), value: 1.2 },
+            Measurement {
+                metric: "audit_hash_us".to_string(),
+                value: 3.1,
+            },
+            Measurement {
+                metric: "rbac_eval_us".to_string(),
+                value: 1.2,
+            },
         ];
         let rep = evaluate_budget(&passing_obs, &budgets);
         assert!(rep.within_budget);
 
-        let failing_obs = vec![
-            Measurement { metric: "audit_hash_us".to_string(), value: 6.5 },
-        ];
+        let failing_obs = vec![Measurement {
+            metric: "audit_hash_us".to_string(),
+            value: 6.5,
+        }];
         let fail_rep = evaluate_budget(&failing_obs, &budgets);
         assert!(!fail_rep.within_budget);
         assert_eq!(fail_rep.violations.len(), 1);
@@ -1174,13 +1219,27 @@ mod tests {
         let mut stages = vec![
             RetrievalStage {
                 id: "ExpensiveDense".to_string(),
-                estimated_cost: CostEstimate { latency_ns: 50_000, memory_bytes: 1024, cpu_cycles: 100_000 },
-                capability: RetrievalCapability { nominal_precision: 0.99, nominal_recall: 0.99 },
+                estimated_cost: CostEstimate {
+                    latency_ns: 50_000,
+                    memory_bytes: 1024,
+                    cpu_cycles: 100_000,
+                },
+                capability: RetrievalCapability {
+                    nominal_precision: 0.99,
+                    nominal_recall: 0.99,
+                },
             },
             RetrievalStage {
                 id: "CheapLexical".to_string(),
-                estimated_cost: CostEstimate { latency_ns: 1_000, memory_bytes: 128, cpu_cycles: 2_000 },
-                capability: RetrievalCapability { nominal_precision: 0.90, nominal_recall: 0.85 },
+                estimated_cost: CostEstimate {
+                    latency_ns: 1_000,
+                    memory_bytes: 128,
+                    cpu_cycles: 2_000,
+                },
+                capability: RetrievalCapability {
+                    nominal_precision: 0.90,
+                    nominal_recall: 0.85,
+                },
             },
         ];
 
@@ -1207,7 +1266,12 @@ mod tests {
         let mut matrix = VerificationMatrix::new();
         matrix.set(VerificationAxis::Compile, AxisStatus::Passed { items: 10 });
         matrix.set(VerificationAxis::Lint, AxisStatus::Passed { items: 5 });
-        matrix.set(VerificationAxis::Unit, AxisStatus::Failed { error: "test panic".to_string() });
+        matrix.set(
+            VerificationAxis::Unit,
+            AxisStatus::Failed {
+                error: "test panic".to_string(),
+            },
+        );
 
         // Compile and Lint pass does NOT imply overall pass when Unit failed
         assert!(!matrix.all_passed());
@@ -1218,34 +1282,38 @@ mod tests {
 
     #[test]
     fn test_p11_artifact_gate_tri_state() {
-        let reqs = vec![
-            RequiredArtifact {
-                logical_name: "gate_b_proof".to_string(),
-                digest: [42u8; 32],
-                schema_version: 1,
-                workload_binding: None,
-            },
-        ];
+        let reqs = vec![RequiredArtifact {
+            logical_name: "gate_b_proof".to_string(),
+            digest: [42u8; 32],
+            schema_version: 1,
+            workload_binding: None,
+        }];
 
         let empty_catalog = ArtifactCatalog::new();
         let blocked = validate_required_artifacts(&reqs, &empty_catalog);
         assert!(matches!(blocked, ArtifactGateResult::Blocked { .. }));
 
         let mut corrupt_catalog = ArtifactCatalog::new();
-        corrupt_catalog.insert("gate_b_proof".to_string(), AvailableArtifact {
-            digest: [0u8; 32], // Mismatch
-            schema_version: 1,
-            workload_binding: None,
-        });
+        corrupt_catalog.insert(
+            "gate_b_proof".to_string(),
+            AvailableArtifact {
+                digest: [0u8; 32], // Mismatch
+                schema_version: 1,
+                workload_binding: None,
+            },
+        );
         let failed = validate_required_artifacts(&reqs, &corrupt_catalog);
         assert!(matches!(failed, ArtifactGateResult::Fail { .. }));
 
         let mut valid_catalog = ArtifactCatalog::new();
-        valid_catalog.insert("gate_b_proof".to_string(), AvailableArtifact {
-            digest: [42u8; 32],
-            schema_version: 1,
-            workload_binding: None,
-        });
+        valid_catalog.insert(
+            "gate_b_proof".to_string(),
+            AvailableArtifact {
+                digest: [42u8; 32],
+                schema_version: 1,
+                workload_binding: None,
+            },
+        );
         let passed = validate_required_artifacts(&reqs, &valid_catalog);
         assert!(matches!(passed, ArtifactGateResult::Pass));
     }
@@ -1263,24 +1331,26 @@ mod tests {
                 Ok(source.clone())
             }
 
-            fn incremental(&self, prior: &TestDocGraph, mutation: &u64) -> Result<TestDocGraph, String> {
+            fn incremental(
+                &self,
+                prior: &TestDocGraph,
+                mutation: &u64,
+            ) -> Result<TestDocGraph, String> {
                 let mut next = prior.clone();
                 next.docs.insert(*mutation);
                 Ok(next)
             }
         }
 
-        let initial = TestDocGraph { docs: BTreeSet::new() };
+        let initial = TestDocGraph {
+            docs: BTreeSet::new(),
+        };
         let mutations = vec![10, 20, 30, 40];
 
-        let report = verify_state_parity(
-            &GraphTransformer,
-            &initial,
-            &mutations,
-            |source, &m| {
-                source.docs.insert(m);
-            },
-        ).expect("parity check");
+        let report = verify_state_parity(&GraphTransformer, &initial, &mutations, |source, &m| {
+            source.docs.insert(m);
+        })
+        .expect("parity check");
 
         assert!(report.states_match);
         assert_eq!(report.step_count, 4);

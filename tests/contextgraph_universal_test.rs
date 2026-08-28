@@ -446,7 +446,9 @@ fn test_scalability_hardening_and_persistence() {
     });
 
     let temp_snapshot_path = std::env::temp_dir().join("holosphere_test_snapshot.json");
-    store.save_snapshot_to_file(&temp_snapshot_path).expect("Saving snapshot should succeed");
+    store
+        .save_snapshot_to_file(&temp_snapshot_path)
+        .expect("Saving snapshot should succeed");
 
     let restored_store = ContextGraphStore::load_snapshot_from_file(&temp_snapshot_path)
         .expect("Loading snapshot should succeed");
@@ -455,6 +457,8 @@ fn test_scalability_hardening_and_persistence() {
     let restored_state = restored_store.snapshot();
     assert_eq!(restored_state.commit_lsn, 1);
     assert_eq!(restored_state.entities.len(), 1);
-    assert_eq!(restored_state.entities.get(&ent.id).unwrap().label, "PersistentFn");
+    assert_eq!(
+        restored_state.entities.get(&ent.id).unwrap().label,
+        "PersistentFn"
+    );
 }
-

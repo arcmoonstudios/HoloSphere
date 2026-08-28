@@ -15,8 +15,8 @@ use std::path::{Path, PathBuf};
 use super::super::adapter::{AdapterCapabilities, SourceAdapter, SourceInput};
 use super::super::ir::{ExtractedEntity, ExtractedRelation, ExtractionBatch, SourceDescriptor};
 use super::super::schema::{EntityKind, Namespace, RelationKind, RelationOrigin, ResourceLocator};
-use crate::transport::model_gateway::{EvidenceClass, VerificationState};
 use crate::HNSQRResult;
+use crate::transport::model_gateway::{EvidenceClass, VerificationState};
 
 pub struct FilesystemSourceAdapter;
 
@@ -86,6 +86,7 @@ impl FilesystemSourceAdapter {
                     "tsx" => "tsx",
                     "js" => "javascript",
                     "jsx" => "jsx",
+                    "go" => "go",
                     "py" => "python",
                     "json" => "json",
                     "toml" => "toml",

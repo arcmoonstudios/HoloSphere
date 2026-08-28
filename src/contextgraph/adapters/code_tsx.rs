@@ -78,9 +78,10 @@ mod tests {
             .extract(&input, &Namespace::new("test"))
             .unwrap();
 
-        assert!(batch
-            .entities
-            .iter()
-            .any(|entity| entity.kind == EntityKind::code_function() && entity.label == "Banner"));
+        assert!(
+            batch.entities.iter().any(
+                |entity| entity.kind == EntityKind::code_function() && entity.label == "Banner"
+            )
+        );
     }
 }

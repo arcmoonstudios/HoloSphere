@@ -232,7 +232,10 @@ impl ContextGraphStore {
     }
 
     /// Persists snapshot state to disk.
-    pub fn save_snapshot_to_file(&self, path: impl AsRef<std::path::Path>) -> crate::HNSQRResult<()> {
+    pub fn save_snapshot_to_file(
+        &self,
+        path: impl AsRef<std::path::Path>,
+    ) -> crate::HNSQRResult<()> {
         if let Some(parent) = path.as_ref().parent() {
             std::fs::create_dir_all(parent)?;
         }

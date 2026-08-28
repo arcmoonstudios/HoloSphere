@@ -6,6 +6,7 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
+pub mod code_go;
 pub mod code_js;
 pub mod code_jsx;
 pub mod code_python;
@@ -36,6 +37,7 @@ impl Default for AdapterRegistry {
         registry.register(Arc::new(code_ts::TsSourceAdapter::new()));
         registry.register(Arc::new(code_jsx::JsxSourceAdapter::new()));
         registry.register(Arc::new(code_js::JsSourceAdapter::new()));
+        registry.register(Arc::new(code_go::GoSourceAdapter::new()));
         registry.register(Arc::new(code_python::PythonSourceAdapter::new()));
         registry.register(Arc::new(data_json::JsonSourceAdapter::new()));
         registry.register(Arc::new(data_toml::TomlSourceAdapter::new()));
@@ -81,6 +83,7 @@ mod tests {
                 "javascript",
                 "javascript_treesitter_adapter",
             ),
+            ("file:///module.go", "go", "go_treesitter_adapter"),
             ("file:///module.py", "python", "python_treesitter_adapter"),
             ("file:///package.json", "json", "json_structural_adapter"),
             ("file:///Cargo.toml", "toml", "toml_structural_adapter"),

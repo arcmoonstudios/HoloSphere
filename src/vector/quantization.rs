@@ -115,19 +115,23 @@ impl PolarQuantizedVector {
     /// then writes quantized bytes into a single `Vec::with_capacity(dim * 2)` allocation.
     pub fn quantize(slice: &[Complex32]) -> Self {
         let dim = slice.len();
-        let mut min_r = f32::INFINITY;
-        let mut max_r = f32::NEG_INFINITY;
+        let mut min_r2 = f32::INFINITY;
+        let mut max_r2 = f32::NEG_INFINITY;
 
-        // Pass 1: amplitude range scan — borrows input slice, no allocation.
+        // Pass 1: monotonic amplitude squared scan — saves N hardware sqrt operations.
+        // DERIVED: Replaces N sqrtss instructions with O(1) sqrt on min/max scalars.
         for z in slice {
-            let r = z.norm();
-            if r < min_r {
-                min_r = r;
+            let r2 = z.norm_sqr();
+            if r2 < min_r2 {
+                min_r2 = r2;
             }
-            if r > max_r {
-                max_r = r;
+            if r2 > max_r2 {
+                max_r2 = r2;
             }
         }
+
+        let mut min_r = min_r2.sqrt();
+        let mut max_r = max_r2.sqrt();
 
         if (max_r - min_r).abs() < 1e-9 {
             max_r = min_r + 1.0;
@@ -162,24 +166,30 @@ impl PolarQuantizedVector {
     #[inline(always)]
     pub fn quantize_into_buffer(slice: &[Complex32], out_bytes: &mut [u8]) -> (f32, f32) {
         let dim = slice.len();
-        let mut min_r = f32::INFINITY;
-        let mut max_r = f32::NEG_INFINITY;
+        let mut min_r2 = f32::INFINITY;
+        let mut max_r2 = f32::NEG_INFINITY;
 
+        // DERIVED: Replaces N sqrtss instructions with O(1) sqrt on min/max scalars.
         for z in slice {
-            let r = z.norm();
-            if r < min_r {
-                min_r = r;
+            let r2 = z.norm_sqr();
+            if r2 < min_r2 {
+                min_r2 = r2;
             }
-            if r > max_r {
-                max_r = r;
+            if r2 > max_r2 {
+                max_r2 = r2;
             }
         }
+
+        let mut min_r = min_r2.sqrt();
+        let mut max_r = max_r2.sqrt();
 
         if (max_r - min_r).abs() < 1e-9 {
             max_r = min_r + 1.0;
         }
 
         let range_r = max_r - min_r;
+        let inv_range_r = 1.0 / range_r;
+        let inv_2pi = 1.0 / (2.0 * PI);
         let out_len = dim * 2;
         let target = &mut out_bytes[..out_len];
 
@@ -189,8 +199,8 @@ impl PolarQuantizedVector {
             // fast_atan2_approx replaces libm atan2f (~25–40 cycles → ~6 cycles).
             let theta = fast_atan2_approx(z.im, z.re);
 
-            let q_r = (((r - min_r) / range_r).clamp(0.0, 1.0) * 255.0).round() as u8;
-            let q_theta = (((theta + PI) / (2.0 * PI)).clamp(0.0, 1.0) * 255.0).round() as u8;
+            let q_r = (((r - min_r) * inv_range_r).clamp(0.0, 1.0) * 255.0).round() as u8;
+            let q_theta = (((theta + PI) * inv_2pi).clamp(0.0, 1.0) * 255.0).round() as u8;
 
             target[i * 2] = q_r;
             target[i * 2 + 1] = q_theta;
@@ -200,18 +210,21 @@ impl PolarQuantizedVector {
     }
 
     /// Dequantizes the compressed vector back into a full-precision complex vector.
+    ///
+    /// DERIVED: Replaces 2*D transcendental libm cos/sin calls with O(1) L1 table lookups.
     pub fn dequantize(&self) -> Vec<Complex32> {
         let mut out = Vec::with_capacity(self.dimension);
-        let range_r = self.max_amplitude - self.min_amplitude;
+        let step_r = (self.max_amplitude - self.min_amplitude) * (1.0 / 255.0);
 
         for i in 0..self.dimension {
             let q_r = self.data[i * 2];
             let q_theta = self.data[i * 2 + 1];
 
-            let r = self.min_amplitude + (q_r as f32 / 255.0) * range_r;
-            let theta = -PI + (q_theta as f32 / 255.0) * (2.0 * PI);
+            let r = self.min_amplitude + (q_r as f32) * step_r;
+            let cos_val = cos_phase(q_theta);
+            let sin_val = sin_phase(q_theta);
 
-            out.push(Complex32::from_polar(r, theta));
+            out.push(Complex32::new(r * cos_val, r * sin_val));
         }
 
         out
@@ -226,6 +239,9 @@ impl PolarQuantizedVector {
 }
 
 /// Fast Asymmetric Inner Product between uncompressed query and raw quantized bytes.
+///
+/// // PROJECTED: ~15-25% throughput gain on CPQ-8 distance calculations by precomputing
+/// // scalar step scaling `(max_r - min_r) / 255.0` outside the hot loop and using 4-way `chunks_exact`.
 #[inline(always)]
 pub fn asymmetric_dot_product_raw(
     query: &[Complex32],
@@ -233,49 +249,59 @@ pub fn asymmetric_dot_product_raw(
     min_r: f32,
     max_r: f32,
 ) -> Complex32 {
-    let dim = query.len();
-    let range_r = max_r - min_r;
-    let inv_255 = 1.0 / 255.0;
+    let step_r = (max_r - min_r) * (1.0 / 255.0);
 
     let mut sum_re0 = 0.0f32;
     let mut sum_im0 = 0.0f32;
     let mut sum_re1 = 0.0f32;
     let mut sum_im1 = 0.0f32;
+    let mut sum_re2 = 0.0f32;
+    let mut sum_im2 = 0.0f32;
+    let mut sum_re3 = 0.0f32;
+    let mut sum_im3 = 0.0f32;
 
-    let chunks = dim / 2;
-    for c in 0..chunks {
-        let i0 = c * 2;
-        let i1 = i0 + 1;
+    let q_chunks = query.chunks_exact(4);
+    let b_chunks = quantized_bytes.chunks_exact(8);
+    let remainder_q = q_chunks.remainder();
+    let remainder_b = b_chunks.remainder();
 
-        let q_r0 = quantized_bytes[i0 * 2];
-        let q_theta0 = quantized_bytes[i0 * 2 + 1];
-        let r0 = min_r + (q_r0 as f32 * inv_255) * range_r;
-        let z_re0 = r0 * cos_phase(q_theta0);
-        let z_im0 = r0 * sin_phase(q_theta0);
-        let q0 = query[i0];
+    for (q_quad, b_oct) in q_chunks.zip(b_chunks) {
+        let r0 = min_r + (b_oct[0] as f32) * step_r;
+        let z_re0 = r0 * cos_phase(b_oct[1]);
+        let z_im0 = r0 * sin_phase(b_oct[1]);
+        let q0 = q_quad[0];
         sum_re0 += q0.re * z_re0 + q0.im * z_im0;
         sum_im0 += q0.re * z_im0 - q0.im * z_re0;
 
-        let q_r1 = quantized_bytes[i1 * 2];
-        let q_theta1 = quantized_bytes[i1 * 2 + 1];
-        let r1 = min_r + (q_r1 as f32 * inv_255) * range_r;
-        let z_re1 = r1 * cos_phase(q_theta1);
-        let z_im1 = r1 * sin_phase(q_theta1);
-        let q1 = query[i1];
+        let r1 = min_r + (b_oct[2] as f32) * step_r;
+        let z_re1 = r1 * cos_phase(b_oct[3]);
+        let z_im1 = r1 * sin_phase(b_oct[3]);
+        let q1 = q_quad[1];
         sum_re1 += q1.re * z_re1 + q1.im * z_im1;
         sum_im1 += q1.re * z_im1 - q1.im * z_re1;
+
+        let r2 = min_r + (b_oct[4] as f32) * step_r;
+        let z_re2 = r2 * cos_phase(b_oct[5]);
+        let z_im2 = r2 * sin_phase(b_oct[5]);
+        let q2 = q_quad[2];
+        sum_re2 += q2.re * z_re2 + q2.im * z_im2;
+        sum_im2 += q2.re * z_im2 - q2.im * z_re2;
+
+        let r3 = min_r + (b_oct[6] as f32) * step_r;
+        let z_re3 = r3 * cos_phase(b_oct[7]);
+        let z_im3 = r3 * sin_phase(b_oct[7]);
+        let q3 = q_quad[3];
+        sum_re3 += q3.re * z_re3 + q3.im * z_im3;
+        sum_im3 += q3.re * z_im3 - q3.im * z_re3;
     }
 
-    let mut sum_re = sum_re0 + sum_re1;
-    let mut sum_im = sum_im0 + sum_im1;
+    let mut sum_re = (sum_re0 + sum_re1) + (sum_re2 + sum_re3);
+    let mut sum_im = (sum_im0 + sum_im1) + (sum_im2 + sum_im3);
 
-    for i in (chunks * 2)..dim {
-        let q_r = quantized_bytes[i * 2];
-        let q_theta = quantized_bytes[i * 2 + 1];
-        let r = min_r + (q_r as f32 * inv_255) * range_r;
-        let z_re = r * cos_phase(q_theta);
-        let z_im = r * sin_phase(q_theta);
-        let q_val = query[i];
+    for (q_val, b_pair) in remainder_q.iter().zip(remainder_b.chunks_exact(2)) {
+        let r = min_r + (b_pair[0] as f32) * step_r;
+        let z_re = r * cos_phase(b_pair[1]);
+        let z_im = r * sin_phase(b_pair[1]);
         sum_re += q_val.re * z_re + q_val.im * z_im;
         sum_im += q_val.re * z_im - q_val.im * z_re;
     }

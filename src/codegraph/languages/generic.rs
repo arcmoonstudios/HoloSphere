@@ -477,14 +477,18 @@ mod tests {
             content_hash: [7; 32],
         };
         let extracted = TreeSitterExtractor::tsx().extract(&context).unwrap();
-        assert!(extracted
-            .nodes
-            .iter()
-            .any(|node| node.name == "Banner" && node.kind == CodeNodeKind::Function));
-        assert!(extracted
-            .unresolved_calls
-            .iter()
-            .any(|call| call.target_symbol == "renderMain"));
+        assert!(
+            extracted
+                .nodes
+                .iter()
+                .any(|node| node.name == "Banner" && node.kind == CodeNodeKind::Function)
+        );
+        assert!(
+            extracted
+                .unresolved_calls
+                .iter()
+                .any(|call| call.target_symbol == "renderMain")
+        );
     }
 
     #[test]
@@ -550,14 +554,18 @@ mod tests {
                 content_hash: [9; 32],
             };
             let extracted = extractor.extract(&context).unwrap();
-            assert!(extracted
-                .nodes
-                .iter()
-                .any(|node| node.language == expected_language));
-            assert!(extracted
-                .nodes
-                .iter()
-                .any(|node| node.kind == CodeNodeKind::Function));
+            assert!(
+                extracted
+                    .nodes
+                    .iter()
+                    .any(|node| node.language == expected_language)
+            );
+            assert!(
+                extracted
+                    .nodes
+                    .iter()
+                    .any(|node| node.kind == CodeNodeKind::Function)
+            );
         }
     }
 

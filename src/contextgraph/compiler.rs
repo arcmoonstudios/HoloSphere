@@ -14,6 +14,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 
 use super::adapter::SourceInput;
 use super::adapters::AdapterRegistry;
@@ -37,6 +38,34 @@ pub struct ContextCompilationOutput {
     pub manifest: ContextGraphManifest,
     pub canonical_fingerprint: [u8; 32],
     pub duration_ms: u64,
+    pub report: CompilationReport,
+}
+
+/// Evidence-bounded coverage report for a single static ContextGraph compilation.
+///
+/// It reports what the compiler observed; it never claims runtime or whole-program
+/// completeness.  The reference counters partition every adapter-emitted unresolved
+/// reference exactly once: resolved, ambiguous, or unmatched.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompilationReport {
+    pub source_count: usize,
+    pub sources_by_type: BTreeMap<String, usize>,
+    pub entity_count: usize,
+    pub relation_count: usize,
+    pub reference_count: usize,
+    pub resolved_reference_count: usize,
+    pub ambiguous_reference_count: usize,
+    pub unmatched_reference_count: usize,
+}
+
+impl CompilationReport {
+    #[must_use]
+    pub fn references_accounted_for(&self) -> bool {
+        self.reference_count
+            == self.resolved_reference_count
+                + self.ambiguous_reference_count
+                + self.unmatched_reference_count
+    }
 }
 
 impl ContextCompilationOutput {
@@ -206,6 +235,10 @@ impl ContextCompiler {
                 .push(ent.id.clone());
         }
 
+        let reference_count = all_unresolved.len();
+        let mut resolved_reference_count = 0;
+        let mut ambiguous_reference_count = 0;
+        let mut unmatched_reference_count = 0;
         for unres in all_unresolved {
             let src_final_id = temp_id_to_final_id
                 .get(&unres.source_temp_id)
@@ -220,6 +253,16 @@ impl ContextCompiler {
             let resolved_rels =
                 self.resolver
                     .resolve(&resolved_unres, &entities_by_id, &entities_by_label);
+            if resolved_rels.is_empty() {
+                unmatched_reference_count += 1;
+            } else if resolved_rels
+                .iter()
+                .any(|relation| relation.origin == super::schema::RelationOrigin::Ambiguous)
+            {
+                ambiguous_reference_count += 1;
+            } else {
+                resolved_reference_count += 1;
+            }
             all_relations.extend(resolved_rels);
         }
 
@@ -238,6 +281,23 @@ impl ContextCompiler {
         manifest.canonical_graph_fingerprint = Some(canonical_fingerprint);
 
         let duration_ms = start.elapsed().as_millis() as u64;
+        let mut sources_by_type = BTreeMap::new();
+        for source in manifest.sources.values() {
+            *sources_by_type
+                .entry(source.source_type.clone())
+                .or_insert(0) += 1;
+        }
+        let report = CompilationReport {
+            source_count: manifest.sources.len(),
+            sources_by_type,
+            entity_count: all_entities.len(),
+            relation_count: all_relations.len(),
+            reference_count,
+            resolved_reference_count,
+            ambiguous_reference_count,
+            unmatched_reference_count,
+        };
+        debug_assert!(report.references_accounted_for());
 
         Ok(ContextCompilationOutput {
             namespace: namespace.clone(),
@@ -246,6 +306,32 @@ impl ContextCompiler {
             manifest,
             canonical_fingerprint,
             duration_ms,
+            report,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn report_partitions_resolved_ambiguous_and_unmatched_references() {
+        let compiler = ContextCompiler::default();
+        let namespace = Namespace::new("test:coverage");
+        let sources = vec![SourceInput::from_text(
+            "fn target() {}\nfn first() { target(); missing(); }\nfn second() { target(); }",
+            "memory://coverage.rs",
+            "rust",
+        )];
+
+        let output = compiler.compile(&namespace, &sources).unwrap();
+        assert_eq!(output.report.source_count, 1);
+        assert_eq!(output.report.sources_by_type.get("rust"), Some(&1));
+        assert!(output.report.entity_count > 0);
+        assert!(output.report.relation_count > 0);
+        assert!(output.report.references_accounted_for());
+        assert!(output.report.resolved_reference_count >= 1);
+        assert!(output.report.unmatched_reference_count >= 1);
     }
 }

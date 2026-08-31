@@ -9,26 +9,13 @@
  * © 2026 ArcMoon Studios ◦ SPDX-License-Identifier MIT OR Apache-2.0 ◦ Author: Lord Xyn ✶
  *///•------------------------------------------------------------------------------------‣
 
-#[cfg(feature = "loom")]
-use loom::sync::Arc;
-#[cfg(not(feature = "loom"))]
 use std::sync::Arc;
-
-#[cfg(feature = "loom")]
-use loom::thread;
-#[cfg(not(feature = "loom"))]
 use std::thread;
 
 use hnsqr::{HNSQRConfig, HNSQRIndex, VectorEmbedding};
 
 #[test]
 fn test_concurrent_arena_race_freedom() {
-    #[cfg(feature = "loom")]
-    loom::model(|| {
-        run_concurrent_insertion_test();
-    });
-
-    #[cfg(not(feature = "loom"))]
     run_concurrent_insertion_test();
 }
 

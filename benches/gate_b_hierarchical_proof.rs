@@ -18,6 +18,9 @@ use hnsqr::proof::{
     DenseExactProof, GlobalExactProofSearch, ProofBenchmarkArtifact, SegmentProofView,
     proof_benchmark_artifact_filename,
 };
+use hnsqr::retrieval::performance_trial::{
+    AdmissionGateStatus, CertifiedEvidence, evaluate_admission_gates,
+};
 use hnsqr::rivero::RiveroProfile;
 
 #[derive(Debug, Clone)]
@@ -28,7 +31,7 @@ struct ExperimentConfig {
     k: usize,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 struct BenchmarkResult {
     d_real: usize,
     n_corpus: usize,
@@ -37,6 +40,7 @@ struct BenchmarkResult {
     exact_simd_evals_pct: f64,
     proof_lat_us: f64,
     speedup: f64,
+    admission: AdmissionGateStatus,
 }
 
 fn run_experiment(exp: &ExperimentConfig) -> Option<BenchmarkResult> {
@@ -196,6 +200,22 @@ fn run_experiment(exp: &ExperimentConfig) -> Option<BenchmarkResult> {
     } else {
         1.0
     };
+    // Production admission is deliberately delegated to the shared retrieval
+    // contract. Exactness alone is insufficient: a certified path must also
+    // beat the exact baseline measured in the same run.
+    let proof_complete = proofs
+        .iter()
+        .all(|proof| !proof.deadline_exceeded && proof.is_accounting_exact());
+    let globally_exact = proofs.iter().all(|proof| proof.globally_exact);
+    let admission = evaluate_admission_gates(
+        Some(CertifiedEvidence {
+            all_queries_proof_complete: proof_complete,
+            all_queries_globally_exact: globally_exact,
+        }),
+        exact_recall / 100.0,
+        (bf_lat_p50 * 1_000.0).round() as u64,
+        (proof_lat_p50 * 1_000.0).round() as u64,
+    );
 
     println!("\n   📊 RESULTS SUMMARY:");
     println!(
@@ -229,6 +249,7 @@ fn run_experiment(exp: &ExperimentConfig) -> Option<BenchmarkResult> {
         exact_simd_evals_pct,
         proof_lat_us: proof_lat_p50,
         speedup,
+        admission,
     })
 }
 
@@ -282,7 +303,10 @@ fn main() {
     );
     let mut admitted = 0usize;
     for r in &results {
-        let admission = r.exact_recall == 100.0 && r.speedup > 1.0;
+        let admission = matches!(
+            r.admission,
+            AdmissionGateStatus::CertifiedProductionApproved
+        );
         admitted += admission as usize;
         println!(
             "{:<8} | {:<8} | {:<9.3}% | {:<11.2}% | {:<11.2}% | {:<9.1} µs | {:.2}x {}",

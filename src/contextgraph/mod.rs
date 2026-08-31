@@ -31,7 +31,7 @@ pub use adapter::{AdapterCapabilities, SourceAdapter, SourceInput};
 pub use adapters::AdapterRegistry;
 pub use analytics::{ContextAnalytics, HubEntityInfo, UniversalCycle};
 pub use community::{ScopeClustering, ScopeSummary};
-pub use compiler::{ContextCompilationOutput, ContextCompiler};
+pub use compiler::{CompilationReport, ContextCompilationOutput, ContextCompiler};
 pub use fingerprint::GraphFingerprinter;
 pub use invalidation::InvalidationGraph;
 pub use ir::{

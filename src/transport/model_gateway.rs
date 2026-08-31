@@ -519,6 +519,9 @@ pub struct IngestResult {
     pub canonical_fingerprint: String,
     pub commit_lsn: u64,
     pub duration_ms: u64,
+    /// Static-analysis coverage evidence for this compilation. Runtime behavior,
+    /// generated code, and unsupported languages are intentionally not inferred.
+    pub compilation_report: crate::contextgraph::CompilationReport,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -2722,6 +2725,7 @@ impl ModelToolService {
             .collect();
         let relations_count = output.relations.len();
         let duration_ms = output.duration_ms;
+        let compilation_report = output.report.clone();
         let canonical_fingerprint = format!("{:x?}", output.canonical_fingerprint);
 
         let commit_lsn = self.contextgraph.commit_delta(output.into_delta());
@@ -2741,6 +2745,7 @@ impl ModelToolService {
                 canonical_fingerprint,
                 commit_lsn,
                 duration_ms,
+                compilation_report,
             },
             contradictions: Vec::new(),
         })

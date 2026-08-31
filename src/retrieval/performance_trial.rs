@@ -187,6 +187,39 @@ pub fn evaluate_admission_gates(
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn certified_admission_requires_strictly_lower_latency_than_exact_baseline() {
+        let evidence = Some(CertifiedEvidence {
+            all_queries_proof_complete: true,
+            all_queries_globally_exact: true,
+        });
+
+        let equal_latency = evaluate_admission_gates(evidence, 1.0, 100, 100);
+        assert!(matches!(
+            equal_latency,
+            AdmissionGateStatus::Rejected { .. }
+        ));
+
+        let faster = evaluate_admission_gates(evidence, 1.0, 100, 99);
+        assert_eq!(faster, AdmissionGateStatus::CertifiedProductionApproved);
+
+        let incomplete = evaluate_admission_gates(
+            Some(CertifiedEvidence {
+                all_queries_proof_complete: false,
+                all_queries_globally_exact: true,
+            }),
+            1.0,
+            100,
+            1,
+        );
+        assert!(matches!(incomplete, AdmissionGateStatus::Rejected { .. }));
+    }
+}
+
 /// Immutable descriptor of persistent HNSW construction parameters for experiment provenance.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HnswBuildDescriptor {
